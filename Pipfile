@@ -8,7 +8,6 @@ alpaca-py = "*"
 python-dotenv = "*"
 yfinance = "*"
 stable-baselines3 = "*"
-gymnasium = "*"
 matplotlib = "*"
 ipykernel = "*"
 polars = "*"
@@ -17,8 +16,13 @@ numpy = "*"
 seaborn = "*"
 plotly = "*"
 nbformat = "*"
+torch = "*"
+gymnasium = "*"
+tqdm = "*"
+alpaca-trade-api = "*"
 
 [dev-packages]
+pytest = "*"
 
 [requires]
 python_version = "3.13"

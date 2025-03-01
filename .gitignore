@@ -172,3 +172,4 @@ cython_debug/
 
 .cache_ggshield
 *.csv
+*.pt
