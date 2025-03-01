@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  training:
+    build: .
+    image: trading-bot:latest
+    container_name: trading-bot-training
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./.env:/app/.env
+    command: ["train.py", "--n_episodes", "2000", "--batch_size", "128", "--checkpoint_interval", "200"]
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  inference:
+    build: .
+    image: trading-bot:latest
+    container_name: trading-bot-inference
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./.env:/app/.env
+    command: ["inference.py", "--paper_trading", "--trade_interval", "3600"]
+    environment:
+      - PYTHONUNBUFFERED=1
+      
+  inference-test:
+    build: .
+    image: trading-bot:latest
+    container_name: trading-bot-inference-test
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./.env:/app/.env
+    command: ["inference.py", "--test_data", "data/BTC_USD_complete.csv"]
+    environment:
+      - PYTHONUNBUFFERED=1

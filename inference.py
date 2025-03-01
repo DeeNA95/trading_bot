@@ -17,26 +17,27 @@ from agent.rl_agent import PPOAgent
 from environment.trading_env import TradingEnvironment
 from environment.reward import RiskAdjustedReward
 from train import get_best_device, prepare_data
+from data import DataHandler  # Import DataHandler for calculating metrics
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Alpaca API 
+# Initialize Alpaca API
 def init_alpaca_api():
     """Initialize Alpaca API connection."""
-    api_key = os.getenv('ALPACA_API_KEY')
-    api_secret = os.getenv('ALPACA_API_SECRET')
+    api_key = os.getenv("ALPACA_KEY")
+    api_secret = os.getenv("ALPACA_SECRET_KEY")
     base_url = 'https://paper-api.alpaca.markets'  # Paper trading URL
-    
+
     if not api_key or not api_secret:
         raise ValueError("Alpaca API key and secret must be set in .env file")
-    
+
     return tradeapi.REST(api_key, api_secret, base_url, api_version='v2')
 
 # Fetch latest data for a symbol from Alpaca
 def fetch_market_data(api, symbol, timeframe='1D', limit=100):
     """Fetch market data from Alpaca API.
-    
+
     Args:
         api: Alpaca API instance
         symbol: Trading symbol (e.g., 'BTC/USD')
@@ -44,22 +45,40 @@ def fetch_market_data(api, symbol, timeframe='1D', limit=100):
         limit: Number of bars to fetch
         
     Returns:
-        DataFrame with OHLCV data
+        DataFrame with OHLCV data and calculated metrics
     """
-    # Convert crypto symbol format if needed
-    alpaca_symbol = symbol.replace('/', '') if '/' in symbol else symbol
+    # Convert crypto symbol format if needed (Alpaca now requires symbol in 'BTC/USD' format)
+    if '/' not in symbol:
+        # If symbol doesn't have a slash, add it (e.g., 'BTCUSD' -> 'BTC/USD')
+        if len(symbol) > 3:
+            # Assuming format like BTCUSD needs to be BTC/USD
+            base = symbol[:-3]
+            quote = symbol[-3:]
+            alpaca_symbol = f"{base}/{quote}"
+        else:
+            # If we can't parse it, keep as is
+            alpaca_symbol = symbol
+    else:
+        # Already in correct format
+        alpaca_symbol = symbol
+    
+    print(f"Using symbol format for Alpaca API: {alpaca_symbol}")
     
     # Calculate time window
     end_dt = datetime.now()
     start_dt = end_dt - timedelta(days=limit)
     
+    # Format dates in YYYY-MM-DD format that Alpaca accepts
+    start_str = start_dt.strftime('%Y-%m-%d')
+    end_str = end_dt.strftime('%Y-%m-%d')
+    
     try:
         # Fetch bars from Alpaca
         bars = api.get_crypto_bars(
-            alpaca_symbol, 
+            alpaca_symbol,
             timeframe,
-            start=start_dt.isoformat(),
-            end=end_dt.isoformat()
+            start=start_str,
+            end=end_str
         ).df
         
         # Format the data to match our expected format
@@ -70,7 +89,7 @@ def fetch_market_data(api, symbol, timeframe='1D', limit=100):
             'timestamp': 'time',
             'open': 'open',
             'high': 'high',
-            'low': 'low', 
+            'low': 'low',
             'close': 'close',
             'volume': 'volume'
         }, inplace=True)
@@ -80,9 +99,38 @@ def fetch_market_data(api, symbol, timeframe='1D', limit=100):
         for col in required_columns:
             if col not in bars.columns:
                 raise ValueError(f"Missing required column: {col}")
-                
-        return bars
-    
+        
+        # Initialize DataHandler and calculate all metrics
+        dh = DataHandler()
+        
+        # Convert to the format expected by DataHandler
+        df_for_metrics = bars.copy()
+        if 'time' in df_for_metrics.columns:
+            df_for_metrics = df_for_metrics.set_index('time')
+        
+        # Calculate technical indicators
+        df_with_indicators = dh.calculate_technical_indicators(df_for_metrics)
+        
+        # Calculate risk metrics
+        df_with_risk = dh.calculate_risk_metrics(df_with_indicators)
+        
+        # Identify trade setups
+        df_with_setups = dh.identify_trade_setups(df_with_risk)
+        
+        # Fill NaN values
+        df_final = df_with_setups.fillna(method='ffill')
+        df_final = df_final.fillna(method='bfill')
+        
+        # Any remaining NaNs should be filled with zeros
+        df_final = df_final.fillna(0)
+        
+        # Reset index to have time as a column
+        if df_final.index.name == 'timestamp':
+            df_final = df_final.reset_index()
+        
+        print(f"Data processed successfully with all required metrics added")
+        return df_final
+        
     except Exception as e:
         print(f"Error fetching market data: {e}")
         return None
@@ -90,17 +138,17 @@ def fetch_market_data(api, symbol, timeframe='1D', limit=100):
 # Create trading agent with trained model
 def create_agent(model_path, state_dim, action_dim):
     """Create and load a trained PPO agent.
-    
+
     Args:
         model_path: Path to saved model
         state_dim: State dimension
         action_dim: Action dimension
-        
+
     Returns:
         Loaded PPO agent
     """
     device = get_best_device()
-    
+
     # Create agent with the same architecture as during training
     agent = PPOAgent(
         state_dim=state_dim,
@@ -116,51 +164,62 @@ def create_agent(model_path, state_dim, action_dim):
         entropy_coef=0.01,
         device=device
     )
-    
+
     # Load trained models
     agent.load_models(model_path)
-    
+
     return agent
 
 # Execute trade on Alpaca
 def execute_trade(api, symbol, action, quantity):
     """Execute a trade using Alpaca API.
-    
+
     Args:
         api: Alpaca API instance
         symbol: Trading symbol
         action: Action value from agent (normalized between -1 and 1)
         quantity: Quantity to trade
-        
+
     Returns:
         Order information
     """
-    # Convert crypto symbol format if needed
-    alpaca_symbol = symbol.replace('/', '') if '/' in symbol else symbol
-    
+    # Convert crypto symbol format if needed (Alpaca now requires symbol in 'BTC/USD' format)
+    if '/' not in symbol:
+        # If symbol doesn't have a slash, add it (e.g., 'BTCUSD' -> 'BTC/USD')
+        if len(symbol) > 3:
+            # Assuming format like BTCUSD needs to be BTC/USD
+            base = symbol[:-3]
+            quote = symbol[-3:]
+            alpaca_symbol = f"{base}/{quote}"
+        else:
+            # If we can't parse it, keep as is
+            alpaca_symbol = symbol
+    else:
+        # Already in correct format
+        alpaca_symbol = symbol
+
     try:
-        # Interpret action: positive for buy, negative for sell
+        # Use a fixed small quantity to stay under Alpaca's limits
+        # Instead of trying to calculate based on price which requires additional API calls
+        # BTC is around $50,000-60,000, so 0.001 BTC is about $50-60
+        safe_quantity = 0.001
+        
+        # Determine if we should buy or sell
         side = 'buy' if action > 0 else 'sell'
         
-        # Calculate position size based on action magnitude (0 to 1)
-        position_size = abs(float(action)) * quantity
+        print(f"Executing {side} order for {safe_quantity} {alpaca_symbol}")
         
-        # Ensure minimum quantity
-        position_size = max(position_size, 0.0001)
-        
-        print(f"Executing {side} order for {position_size} {alpaca_symbol}")
-        
-        # Submit order to Alpaca
+        # Submit order
         order = api.submit_order(
             symbol=alpaca_symbol,
-            qty=position_size,
+            qty=safe_quantity,
             side=side,
             type='market',
             time_in_force='gtc'
         )
         
         return order
-    
+
     except Exception as e:
         print(f"Error executing trade: {e}")
         return None
@@ -185,15 +244,15 @@ def main():
                         help='Enable paper trading with Alpaca')
     parser.add_argument('--test_data', type=str, default=None,
                         help='Path to test data (if not using live data)')
-    
+
     args = parser.parse_args()
-    
+
     # Initialize Alpaca API for paper trading
     if args.paper_trading:
         api = init_alpaca_api()
         account = api.get_account()
         print(f"Trading with Alpaca paper account: ${float(account.cash)} available")
-    
+
     # Load data for inference
     if args.test_data:
         # Use test data file
@@ -209,7 +268,7 @@ def main():
     else:
         print("Error: Either test_data or paper_trading must be specified")
         return
-    
+
     # Create environment
     env = TradingEnvironment(
         data=data,
@@ -218,83 +277,76 @@ def main():
         commission=args.commission,
         max_leverage=args.max_leverage
     )
-    
+
     # Get state and action dimensions
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
-    
+
     # Create and load agent
     agent = create_agent(args.model_path, state_dim, action_dim)
     print(f"Model loaded from {args.model_path}")
-    
+
     # Trading loop
     observation, _ = env.reset()
     done = False
     total_reward = 0
     step = 0
     position = 0  # Current position
-    
+
     try:
         while not done:
             # Get action from agent
             action, _, _ = agent.choose_action(observation)
             action_value = action[0]  # Extract scalar value
-            
+
             # Execute trade in paper trading mode
             if args.paper_trading:
-                # Get current position for the symbol
-                try:
-                    position_info = api.get_position(args.symbol.replace('/', ''))
-                    current_qty = float(position_info.qty)
-                except:
-                    current_qty = 0
-                
-                # Calculate trade size (difference between desired and current)
-                trade_size = abs(action_value * 10) - current_qty
-                
-                if abs(trade_size) > 0.0001:  # Minimum trade size
-                    execute_trade(api, args.symbol, trade_size, 10)
-            
+                # Only execute trade if action is significant
+                if abs(action_value) > 0.1:
+                    execute_trade(api, args.symbol, action_value, None)
+                else:
+                    print(f"Action value {action_value} too small, skipping trade")
+
             # Update environment
             next_observation, reward, done, truncated, info = env.step(action)
-            
+
             # Update tracking variables
             observation = next_observation
             total_reward += reward
             step += 1
-            
+
             # Print current status
             print(f"Step: {step}, Action: {action_value:.4f}, " +
                   f"Reward: {reward:.2f}, Total: {total_reward:.2f}, " +
                   f"Balance: ${env.balance:.2f}")
-            
+
             # In paper trading mode, wait for next interval
             if args.paper_trading and not done:
                 print(f"Waiting {args.trade_interval} seconds until next trade...")
                 time.sleep(args.trade_interval)
-            
+
             # End if we're done or truncated
             if done or truncated:
                 break
-                
+
     except KeyboardInterrupt:
         print("Trading stopped by user")
-    
+
     # Print final results
     print(f"\nTrading completed after {step} steps")
     print(f"Final balance: ${env.balance:.2f}")
     print(f"Total reward: {total_reward:.2f}")
-    
+
     # In paper trading mode, show final account status
     if args.paper_trading:
         try:
             account = api.get_account()
             positions = api.list_positions()
-            
+
             print("\nFinal Account Status:")
             print(f"Cash: ${float(account.cash):.2f}")
             print(f"Portfolio Value: ${float(account.portfolio_value):.2f}")
-            
+
             print("\nOpen Positions:")
             for position in positions:
                 print(f"{position.symbol}: {position.qty} @ ${float(position.avg_entry_price):.2f} " +
