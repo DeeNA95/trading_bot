@@ -1,0 +1,24 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+alpaca-py = "*"
+python-dotenv = "*"
+yfinance = "*"
+stable-baselines3 = "*"
+gymnasium = "*"
+matplotlib = "*"
+ipykernel = "*"
+polars = "*"
+pandas = "*"
+numpy = "*"
+seaborn = "*"
+plotly = "*"
+nbformat = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.13"
