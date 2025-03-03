@@ -1,0 +1,62 @@
+[
+  {
+    "realized_pnl_weight": 1.0,
+    "unrealized_pnl_weight": 0.1,
+    "trade_penalty": 0.0002,
+    "leverage_penalty": 0.001,
+    "drawdown_penalty": 0.1,
+    "volatility_penalty": 0.0,
+    "holding_time_bonus": 0.0,
+    "trend_alignment_bonus": 0.0,
+    "sharpe_weight": 0.0,
+    "reward_scale": 1.0
+  },
+  {
+    "realized_pnl_weight": 1.0,
+    "unrealized_pnl_weight": 0.2,
+    "trade_penalty": 0.0005,
+    "leverage_penalty": 0.005,
+    "drawdown_penalty": 0.2,
+    "volatility_penalty": 0.01,
+    "holding_time_bonus": 0.0001,
+    "trend_alignment_bonus": 0.0,
+    "sharpe_weight": 0.0,
+    "reward_scale": 1.0
+  },
+  {
+    "realized_pnl_weight": 1.0,
+    "unrealized_pnl_weight": 0.05,
+    "trade_penalty": 0.001,
+    "leverage_penalty": 0.01,
+    "drawdown_penalty": 0.3,
+    "volatility_penalty": 0.0,
+    "holding_time_bonus": 0.0002,
+    "trend_alignment_bonus": 0.1,
+    "sharpe_weight": 0.0,
+    "reward_scale": 1.0
+  },
+  {
+    "realized_pnl_weight": 0.8,
+    "unrealized_pnl_weight": 0.1,
+    "trade_penalty": 0.0002,
+    "leverage_penalty": 0.001,
+    "drawdown_penalty": 0.1,
+    "volatility_penalty": 0.0,
+    "holding_time_bonus": 0.0,
+    "trend_alignment_bonus": 0.05,
+    "sharpe_weight": 0.2,
+    "reward_scale": 1.0
+  },
+  {
+    "realized_pnl_weight": 1.0,
+    "unrealized_pnl_weight": 0.0,
+    "trade_penalty": 0.0001,
+    "leverage_penalty": 0.0005,
+    "drawdown_penalty": 0.05,
+    "volatility_penalty": 0.0,
+    "holding_time_bonus": 0.0,
+    "trend_alignment_bonus": 0.0,
+    "sharpe_weight": 0.0,
+    "reward_scale": 1.0
+  }
+]

@@ -1,0 +1,7 @@
+Experiment completed at Mon Mar  3 01:18:21 GMT 2025
+Models trained:
+"futures_low_leverage"
+"futures_medium_leverage"
+"futures_high_leverage"
+"futures_funding_focus"
+"futures_conservative"

@@ -1,485 +1,172 @@
 #!/usr/bin/env python3
 
-import os
 import pandas as pd
 import numpy as np
+import os
 from datetime import datetime, timedelta
+import argparse
+from binance.client import Client
+import time
+import logging
+from binance.exceptions import BinanceAPIException
 from dotenv import load_dotenv
-from alpaca.data.historical import StockHistoricalDataClient, CryptoHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest, CryptoBarsRequest
-from alpaca.data.timeframe import TimeFrame
-import yfinance as yf
 
 class DataHandler:
     """
     Class responsible for retrieving, processing, and normalizing market data
-    from various sources including Alpaca (stocks and crypto) and Yahoo Finance.
+    from Binance futures.
     """
 
-    def __init__(self, data_source="alpaca"):
+    def __init__(self):
         """
-        Initialize the DataHandler with the specified data source.
-
-        Args:
-            data_source (str): The data source to use ('alpaca', 'yahoo')
+        Initialize the DataHandler.
         """
-        self.data_source = data_source
         load_dotenv()
 
-        # Initialize connections based on data source
-        if data_source == "alpaca":
-            self._init_alpaca()
-        elif data_source == "yahoo":
-            # No specific initialization needed for Yahoo Finance
-            pass
-        else:
-            raise ValueError(f"Unsupported data source: {data_source}")
+        # Initialize Binance futures client
+        self._init_binance_futures()
 
-    def _init_alpaca(self):
-        """Initialize the Alpaca data clients for stocks and crypto."""
+    def _init_binance_futures(self):
+        """Initialize the Binance futures client."""
         # Get API credentials from environment
-        alpaca_key = os.getenv("ALPACA_KEY")
-        alpaca_secret = os.getenv("ALPACA_SECRET_KEY")
+        binance_key = os.getenv("binance_future_testnet_api")
+        binance_secret = os.getenv("binance_future_testnet_secret")
 
-        if not alpaca_key or not alpaca_secret:
-            raise ValueError("Alpaca API credentials not found in environment variables")
+        if not binance_key or not binance_secret:
+            raise ValueError(
+                "Binance API credentials not found in environment variables.\n"
+                "Please ensure you have BINANCE_API_KEY and BINANCE_SECRET_KEY "
+                "set in your .env file in the project root directory."
+            )
 
-        # Initialize stock data client (requires API keys)
-        self.stock_client = StockHistoricalDataClient(alpaca_key, alpaca_secret)
+        # Initialize Binance futures client with increased timeout
+        self.client = Client(api_key=binance_key, api_secret=binance_secret, requests_params={'timeout': 100})
+        print("Binance Futures client initialized successfully with 100s timeout")
 
-        # Initialize crypto data client (no API keys required for crypto data)
-        self.crypto_client = CryptoHistoricalDataClient()
-
-    def get_stock_data(self, symbols, timeframe=TimeFrame.Day, start_date=None, end_date=None, limit=100):
+    def get_futures_data(self, symbols, interval="1m", start_time=None, end_time=None):
         """
-        Get historical stock price data for the specified symbols using Alpaca.
+        Get historical futures price data for the specified symbols using Binance.
+        Implements pagination to retrieve more than the default 500 rows limit.
 
         Args:
-            symbols (list): List of stock ticker symbols
-            timeframe (TimeFrame): The timeframe for the data (default: Daily)
-            start_date (datetime, optional): The start date for the data
-            end_date (datetime, optional): The end date for the data
-            limit (int): Maximum number of data points to retrieve
+            symbols (list): List of futures pairs (e.g., 'BTCUSDT')
+            interval (str): The timeframe for the data (default: '1m')
+            start_time (datetime, optional): The start time for the data
+            end_time (datetime, optional): The end time for the data
 
         Returns:
-            DataFrame: Historical stock price data
+            DataFrame: Historical futures price data
         """
-        if self.data_source != "alpaca":
-            return self.get_yahoo_data(symbols, start_date, end_date)
+        if start_time is None:
+            start_time = datetime.now() - timedelta(days=7)  # Default to 7 days for 1m data to avoid too much data
+        if end_time is None:
+            end_time = datetime.now()
 
-        if start_date is None:
-            start_date = datetime.now() - timedelta(days=30)
-        if end_date is None:
-            end_date = datetime.now()
-
-        request_params = StockBarsRequest(
-            symbol_or_symbols=symbols,
-            timeframe=timeframe,
-            start=start_date,
-            end=end_date,
-            limit=limit
-        )
-
-        try:
-            bars = self.stock_client.get_stock_bars(request_params)
-            df = bars.df
-
-            if len(symbols) == 1:
-                # If only one symbol, remove the multi-index
-                df = df.reset_index(level=0, drop=True)
-
-            print(f"Successfully retrieved stock data for {symbols}")
-            return df
-        except Exception as e:
-            print(f"Error retrieving stock data: {e}")
-            # Fallback to Yahoo Finance if there's an error with Alpaca
-            print("Falling back to Yahoo Finance...")
-            return self.get_yahoo_data(symbols, start_date, end_date)
-
-    def get_crypto_data(self, symbols, timeframe=TimeFrame.Day, start_date=None, end_date=None, limit=100):
-        """
-        Get historical cryptocurrency price data for the specified symbols using Alpaca.
-
-        Args:
-            symbols (list): List of crypto pairs (e.g., 'BTC/USD')
-            timeframe (TimeFrame): The timeframe for the data (default: Daily)
-            start_date (datetime, optional): The start date for the data
-            end_date (datetime, optional): The end date for the data
-            limit (int): Maximum number of data points to retrieve
-
-        Returns:
-            DataFrame: Historical crypto price data
-        """
-        if start_date is None:
-            start_date = datetime.now() - timedelta(days=30)
-        if end_date is None:
-            end_date = datetime.now()
-
-        # Format crypto symbols correctly if needed (e.g., 'BTC' -> 'BTC/USD')
-        formatted_symbols = []
-        for symbol in symbols:
-            if '/' not in symbol:
-                formatted_symbols.append(f"{symbol}/USD")
-            else:
-                formatted_symbols.append(symbol)
-
-        request_params = CryptoBarsRequest(
-            symbol_or_symbols=formatted_symbols,
-            timeframe=timeframe,
-            start=start_date,
-            end=end_date,
-            limit=limit
-        )
-
-        try:
-            bars = self.crypto_client.get_crypto_bars(request_params)
-            df = bars.df
-
-            if len(formatted_symbols) == 1:
-                # If only one symbol, remove the multi-index
-                df = df.reset_index(level=0, drop=True)
-
-            print(f"Successfully retrieved crypto data for {formatted_symbols}")
-            return df
-        except Exception as e:
-            print(f"Error retrieving crypto data: {e}")
-            return pd.DataFrame()  # Return empty DataFrame on error
-
-    def get_yahoo_data(self, symbols, start_date=None, end_date=None):
-        """
-        Get historical data from Yahoo Finance.
-
-        Args:
-            symbols (list): List of ticker symbols
-            start_date (datetime, optional): The start date for the data
-            end_date (datetime, optional): The end date for the data
-
-        Returns:
-            DataFrame: Historical price data from Yahoo Finance
-        """
-        if start_date is None:
-            start_date = datetime.now() - timedelta(days=30)
-        if end_date is None:
-            end_date = datetime.now()
-
-        try:
-            if len(symbols) == 1:
-                # Single symbol
-                ticker = yf.Ticker(symbols[0])
-                df = ticker.history(start=start_date, end=end_date)
-                # Rename columns to match Alpaca's format
-                df.columns = [col.lower() for col in df.columns]
-                # Ensure index is named 'timestamp' to match Alpaca's format
-                df.index.name = 'timestamp'
-                print(f"Successfully retrieved Yahoo Finance data for {symbols[0]}")
-                return df
-            else:
-                # Multiple symbols
-                data = yf.download(symbols, start=start_date, end=end_date)
-                # Rename columns to match Alpaca's format
-                data.columns = [col.lower() if isinstance(col, str) else (col[0].lower(), col[1].lower())
-                               for col in data.columns]
-                # Ensure index is named 'timestamp' to match Alpaca's format
-                data.index.name = 'timestamp'
-                print(f"Successfully retrieved Yahoo Finance data for {symbols}")
-                return data
-        except Exception as e:
-            print(f"Error retrieving Yahoo Finance data: {e}")
-            return pd.DataFrame()  # Return empty DataFrame on error
-
-    def save_data_to_csv(self, df, filename):
-        """
-        Save the DataFrame to a CSV file.
-
-        Args:
-            df (DataFrame): Data to save
-            filename (str): Filename to save to
-        """
-        # Ensure the index is named 'timestamp'
-        df_to_save = df.copy()
-        if df_to_save.index.name != 'timestamp':
-            df_to_save.index.name = 'timestamp'
-
-        df_to_save.to_csv(filename)
-        print(f"Data saved to {filename}")
-
-    def load_data_from_csv(self, filename):
-        """
-        Load data from a CSV file.
-
-        Args:
-            filename (str): Filename to load from
-
-        Returns:
-            DataFrame: Loaded data
-        """
-        df = pd.read_csv(filename, index_col=0, parse_dates=True)
-        # Ensure the index is named 'timestamp'
-        df.index.name = 'timestamp'
-        print(f"Data loaded from {filename}")
-        return df
-
-    def merge_data_sources(self, symbol, sources=None, start_date=None, end_date=None, timeframe=TimeFrame.Day):
-        """
-        Merge data for the same symbol from multiple sources.
-
-        Args:
-            symbol (str): The symbol to retrieve data for
-            sources (list, optional): List of data sources to use ['alpaca', 'yahoo']. If None, uses all available.
-            start_date (datetime, optional): The start date for the data
-            end_date (datetime, optional): The end date for the data
-            timeframe (TimeFrame): The timeframe for the data (default: Daily)
-
-        Returns:
-            DataFrame: Merged data from all sources with source indicators
-        """
-        if sources is None:
-            sources = ['alpaca', 'yahoo']
-
-        all_data = {}
-
-        for source in sources:
-            # Store original data source
-            original_source = self.data_source
-
-            try:
-                # Temporarily switch data source
-                self.data_source = source
-
-                # Get data based on source and asset type
-                if '/' in symbol:  # Crypto
-                    if source == 'alpaca':
-                        df = self.get_crypto_data([symbol], timeframe=timeframe,
-                                                start_date=start_date, end_date=end_date)
-                    else:
-                        # Yahoo Finance uses different symbols for crypto
-                        yahoo_symbol = symbol.split('/')[0] + '-' + symbol.split('/')[1]
-                        df = self.get_yahoo_data([yahoo_symbol], start_date=start_date, end_date=end_date)
-                else:  # Stock
-                    df = self.get_stock_data([symbol], timeframe=timeframe,
-                                           start_date=start_date, end_date=end_date)
-
-                if not df.empty:
-                    # Ensure index is named 'timestamp'
-                    if df.index.name != 'timestamp':
-                        df.index.name = 'timestamp'
-
-                    # Add source column
-                    df['data_source'] = source
-                    all_data[source] = df
-                    print(f"Retrieved {symbol} data from {source}")
-
-            except Exception as e:
-                print(f"Error retrieving {symbol} data from {source}: {e}")
-
-            finally:
-                # Restore original data source
-                self.data_source = original_source
-
-        if not all_data:
-            print(f"No data retrieved for {symbol} from any source")
-            return pd.DataFrame()
-
-        # Merge data from all sources
-        # Start with data from the first source
-        merged_data = None
-        source_priority = [s for s in sources if s in all_data]
-
-        if not source_priority:
-            return pd.DataFrame()
-
-        # Use the first available source as base
-        merged_data = all_data[source_priority[0]].copy()
-        merged_data['source_priority'] = 1  # Priority 1 (highest)
-
-        # Add data from other sources with lower priority
-        for i, source in enumerate(source_priority[1:], 2):
-            if source in all_data:
-                source_data = all_data[source].copy()
-                source_data['source_priority'] = i
-
-                # Concatenate and sort by date
-                merged_data = pd.concat([merged_data, source_data])
-
-        # Sort by date and handle duplicates by keeping the highest priority source
-        merged_data = merged_data.sort_index()
-
-        # If there are duplicate indices (dates), keep the one with highest priority (lowest number)
-        merged_data = merged_data.reset_index()
-        # Ensure the column is named 'timestamp'
-        if 'timestamp' not in merged_data.columns and 'index' in merged_data.columns:
-            merged_data = merged_data.rename(columns={'index': 'timestamp'})
-
-        merged_data = merged_data.sort_values(['timestamp', 'source_priority'])
-        merged_data = merged_data.drop_duplicates('timestamp', keep='first')
-        merged_data = merged_data.set_index('timestamp')
-
-        # Drop the priority column
-        merged_data = merged_data.drop('source_priority', axis=1)
-
-        print(f"Successfully merged {symbol} data from {', '.join(source_priority)}")
-        return merged_data
-
-    def merge_multi_asset_data(self, symbols, columns=None, start_date=None, end_date=None,
-                              timeframe=TimeFrame.Day, fill_method='ffill'):
-        """
-        Merge data for multiple assets into a single DataFrame.
-
-        Args:
-            symbols (list): List of symbols to retrieve data for
-            columns (list, optional): List of columns to include. If None, includes all common columns.
-            start_date (datetime, optional): The start date for the data
-            end_date (datetime, optional): The end date for the data
-            timeframe (TimeFrame): The timeframe for the data (default: Daily)
-            fill_method (str): Method to fill missing values ('ffill', 'bfill', None)
-
-        Returns:
-            DataFrame: Merged data for all symbols
-        """
-        all_data = {}
+        all_data = []
 
         for symbol in symbols:
             try:
-                # Determine if it's a crypto or stock symbol
-                if '/' in symbol:  # Crypto
-                    df = self.get_crypto_data([symbol], timeframe=timeframe,
-                                            start_date=start_date, end_date=end_date)
-                else:  # Stock
-                    df = self.get_stock_data([symbol], timeframe=timeframe,
-                                           start_date=start_date, end_date=end_date)
-
-                if not df.empty:
-                    # If specific columns are requested, filter the DataFrame
-                    if columns:
-                        available_cols = [col for col in columns if col in df.columns]
-                        df = df[available_cols]
-
-                    # Store the data
-                    all_data[symbol] = df
-                    print(f"Retrieved data for {symbol}")
-
-            except Exception as e:
-                print(f"Error retrieving data for {symbol}: {e}")
-
-        if not all_data:
-            print("No data retrieved for any symbol")
-            return pd.DataFrame()
-
-        # Create a multi-level column DataFrame
-        merged_data = None
-
-        for symbol, df in all_data.items():
-            # Create a copy with multi-level columns
-            symbol_df = df.copy()
-
-            # Create MultiIndex columns with symbol as the first level
-            symbol_df.columns = pd.MultiIndex.from_product([[symbol], symbol_df.columns])
-
-            if merged_data is None:
-                merged_data = symbol_df
-            else:
-                # Join with existing data
-                merged_data = merged_data.join(symbol_df, how='outer')
-
-        # Fill missing values if requested
-        if fill_method:
-            merged_data = merged_data.fillna(method=fill_method)
-
-        print(f"Successfully merged data for {len(all_data)} symbols")
-        return merged_data
-
-    def align_timeframes(self, df, target_timeframe, method='ohlc'):
-        """
-        Resample data to a different timeframe.
-
-        Args:
-            df (DataFrame): Price data
-            target_timeframe (str): Target timeframe as pandas offset string
-                                   ('D' for daily, 'W' for weekly, 'M' for monthly, etc.)
-            method (str): Resampling method ('ohlc' for OHLC bars, 'last' for last value)
-
-        Returns:
-            DataFrame: Resampled data
-        """
-        if df.empty:
-            return df
-
-        # Make sure the index is a datetime index
-        if not isinstance(df.index, pd.DatetimeIndex):
-            print("DataFrame index is not a DatetimeIndex. Cannot resample.")
-            return df
-
-        # Resample based on the specified method
-        if method == 'ohlc':
-            # For OHLC data
-            resampled = df.resample(target_timeframe).agg({
-                'open': 'first',
-                'high': 'max',
-                'low': 'min',
-                'close': 'last',
-                'volume': 'sum' if 'volume' in df.columns else None
-            })
-
-            # Remove None values from the aggregation dictionary
-            resampled = resampled.dropna(axis=1, how='all')
-
-            # For other columns, use the last value
-            other_cols = [col for col in df.columns if col not in ['open', 'high', 'low', 'close', 'volume']]
-            if other_cols:
-                other_resampled = df[other_cols].resample(target_timeframe).last()
-                resampled = pd.concat([resampled, other_resampled], axis=1)
-
-        elif method == 'last':
-            # Use the last value for all columns
-            resampled = df.resample(target_timeframe).last()
-
-            # Sum volume if it exists
-            if 'volume' in df.columns:
-                resampled['volume'] = df['volume'].resample(target_timeframe).sum()
-
-        else:
-            print(f"Unsupported resampling method: {method}")
-            return df
-
-        print(f"Data resampled to {target_timeframe} timeframe")
-        return resampled
-
-    def combine_with_external_data(self, df, external_data, join_column=None, how='left'):
-        """
-        Combine market data with external data sources (e.g., economic indicators, sentiment data).
-
-        Args:
-            df (DataFrame): Market price data
-            external_data (DataFrame): External data to combine
-            join_column (str, optional): Column to join on. If None, joins on index.
-            how (str): Join method ('left', 'right', 'inner', 'outer')
-
-        Returns:
-            DataFrame: Combined data
-        """
-        if df.empty or external_data.empty:
-            print("One of the DataFrames is empty. Cannot combine.")
-            return df
-
-        try:
-            # If join_column is specified, join on that column
-            if join_column:
-                if join_column in df.columns and join_column in external_data.columns:
-                    result = pd.merge(df, external_data, on=join_column, how=how)
+                # Calculate time chunk size based on interval
+                if interval == "1m":
+                    chunk_size = timedelta(hours=12)  # 12-hour chunks for 1m data
+                elif interval in ["3m", "5m", "15m"]:
+                    chunk_size = timedelta(days=1)  # 1-day chunks for smaller timeframes
                 else:
-                    print(f"Join column '{join_column}' not found in both DataFrames")
-                    return df
-            else:
-                # Join on index
-                result = df.join(external_data, how=how)
+                    chunk_size = timedelta(days=7)  # 7-day chunks for larger timeframes
+                
+                print(f"Fetching {symbol} {interval} data from {start_time} to {end_time} in chunks...")
+                
+                # Initialize variables for pagination
+                current_start = start_time
+                symbol_data = []
+                
+                # Fetch data in chunks
+                while current_start < end_time:
+                    # Calculate end of current chunk
+                    current_end = min(current_start + chunk_size, end_time)
+                    
+                    # Fetch data for current chunk
+                    klines = self.client.futures_klines(
+                        symbol=symbol,
+                        interval=interval,
+                        startTime=int(current_start.timestamp() * 1000),
+                        endTime=int(current_end.timestamp() * 1000),
+                        limit=1500  # Use maximum limit allowed by Binance
+                    )
+                    
+                    if not klines:
+                        print(f"No data returned for {symbol} from {current_start} to {current_end}")
+                        # Move to next chunk
+                        current_start = current_end
+                        continue
+                    
+                    print(f"Retrieved {len(klines)} klines for {symbol} from {current_start} to {current_end}")
+                    
+                    # Convert to DataFrame
+                    df_chunk = pd.DataFrame(klines, columns=[
+                        'timestamp', 'open', 'high', 'low', 'close', 'volume',
+                        'close_time', 'quote_asset_volume', 'number_of_trades',
+                        'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
+                    ])
+                    
+                    # Convert timestamp to datetime
+                    df_chunk['timestamp'] = pd.to_datetime(df_chunk['timestamp'], unit='ms')
+                    
+                    # Add to list of chunks
+                    symbol_data.append(df_chunk)
+                    
+                    # Update start time for next chunk - use the last timestamp + 1ms to avoid duplicates
+                    if len(klines) > 0:
+                        last_timestamp = int(klines[-1][6]) + 1  # Use close_time (index 6) + 1ms
+                        current_start = datetime.fromtimestamp(last_timestamp / 1000)
+                    else:
+                        current_start = current_end
+                
+                # Combine all chunks for this symbol
+                if symbol_data:
+                    df_symbol = pd.concat(symbol_data)
+                    
+                    # Remove duplicates based on timestamp
+                    df_symbol = df_symbol.drop_duplicates(subset=['timestamp'])
+                    
+                    # Set timestamp as index
+                    df_symbol.set_index('timestamp', inplace=True)
+                    
+                    # Convert data types
+                    df_symbol = df_symbol.astype({
+                        'open': 'float',
+                        'high': 'float',
+                        'low': 'float',
+                        'close': 'float',
+                        'volume': 'float',
+                        'quote_asset_volume': 'float',
+                        'number_of_trades': 'int',
+                        'taker_buy_base_asset_volume': 'float',
+                        'taker_buy_quote_asset_volume': 'float'
+                    })
+                    
+                    # Add symbol column
+                    df_symbol['symbol'] = symbol
+                    
+                    all_data.append(df_symbol)
+                    print(f"Successfully retrieved {len(df_symbol)} total data points for {symbol}")
+                else:
+                    print(f"No data retrieved for {symbol}")
 
-            print("Successfully combined with external data")
-            return result
+            except Exception as e:
+                print(f"Error retrieving futures data for {symbol}: {e}")
 
-        except Exception as e:
-            print(f"Error combining with external data: {e}")
-            return df
+        if not all_data:
+            return pd.DataFrame()
 
+        # Concatenate all data
+        combined_data = pd.concat(all_data)
+        
+        # Sort by timestamp
+        combined_data.sort_index(inplace=True)
+
+        print(f"Successfully retrieved futures data for {symbols} with {len(combined_data)} total data points")
+        return combined_data
 
     def calculate_technical_indicators(self, df):
         """
@@ -526,7 +213,7 @@ class DataHandler:
         result['lowest_low'] = result['low'].rolling(window=n).min()
         result['highest_high'] = result['high'].rolling(window=n).max()
         result['stoch_k'] = 100 * ((result['close'] - result['lowest_low']) /
-                                  (result['highest_high'] - result['lowest_low']))
+                                    (result['highest_high'] - result['lowest_low']))
         result['stoch_d'] = result['stoch_k'].rolling(window=3).mean()
 
         # Calculate Average True Range (ATR)
@@ -630,17 +317,17 @@ class DataHandler:
 
         # Sharpe Ratio (assuming risk-free rate of 0 for simplicity)
         result['sharpe_ratio'] = (result['daily_return'].rolling(window=window).mean() /
-                                 result['daily_return'].rolling(window=window).std()) * np.sqrt(252)
+                                   result['daily_return'].rolling(window=window).std()) * np.sqrt(252)
 
         # Sortino Ratio (only considers downside risk)
         downside_returns = result['daily_return'].copy()
         downside_returns[downside_returns > 0] = 0
         result['sortino_ratio'] = (result['daily_return'].rolling(window=window).mean() /
-                                  downside_returns.rolling(window=window).std()) * np.sqrt(252)
+                                    downside_returns.rolling(window=window).std()) * np.sqrt(252)
 
         # Calmar Ratio (return / maximum drawdown)
         result['calmar_ratio'] = (result['daily_return'].rolling(window=window).mean() * 252 /
-                                 result['max_drawdown'].abs())
+                                   result['max_drawdown'].abs())
 
         return result
 
@@ -735,553 +422,615 @@ class DataHandler:
                   (result['signal_momentum'] == -1) &
                    (result['rsi'] > 70), 'trade_setup'] = 'bearish_reversal'
 
-        # Breakdown with increased volatility
+        # Breakdown with decreased volatility
         result.loc[(result['close'] < result['lowest_low'].shift(1)) &
-                  (result['signal_volatility'] == 1) &
-                  (result['volume'] > result['volume'].rolling(window=20).mean() * 1.5
+                  (result['signal_volatility'] == -1) &
+                  (result['volume'] < result['volume'].rolling(window=20).mean() * 0.5
                    if 'volume' in result.columns else True), 'trade_setup'] = 'bearish_breakdown'
-
-        # Range-bound setups
-        # Low volatility, weak trend - potential range trading
-        result.loc[(result['signal_strength'] == -1) &
-                   (result['signal_volatility'] == -1), 'trade_setup'] = 'range_bound'
-
-        # Calculate potential risk/reward for each setup
-        result['potential_reward'] = np.nan
-        result['potential_risk'] = np.nan
-        result['risk_reward_ratio'] = np.nan
-
-        # For bullish setups
-        bullish_setups = result['trade_setup'].isin(['strong_bullish', 'bullish_reversal', 'bullish_breakout'])
-        if 'atr' in result.columns:
-            # Target is typically 2-3 ATRs for reward
-            result.loc[bullish_setups, 'potential_reward'] = result['close'] + 2.5 * result['atr']
-            # Stop loss is typically 1 ATR for risk
-            result.loc[bullish_setups, 'potential_risk'] = result['close'] - 1 * result['atr']
-
-        # For bearish setups
-        bearish_setups = result['trade_setup'].isin(['strong_bearish', 'bearish_reversal', 'bearish_breakdown'])
-        if 'atr' in result.columns:
-            # Target is typically 2-3 ATRs for reward
-            result.loc[bearish_setups, 'potential_reward'] = result['close'] - 2.5 * result['atr']
-            # Stop loss is typically 1 ATR for risk
-            result.loc[bearish_setups, 'potential_risk'] = result['close'] + 1 * result['atr']
-
-        # Calculate risk/reward ratio where applicable
-        valid_setups = result['trade_setup'] != 'none'
-        result.loc[valid_setups, 'risk_reward_ratio'] = (
-            (result.loc[valid_setups, 'potential_reward'] - result.loc[valid_setups, 'close']).abs() /
-            (result.loc[valid_setups, 'potential_risk'] - result.loc[valid_setups, 'close']).abs()
-        )
 
         return result
 
-    def calculate_technical_indicators(self, df):
+    def add_metrics(self, df):
         """
-        Calculate technical indicators for the given data.
+        Add various metrics to the DataFrame.
 
         Args:
             df (DataFrame): Price data
 
         Returns:
-            DataFrame: Price data with technical indicators
+            DataFrame: Data with added metrics
         """
-        # Make a copy to avoid modifying the original
         result = df.copy()
 
-        # Calculate Simple Moving Averages
-        result['sma_20'] = result['close'].rolling(window=20).mean()
-        result['sma_50'] = result['close'].rolling(window=50).mean()
+        # Calculate daily returns
+        result['daily_return'] = result['close'].pct_change()
 
-        # Calculate Relative Strength Index (RSI)
-        delta = result['close'].diff()
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
+        # Calculate volatility
+        result['volatility'] = result['daily_return'].rolling(window=20).std()
 
-        avg_gain = gain.rolling(window=14).mean()
-        avg_loss = loss.rolling(window=14).mean()
+        # Calculate Value at Risk (VaR) - 95% confidence level
+        result['var_95'] = result['daily_return'].rolling(window=20).quantile(0.05)
 
-        rs = avg_gain / avg_loss
-        result['rsi'] = 100 - (100 / (1 + rs))
+        # Calculate Conditional VaR (CVaR) / Expected Shortfall
+        def calculate_cvar(returns):
+            var = returns.quantile(0.05)
+            return returns[returns <= var].mean()
 
-        # Calculate Bollinger Bands
-        result['bb_middle'] = result['close'].rolling(window=20).mean()
-        result['bb_std'] = result['close'].rolling(window=20).std()
-        result['bb_upper'] = result['bb_middle'] + 2 * result['bb_std']
-        result['bb_lower'] = result['bb_middle'] - 2 * result['bb_std']
+        result['cvar_95'] = result['daily_return'].rolling(window=20).apply(
+            calculate_cvar, raw=False)
 
-        # Calculate MACD
-        result['ema_12'] = result['close'].ewm(span=12, adjust=False).mean()
-        result['ema_26'] = result['close'].ewm(span=26, adjust=False).mean()
-        result['macd'] = result['ema_12'] - result['ema_26']
-        result['macd_signal'] = result['macd'].ewm(span=9, adjust=False).mean()
+        # Calculate Maximum Drawdown
+        rolling_max = result['close'].rolling(window=20, min_periods=1).max()
+        drawdown = (result['close'] / rolling_max - 1.0)
+        result['max_drawdown'] = drawdown.rolling(window=20).min()
 
-        # Calculate Stochastic Oscillator
-        n = 14  # Standard lookback period
-        result['lowest_low'] = result['low'].rolling(window=n).min()
-        result['highest_high'] = result['high'].rolling(window=n).max()
-        result['stoch_k'] = 100 * ((result['close'] - result['lowest_low']) /
-                                    (result['highest_high'] - result['lowest_low']))
-        result['stoch_d'] = result['stoch_k'].rolling(window=3).mean()
+        # Calculate Sharpe Ratio (assuming risk-free rate of 0 for simplicity)
+        result['sharpe_ratio'] = (result['daily_return'].rolling(window=20).mean() /
+                                   result['daily_return'].rolling(window=20).std()) * np.sqrt(252)
 
-        # Calculate Average True Range (ATR)
-        high_low = result['high'] - result['low']
-        high_close = np.abs(result['high'] - result['close'].shift())
-        low_close = np.abs(result['low'] - result['close'].shift())
-        ranges = pd.concat([high_low, high_close, low_close], axis=1)
-        true_range = np.max(ranges, axis=1)
-        result['atr'] = true_range.rolling(14).mean()
+        # Calculate Sortino Ratio (only considers downside risk)
+        downside_returns = result['daily_return'].copy()
+        downside_returns[downside_returns > 0] = 0
+        result['sortino_ratio'] = (result['daily_return'].rolling(window=20).mean() /
+                                    downside_returns.rolling(window=20).std()) * np.sqrt(252)
 
-        # Calculate Average Directional Index (ADX)
-        # True Range already calculated above
-        # Plus Directional Movement (+DM)
-        plus_dm = result['high'].diff()
-        minus_dm = result['low'].diff().multiply(-1)
-        plus_dm = np.where((plus_dm > minus_dm) & (plus_dm > 0), plus_dm, 0)
-        # Minus Directional Movement (-DM)
-        minus_dm = np.where((minus_dm > plus_dm) & (minus_dm > 0), minus_dm, 0)
-
-        # Smooth the +DM, -DM and TR with Wilder's smoothing
-        n = 14
-        plus_di = 100 * pd.Series(plus_dm).ewm(alpha=1/n, adjust=False).mean() / result['atr']
-        minus_di = 100 * pd.Series(minus_dm).ewm(alpha=1/n, adjust=False).mean() / result['atr']
-
-        # Directional Index (DX)
-        dx = 100 * np.abs(plus_di - minus_di) / (plus_di + minus_di)
-
-        # Average Directional Index (ADX)
-        result['adx'] = pd.Series(dx).ewm(alpha=1/n, adjust=False).mean()
-        result['plus_di'] = plus_di
-        result['minus_di'] = minus_di
+        # Calculate Calmar Ratio (return / maximum drawdown)
+        result['calmar_ratio'] = (result['daily_return'].rolling(window=20).mean() * 252 /
+                                   result['max_drawdown'].abs())
 
         return result
 
-    def get_all_time_btc_data(self):
+    def process_market_data(self, symbol, interval="1m", start_time=None, end_time=None, save_path=None):
         """
-        Get all-time BTC/USD data from Yahoo Finance and save it to a CSV file.
+        Comprehensive function to retrieve, process and add metrics to market data.
+        Works with Binance futures data and automatically applies all metrics.
+
+        Args:
+            symbol (str): Trading symbol (e.g., "BTCUSDT")
+            interval (str): Data interval ("1m" for 1 minute, "1h" for hourly, "1d" for daily)
+            start_time (datetime): Start time for data, default is 7 days ago for 1m data
+            end_time (datetime): End time for data, default is current time
+            save_path (str): Optional path to save the processed data
 
         Returns:
-            DataFrame: All-time BTC/USD data
+            DataFrame: Processed data with all metrics
         """
-        # Fetch all-time BTC/USD data from Yahoo Finance
-        btc_data = self.get_yahoo_data(['BTC-USD'], start_date='2010-07-17', end_date=datetime.now())
+        if end_time is None:
+            end_time = datetime.now()
+        if start_time is None:
+            # For 1m data, limit to 7 days to avoid excessive data
+            if interval == "1m":
+                start_time = end_time - timedelta(days=7)
+            else:
+                start_time = end_time - timedelta(days=60)
 
-        # Save the data to a CSV file
-        self.save_data_to_csv(btc_data, 'data/BTC_USD_all_time.csv')
+        print(f"Retrieving {symbol} data from {start_time} to {end_time} with interval {interval}")
 
-        return btc_data
+        # Get data
+        df = self.get_futures_data([symbol], interval=interval, start_time=start_time, end_time=end_time)
 
-    def preprocess_data_for_ml(self, df):
+        # Check if we have data
+        if df.empty:
+            raise ValueError(f"Could not retrieve data for {symbol}")
+
+        print(f"Data retrieved, shape: {df.shape}")
+
+        # Add all metrics
+        # 1. Calculate technical indicators
+        print("Calculating technical indicators...")
+        df_with_indicators = self.calculate_technical_indicators(df)
+
+        # 2. Add futures-specific metrics (funding rates, open interest, liquidations)
+        print("Adding futures-specific metrics...")
+        df_with_futures_metrics = self.add_futures_metrics(df_with_indicators, symbol, interval, start_time, end_time)
+
+        # 3. Calculate risk metrics
+        print("Calculating risk metrics...")
+        df_with_risk = self.calculate_risk_metrics(df_with_futures_metrics)
+
+        # 4. Identify trade setups
+        print("Identifying trade setups...")
+        df_with_setups = self.identify_trade_setups(df_with_risk)
+
+        # 5. Handle NaN values
+        print("Handling missing values...")
+        # Forward-fill NaNs from rolling windows
+        df_filled = df_with_setups.ffill()
+        # Backward-fill any remaining NaNs
+        df_filled = df_filled.bfill()
+
+        # Save if path provided
+        if save_path:
+            self.save_data_to_csv(df_filled, save_path)
+
+        return df_filled
+
+    def save_data_to_csv(self, df, file_path):
         """
-        Preprocess data for machine learning.
+        Save DataFrame to CSV file.
 
         Args:
-            df (DataFrame): Price data with indicators
-
-        Returns:
-            DataFrame: Processed data ready for ML models
+            df (DataFrame): DataFrame to save
+            file_path (str): Path to save the file
         """
-        # Calculate returns
-        df['returns'] = df['close'].pct_change()
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
-        # Normalize price-based features
-        price_cols = ['open', 'high', 'low', 'close']
-        for col in price_cols:
-            df[f'{col}_norm'] = df[col] / df['close'].shift(1) - 1
+        # Reset index if it's not already a column
+        if df.index.name is not None:
+            df = df.reset_index()
 
-        # Log transform volume
-        if 'volume' in df.columns:
-            df['volume_norm'] = df['volume'] / df['volume'].rolling(window=20).mean()
+        # Save to CSV
+        df.to_csv(file_path, index=False)
+        print(f"Data saved to {file_path}")
 
-        # Handle NaN values
-        df = df.dropna()
-
-        return df
-
-    def save_data_to_csv(self, df, filename):
+    def load_data_from_csv(self, file_path):
         """
-        Save the DataFrame to a CSV file.
+        Load data from CSV file.
 
         Args:
-            df (DataFrame): Data to save
-            filename (str): Filename to save to
-        """
-        # Ensure the index is named 'timestamp'
-        df_to_save = df.copy()
-        if df_to_save.index.name != 'timestamp':
-            df_to_save.index.name = 'timestamp'
-
-        df_to_save.to_csv(filename)
-        print(f"Data saved to {filename}")
-
-    def load_data_from_csv(self, filename):
-        """
-        Load data from a CSV file.
-
-        Args:
-            filename (str): Filename to load from
+            file_path (str): Path to the CSV file
 
         Returns:
             DataFrame: Loaded data
         """
-        df = pd.read_csv(filename, index_col=0, parse_dates=True)
-        # Ensure the index is named 'timestamp'
-        df.index.name = 'timestamp'
-        print(f"Data loaded from {filename}")
+        # Check if file exists
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        # Load data
+        df = pd.read_csv(file_path)
+
+        # If 'timestamp' column exists, set it as index
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df = df.set_index('timestamp')
+
         return df
 
-    def merge_data_sources(self, symbol, sources=None, start_date=None, end_date=None, timeframe=TimeFrame.Day):
+    def get_funding_rates(self, symbol, start_time=None, end_time=None, limit=500):
         """
-        Merge data for the same symbol from multiple sources.
-
+        Get historical funding rates for a futures symbol.
+        
         Args:
-            symbol (str): The symbol to retrieve data for
-            sources (list, optional): List of data sources to use ['alpaca', 'yahoo']. If None, uses all available.
-            start_date (datetime, optional): The start date for the data
-            end_date (datetime, optional): The end date for the data
-            timeframe (TimeFrame): The timeframe for the data (default: Daily)
-
+            symbol (str): Futures symbol (e.g., 'BTCUSDT')
+            start_time (datetime, optional): Start time for data retrieval
+            end_time (datetime, optional): End time for data retrieval
+            limit (int, optional): Maximum number of records to retrieve (default: 500, max: 1000)
+            
         Returns:
-            DataFrame: Merged data from all sources with source indicators
+            DataFrame: Historical funding rates data
         """
-        if sources is None:
-            sources = ['alpaca', 'yahoo']
-
-        all_data = {}
-
-        for source in sources:
-            # Store original data source
-            original_source = self.data_source
-
-            try:
-                # Temporarily switch data source
-                self.data_source = source
-
-                # Get data based on source and asset type
-                if '/' in symbol:  # Crypto
-                    if source == 'alpaca':
-                        df = self.get_crypto_data([symbol], timeframe=timeframe,
-                                                start_date=start_date, end_date=end_date)
-                    else:
-                        # Yahoo Finance uses different symbols for crypto
-                        yahoo_symbol = symbol.split('/')[0] + '-' + symbol.split('/')[1]
-                        df = self.get_yahoo_data([yahoo_symbol], start_date=start_date, end_date=end_date)
-                else:  # Stock
-                    df = self.get_stock_data([symbol], timeframe=timeframe,
-                                           start_date=start_date, end_date=end_date)
-
-                if not df.empty:
-                    # Ensure index is named 'timestamp'
-                    if df.index.name != 'timestamp':
-                        df.index.name = 'timestamp'
-
-                    # Add source column
-                    df['data_source'] = source
-                    all_data[source] = df
-                    print(f"Retrieved {symbol} data from {source}")
-
-            except Exception as e:
-                print(f"Error retrieving {symbol} data from {source}: {e}")
-
-            finally:
-                # Restore original data source
-                self.data_source = original_source
-
-        if not all_data:
-            print(f"No data retrieved for {symbol} from any source")
-            return pd.DataFrame()
-
-        # Merge data from all sources
-        # Start with data from the first source
-        merged_data = None
-        source_priority = [s for s in sources if s in all_data]
-
-        if not source_priority:
-            return pd.DataFrame()
-
-        # Use the first available source as base
-        merged_data = all_data[source_priority[0]].copy()
-        merged_data['source_priority'] = 1  # Priority 1 (highest)
-
-        # Add data from other sources with lower priority
-        for i, source in enumerate(source_priority[1:], 2):
-            if source in all_data:
-                source_data = all_data[source].copy()
-                source_data['source_priority'] = i
-
-                # Concatenate and sort by date
-                merged_data = pd.concat([merged_data, source_data])
-
-        # Sort by date and handle duplicates by keeping the highest priority source
-        merged_data = merged_data.sort_index()
-
-        # If there are duplicate indices (dates), keep the one with highest priority (lowest number)
-        merged_data = merged_data.reset_index()
-        # Ensure the column is named 'timestamp'
-        if 'timestamp' not in merged_data.columns and 'index' in merged_data.columns:
-            merged_data = merged_data.rename(columns={'index': 'timestamp'})
-
-        merged_data = merged_data.sort_values(['timestamp', 'source_priority'])
-        merged_data = merged_data.drop_duplicates('timestamp', keep='first')
-        merged_data = merged_data.set_index('timestamp')
-
-        # Drop the priority column
-        merged_data = merged_data.drop('source_priority', axis=1)
-
-        print(f"Successfully merged {symbol} data from {', '.join(source_priority)}")
-        return merged_data
-
-    def merge_multi_asset_data(self, symbols, columns=None, start_date=None, end_date=None,
-                              timeframe=TimeFrame.Day, fill_method='ffill'):
-        """
-        Merge data for multiple assets into a single DataFrame.
-
-        Args:
-            symbols (list): List of symbols to retrieve data for
-            columns (list, optional): List of columns to include. If None, includes all common columns.
-            start_date (datetime, optional): The start date for the data
-            end_date (datetime, optional): The end date for the data
-            timeframe (TimeFrame): The timeframe for the data (default: Daily)
-            fill_method (str): Method to fill missing values ('ffill', 'bfill', None)
-
-        Returns:
-            DataFrame: Merged data for all symbols
-        """
-        all_data = {}
-
-        for symbol in symbols:
-            try:
-                # Determine if it's a crypto or stock symbol
-                if '/' in symbol:  # Crypto
-                    df = self.get_crypto_data([symbol], timeframe=timeframe,
-                                            start_date=start_date, end_date=end_date)
-                else:  # Stock
-                    df = self.get_stock_data([symbol], timeframe=timeframe,
-                                           start_date=start_date, end_date=end_date)
-
-                if not df.empty:
-                    # If specific columns are requested, filter the DataFrame
-                    if columns:
-                        available_cols = [col for col in columns if col in df.columns]
-                        df = df[available_cols]
-
-                    # Store the data
-                    all_data[symbol] = df
-                    print(f"Retrieved data for {symbol}")
-
-            except Exception as e:
-                print(f"Error retrieving data for {symbol}: {e}")
-
-        if not all_data:
-            print("No data retrieved for any symbol")
-            return pd.DataFrame()
-
-        # Create a multi-level column DataFrame
-        merged_data = None
-
-        for symbol, df in all_data.items():
-            # Create a copy with multi-level columns
-            symbol_df = df.copy()
-
-            # Create MultiIndex columns with symbol as the first level
-            symbol_df.columns = pd.MultiIndex.from_product([[symbol], symbol_df.columns])
-
-            if merged_data is None:
-                merged_data = symbol_df
-            else:
-                # Join with existing data
-                merged_data = merged_data.join(symbol_df, how='outer')
-
-        # Fill missing values if requested
-        if fill_method:
-            merged_data = merged_data.fillna(method=fill_method)
-
-        print(f"Successfully merged data for {len(all_data)} symbols")
-        return merged_data
-
-    def align_timeframes(self, df, target_timeframe, method='ohlc'):
-        """
-        Resample data to a different timeframe.
-
-        Args:
-            df (DataFrame): Price data
-            target_timeframe (str): Target timeframe as pandas offset string
-                                   ('D' for daily, 'W' for weekly, 'M' for monthly, etc.)
-            method (str): Resampling method ('ohlc' for OHLC bars, 'last' for last value)
-
-        Returns:
-            DataFrame: Resampled data
-        """
-        if df.empty:
-            return df
-
-        # Make sure the index is a datetime index
-        if not isinstance(df.index, pd.DatetimeIndex):
-            print("DataFrame index is not a DatetimeIndex. Cannot resample.")
-            return df
-
-        # Resample based on the specified method
-        if method == 'ohlc':
-            # For OHLC data
-            resampled = df.resample(target_timeframe).agg({
-                'open': 'first',
-                'high': 'max',
-                'low': 'min',
-                'close': 'last',
-                'volume': 'sum' if 'volume' in df.columns else None
-            })
-
-            # Remove None values from the aggregation dictionary
-            resampled = resampled.dropna(axis=1, how='all')
-
-            # For other columns, use the last value
-            other_cols = [col for col in df.columns if col not in ['open', 'high', 'low', 'close', 'volume']]
-            if other_cols:
-                other_resampled = df[other_cols].resample(target_timeframe).last()
-                resampled = pd.concat([resampled, other_resampled], axis=1)
-
-        elif method == 'last':
-            # Use the last value for all columns
-            resampled = df.resample(target_timeframe).last()
-
-            # Sum volume if it exists
-            if 'volume' in df.columns:
-                resampled['volume'] = df['volume'].resample(target_timeframe).sum()
-
-        else:
-            print(f"Unsupported resampling method: {method}")
-            return df
-
-        print(f"Data resampled to {target_timeframe} timeframe")
-        return resampled
-
-    def combine_with_external_data(self, df, external_data, join_column=None, how='left'):
-        """
-        Combine market data with external data sources (e.g., economic indicators, sentiment data).
-
-        Args:
-            df (DataFrame): Market price data
-            external_data (DataFrame): External data to combine
-            join_column (str, optional): Column to join on. If None, joins on index.
-            how (str): Join method ('left', 'right', 'inner', 'outer')
-
-        Returns:
-            DataFrame: Combined data
-        """
-        if df.empty or external_data.empty:
-            print("One of the DataFrames is empty. Cannot combine.")
-            return df
-
         try:
-            # If join_column is specified, join on that column
-            if join_column:
-                if join_column in df.columns and join_column in external_data.columns:
-                    result = pd.merge(df, external_data, on=join_column, how=how)
-                else:
-                    print(f"Join column '{join_column}' not found in both DataFrames")
-                    return df
-            else:
-                # Join on index
-                result = df.join(external_data, how=how)
-
-            print("Successfully combined with external data")
-            return result
-
-        except Exception as e:
-            print(f"Error combining with external data: {e}")
+            params = {'symbol': symbol, 'limit': limit}
+            
+            if start_time:
+                params['startTime'] = int(start_time.timestamp() * 1000)
+            if end_time:
+                params['endTime'] = int(end_time.timestamp() * 1000)
+                
+            funding_data = self.client.futures_funding_rate(**params)
+            
+            if not funding_data:
+                print(f"No funding rate data retrieved for {symbol}")
+                return pd.DataFrame()
+                
+            # Convert to DataFrame
+            df = pd.DataFrame(funding_data)
+            
+            # Convert timestamp to datetime
+            df['fundingTime'] = pd.to_datetime(df['fundingTime'], unit='ms')
+            
+            # Convert string columns to numeric
+            df['fundingRate'] = df['fundingRate'].astype(float)
+            if 'markPrice' in df.columns:
+                df['markPrice'] = df['markPrice'].astype(float)
+                
+            # Set fundingTime as index
+            df.set_index('fundingTime', inplace=True)
+            
+            print(f"Successfully retrieved {len(df)} funding rate records for {symbol}")
             return df
-
+            
+        except Exception as e:
+            print(f"Error retrieving funding rate data for {symbol}: {e}")
+            return pd.DataFrame()
+            
+    def get_open_interest(self, symbol, interval="1h", start_time=None, end_time=None, limit=500):
+        """
+        Get historical open interest data for a futures symbol.
+        
+        Args:
+            symbol (str): Futures symbol (e.g., 'BTCUSDT')
+            interval (str): Data interval (e.g., '5m', '1h', '1d')
+            start_time (datetime, optional): Start time for data retrieval
+            end_time (datetime, optional): End time for data retrieval
+            limit (int, optional): Maximum number of records to retrieve (default: 500, max: 1000)
+            
+        Returns:
+            DataFrame: Historical open interest data
+        """
+        try:
+            params = {
+                'symbol': symbol, 
+                'period': interval,
+                'limit': limit
+            }
+            
+            # Only add startTime if both start_time and end_time are provided
+            # This avoids the "parameter 'startTime' is invalid" error
+            if start_time and end_time:
+                params['startTime'] = int(start_time.timestamp() * 1000)
+                params['endTime'] = int(end_time.timestamp() * 1000)
+            elif end_time:  # If only end_time is provided
+                params['endTime'] = int(end_time.timestamp() * 1000)
+                # Calculate a default start_time (30 days before end_time)
+                default_start = end_time - timedelta(days=30)
+                params['startTime'] = int(default_start.timestamp() * 1000)
+                
+            open_interest_data = self.client.futures_open_interest_hist(**params)
+            
+            if not open_interest_data:
+                print(f"No open interest data retrieved for {symbol}")
+                return pd.DataFrame()
+                
+            # Convert to DataFrame
+            df = pd.DataFrame(open_interest_data)
+            
+            # Convert timestamp to datetime
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            
+            # Convert string columns to numeric
+            df['sumOpenInterest'] = df['sumOpenInterest'].astype(float)
+            df['sumOpenInterestValue'] = df['sumOpenInterestValue'].astype(float)
+            
+            # Set timestamp as index
+            df.set_index('timestamp', inplace=True)
+            
+            print(f"Successfully retrieved {len(df)} open interest records for {symbol}")
+            return df
+            
+        except Exception as e:
+            print(f"Error retrieving open interest data for {symbol}: {e}")
+            return pd.DataFrame()
+    
+    def get_liquidations(self, symbol=None, start_time=None, end_time=None, limit=500):
+        """
+        Get recent liquidation orders from Binance Futures.
+        Note: This uses the futures_liquidation_orders endpoint which provides recent liquidations.
+        For real-time liquidations, a WebSocket connection would be required.
+        
+        Args:
+            symbol (str, optional): Futures symbol (e.g., 'BTCUSDT')
+            start_time (datetime, optional): Start time for data retrieval
+            end_time (datetime, optional): End time for data retrieval
+            limit (int, optional): Maximum number of records to retrieve (default: 500, max: 1000)
+            
+        Returns:
+            DataFrame: Recent liquidation orders
+        """
+        try:
+            # Create an empty DataFrame as fallback for API permission issues
+            empty_df = pd.DataFrame(columns=['time', 'symbol', 'side', 'price', 'origQty', 'liquidation_value'])
+            empty_df.set_index('time', inplace=True)
+            
+            # Check if we have API permissions for this endpoint
+            # Many Binance API keys don't have permissions for liquidation data
+            try:
+                # Test call with minimal parameters
+                test_params = {'limit': 1}
+                if symbol:
+                    test_params['symbol'] = symbol
+                self.client.futures_liquidation_orders(**test_params)
+            except BinanceAPIException as e:
+                if "API-key" in str(e) or "permissions" in str(e):
+                    print(f"Your API key doesn't have permissions for liquidation data. Using empty DataFrame.")
+                    return empty_df
+                raise e
+                
+            # If we passed the permission check, proceed with the actual request
+            params = {'limit': limit}
+            
+            if symbol:
+                params['symbol'] = symbol
+            if start_time:
+                params['startTime'] = int(start_time.timestamp() * 1000)
+            if end_time:
+                params['endTime'] = int(end_time.timestamp() * 1000)
+                
+            liquidation_data = self.client.futures_liquidation_orders(**params)
+            
+            if not liquidation_data:
+                print(f"No liquidation data retrieved{' for ' + symbol if symbol else ''}")
+                return empty_df
+                
+            # Convert to DataFrame
+            df = pd.DataFrame(liquidation_data)
+            
+            if df.empty:
+                return empty_df
+                
+            # Convert timestamp to datetime
+            df['time'] = pd.to_datetime(df['time'], unit='ms')
+            
+            # Convert string columns to numeric
+            df['price'] = df['price'].astype(float)
+            df['origQty'] = df['origQty'].astype(float)
+            df['avgPrice'] = df['avgPrice'].astype(float)
+            
+            # Calculate liquidation value in USD
+            df['liquidation_value'] = df['price'] * df['origQty']
+            
+            # Set time as index
+            df.set_index('time', inplace=True)
+            
+            print(f"Successfully retrieved {len(df)} liquidation records{' for ' + symbol if symbol else ''}")
+            return df
+            
+        except Exception as e:
+            print(f"Error retrieving liquidation data{' for ' + symbol if symbol else ''}: {e}")
+            # Return empty DataFrame with correct columns
+            empty_df = pd.DataFrame(columns=['time', 'symbol', 'side', 'price', 'origQty', 'liquidation_value'])
+            empty_df.set_index('time', inplace=True)
+            return empty_df
+            
+    def add_futures_metrics(self, df, symbol, interval="1m", start_time=None, end_time=None):
+        """
+        Add futures-specific metrics to the dataframe.
+        
+        Args:
+            df (DataFrame): Price dataframe
+            symbol (str): Futures symbol (e.g., 'BTCUSDT')
+            interval (str): Data interval (e.g., '5m', '1h', '1d')
+            start_time (datetime, optional): Start time for data retrieval
+            end_time (datetime, optional): End time for data retrieval
+            
+        Returns:
+            DataFrame: Price dataframe with added futures metrics
+        """
+        result = df.copy()
+        
+        # Get funding rates
+        try:
+            funding_df = self.get_funding_rates(symbol, start_time, end_time)
+            
+            # Add funding rates to the main dataframe
+            if not funding_df.empty:
+                # Resample funding rates to match the main dataframe's interval
+                # Funding rates occur every 8 hours, we'll forward fill to have a value for each candle
+                funding_df = funding_df.resample(interval, closed='right', label='right').ffill()
+                
+                # Join with main dataframe
+                result = result.join(funding_df[['fundingRate']], how='left')
+                
+                # Forward fill funding rates (they remain constant until the next funding event)
+                result['fundingRate'] = result['fundingRate'].ffill()
+                
+                # Calculate cumulative funding rate
+                result['cumulative_funding'] = result['fundingRate'].cumsum()
+            else:
+                # If no funding rate data is available, add a default column with zeros
+                print("No funding rate data available, adding default column with zeros")
+                result['fundingRate'] = 0.0
+                result['cumulative_funding'] = 0.0
+        except Exception as e:
+            # If there's an error getting funding rates, add default columns
+            print(f"Error retrieving funding rate data: {e}. Adding default columns with zeros.")
+            result['fundingRate'] = 0.0
+            result['cumulative_funding'] = 0.0
+        
+        # Map price intervals to open interest intervals
+        # Binance only provides open interest at specific intervals
+        oi_interval_map = {
+            '1m': '5m', '3m': '5m', '5m': '5m', '15m': '15m', '30m': '1h',
+            '1h': '1h', '2h': '4h', '4h': '4h', '6h': '8h', '8h': '8h',
+            '12h': '1d', '1d': '1d'
+        }
+        
+        # Get open interest data
+        try:
+            oi_interval = oi_interval_map.get(interval, '1h')
+            open_interest_df = self.get_open_interest(symbol, interval=oi_interval, start_time=start_time, end_time=end_time)
+            
+            # Add open interest to the main dataframe
+            if not open_interest_df.empty:
+                # Resample open interest to match the main dataframe's interval
+                open_interest_df = open_interest_df.resample(interval, closed='right', label='right').ffill()
+                
+                # Join with main dataframe
+                result = result.join(open_interest_df[['sumOpenInterest', 'sumOpenInterestValue']], how='left')
+                
+                # Forward fill open interest values
+                result['sumOpenInterest'] = result['sumOpenInterest'].ffill()
+                result['sumOpenInterestValue'] = result['sumOpenInterestValue'].ffill()
+                
+                # Calculate open interest change
+                result['oi_change'] = result['sumOpenInterest'].pct_change()
+                
+                # Calculate open interest ratio (OI / Volume)
+                result['oi_volume_ratio'] = result['sumOpenInterest'] / result['volume'].replace(0, np.nan)
+            else:
+                # If no open interest data is available, add default columns with zeros
+                print("No open interest data available, adding default columns with zeros")
+                result['sumOpenInterest'] = 0.0
+                result['sumOpenInterestValue'] = 0.0
+                result['oi_change'] = 0.0
+                result['oi_volume_ratio'] = 0.0
+        except Exception as e:
+            # If there's an error getting open interest, add default columns
+            print(f"Error retrieving open interest data: {e}. Adding default columns with zeros.")
+            result['sumOpenInterest'] = 0.0
+            result['sumOpenInterestValue'] = 0.0
+            result['oi_change'] = 0.0
+            result['oi_volume_ratio'] = 0.0
+        
+        # Get liquidation data
+        try:
+            liquidation_df = self.get_liquidations(symbol, start_time, end_time)
+            
+            # Add liquidation data to the main dataframe
+            if not liquidation_df.empty:
+                # Resample liquidation data to match the main dataframe's interval
+                liquidation_resampled = liquidation_df.resample(interval, closed='right', label='right').agg({
+                    'liquidation_value': 'sum',
+                    'origQty': 'sum'
+                }).fillna(0)
+                
+                # Join with main dataframe
+                result = result.join(liquidation_resampled, how='left')
+                
+                # Fill NaN values with 0
+                result['liquidation_value'] = result['liquidation_value'].fillna(0)
+                result['origQty'] = result['origQty'].fillna(0)
+                
+                # Calculate liquidation intensity (liquidation value / volume)
+                result['liquidation_intensity'] = result['liquidation_value'] / result['volume'].replace(0, np.nan)
+            else:
+                # If no liquidation data is available, add default columns with zeros
+                print("No liquidation data available, adding default columns with zeros")
+                result['liquidation_value'] = 0.0
+                result['origQty'] = 0.0
+                result['liquidation_intensity'] = 0.0
+        except Exception as e:
+            # If there's an error getting liquidation data, add default columns
+            print(f"Error retrieving liquidation data: {e}. Adding default columns with zeros.")
+            result['liquidation_value'] = 0.0
+            result['origQty'] = 0.0
+            result['liquidation_intensity'] = 0.0
+        
+        return result
 
 if __name__ == "__main__":
-    # Example usage
-    data_handler = DataHandler(data_source="alpaca")
+    import argparse
 
-    try:
-        # Get historical stock data (last 200 days)
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=200)
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description='Data processing utility for trading bot')
+    parser.add_argument('--action', type=str, required=True,
+                       choices=['fetch', 'metrics', 'all'],
+                       help='Action to perform: fetch data only, add metrics only, or all')
 
-        # List of assets to retrieve
-        stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
-        cryptos = ["BTC/USD", "ETH/USD", "SOL/USD"]
+    # Data source and symbol parameters
+    parser.add_argument('--symbol', type=str, default='BTCUSDT',
+                       help='Symbol to fetch data for (e.g., BTCUSDT, ETHUSDT)')
+    parser.add_argument('--interval', type=str, default='1m',
+                       choices=['1m', '5m', '15m', '1h', '4h', '1d'],
+                       help='Data interval (1m for 1 minute, 1h for hourly, 1d for daily)')
 
-        # Retrieve stock data
-        print("\n===== Retrieving Stock Data =====")
-        for stock in stocks:
-            stock_data = data_handler.get_stock_data([stock],
-                                                   timeframe=TimeFrame.Day,
-                                                   start_date=start_date,
-                                                   end_date=end_date)
+    # Date range parameters
+    parser.add_argument('--days', type=int, default=7,
+                       help='Number of days of historical data to fetch')
+    parser.add_argument('--start_date', type=str, default=None,
+                       help='Start date in YYYY-MM-DD format (overrides days parameter if provided)')
+    parser.add_argument('--end_date', type=str, default=None,
+                       help='End date in YYYY-MM-DD format (defaults to today)')
 
-            if not stock_data.empty:
-                # Save raw data
-                data_handler.save_data_to_csv(stock_data, f"data/{stock}_raw.csv")
+    # Output parameters
+    parser.add_argument('--output_dir', type=str, default='data',
+                       help='Directory to save the processed data')
+    parser.add_argument('--input_file', type=str, default=None,
+                       help='Input file for adding metrics to existing data')
 
-                # Calculate indicators and save
-                stock_data_with_indicators = data_handler.calculate_technical_indicators(stock_data)
-                data_handler.save_data_to_csv(stock_data_with_indicators, f"data/{stock}_indicators.csv")
+    args = parser.parse_args()
 
-                # Print sample
-                print(f"\nSample data for {stock}:")
-                print(stock_data.head(3))
+    # Create output directory if it doesn't exist
+    os.makedirs(args.output_dir, exist_ok=True)
 
-        # Retrieve crypto data
-        print("\n===== Retrieving Crypto Data =====")
-        for crypto in cryptos:
-            crypto_data = data_handler.get_crypto_data([crypto],
-                                                     timeframe=TimeFrame.Day,
-                                                     start_date=start_date,
-                                                     end_date=end_date)
+    # Determine date range
+    end_date = datetime.now()
+    if args.end_date:
+        end_date = datetime.strptime(args.end_date, '%Y-%m-%d')
 
-            if not crypto_data.empty:
-                # Save raw data
-                data_handler.save_data_to_csv(crypto_data, f"data/{crypto.replace('/', '_')}_raw.csv")
+    start_date = end_date - timedelta(days=args.days)
+    if args.start_date:
+        start_date = datetime.strptime(args.start_date, '%Y-%m-%d')
 
-                # Calculate indicators and save
-                crypto_data_with_indicators = data_handler.calculate_technical_indicators(crypto_data)
-                data_handler.save_data_to_csv(crypto_data_with_indicators,
-                                             f"data/{crypto.replace('/', '_')}_indicators.csv")
+    # Generate output filename
+    interval_str = args.interval
+    symbol_str = args.symbol
 
-                # Print sample
-                print(f"\nSample data for {crypto}:")
-                print(crypto_data.head(3))
+    # Initialize DataHandler
+    data_handler = DataHandler()
 
-    except Exception as e:
-        print(f"Error in main: {e}")
+    if args.action == 'fetch' or args.action == 'all':
+        # Fetch and optionally process data
+        output_file = f"{args.output_dir}/{symbol_str}_{interval_str}"
+        if args.action == 'all':
+            output_file += "_with_metrics.csv"
+        else:
+            output_file += "_raw.csv"
 
-    # Example of using the new data merging methods
-    try:
-        print("\n===== Testing Data Merging Methods =====")
+        print(f"Fetching futures data for {args.symbol} from {start_date.date()} to {end_date.date()} with interval {args.interval}")
 
-        # Example 1: Merge data from multiple sources for a single stock
-        print("\nMerging data from multiple sources for AAPL:")
-        merged_aapl = data_handler.merge_data_sources("AAPL",
-                                                     sources=["alpaca", "yahoo"],
-                                                     start_date=start_date,
-                                                     end_date=end_date)
-        if not merged_aapl.empty:
-            print("Sample of merged AAPL data:")
-            print(merged_aapl.head(3))
-            print(f"Data sources in merged data: {merged_aapl['data_source'].unique()}")
+        try:
+            if args.action == 'all':
+                # Process data with all metrics
+                processed_data = data_handler.process_market_data(
+                    symbol=args.symbol,
+                    interval=args.interval,
+                    start_time=start_date,
+                    end_time=end_date,
+                    save_path=output_file
+                )
+                print(f"\nSuccessfully processed {len(processed_data)} rows of {args.symbol} data")
+                print(f"Data with metrics saved to {output_file}")
+            else:
+                # Just fetch raw data
+                df = data_handler.get_futures_data(
+                    symbols=[args.symbol],
+                    interval=args.interval,
+                    start_time=start_date,
+                    end_time=end_date
+                )
 
-        # Example 2: Merge data for multiple stocks
-        print("\nMerging data for multiple stocks:")
-        multi_stock = data_handler.merge_multi_asset_data(
-            symbols=["AAPL", "MSFT", "GOOGL"],
-            columns=["close", "volume"],
-            start_date=start_date,
-            end_date=end_date
-        )
-        if not multi_stock.empty:
-            print("Sample of multi-stock data:")
-            print(multi_stock.head(3))
+                if not df.empty:
+                    data_handler.save_data_to_csv(df, output_file)
+                    print(f"\nSuccessfully fetched {len(df)} rows of {args.symbol} data")
+                    print(f"Raw data saved to {output_file}")
+                else:
+                    print(f"No data retrieved for {args.symbol}")
 
-        # Example 3: Align timeframes (convert daily to weekly data)
-        print("\nResampling AAPL data from daily to weekly:")
-        if not merged_aapl.empty:
-            weekly_data = data_handler.align_timeframes(merged_aapl, 'W', method='ohlc')
-            print("Sample of weekly AAPL data:")
-            print(weekly_data.head(3))
+        except Exception as e:
+            print(f"Error processing data: {e}")
 
-    except Exception as e:
-        print(f"Error testing data merging methods: {e}")
+    elif args.action == 'metrics':
+        # Add metrics to existing data
+        if args.input_file is None:
+            print("Error: --input_file is required when action is 'metrics'")
+            exit(1)
+
+        if not os.path.exists(args.input_file):
+            print(f"Error: Input file {args.input_file} does not exist")
+            exit(1)
+
+        output_file = f"{args.output_dir}/{symbol_str}_{interval_str}_with_metrics.csv"
+
+        print(f"Adding metrics to data from {args.input_file}")
+
+        try:
+            # Load data
+            df = data_handler.load_data_from_csv(args.input_file)
+
+            # Add metrics
+            print("Calculating technical indicators...")
+            df_with_indicators = data_handler.calculate_technical_indicators(df)
+
+            print("Calculating risk metrics...")
+            df_with_risk = data_handler.calculate_risk_metrics(df_with_indicators)
+
+            print("Identifying trade setups...")
+            df_with_setups = data_handler.identify_trade_setups(df_with_risk)
+
+            # Handle NaN values
+            print("Handling missing values...")
+            # Forward-fill NaNs from rolling windows
+            df_filled = df_with_setups.ffill()
+            # Backward-fill any remaining NaNs
+            df_filled = df_filled.bfill()
+
+            # Save processed data
+            data_handler.save_data_to_csv(df_filled, output_file)
+            print(f"\nSuccessfully added metrics to {len(df_filled)} rows of data")
+            print(f"Processed data saved to {output_file}")
+
+        except Exception as e:
+            print(f"Error adding metrics to data: {e}")

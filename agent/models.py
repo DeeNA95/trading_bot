@@ -6,7 +6,58 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple
+from typing import Tuple, Dict, Union
+
+
+class ActionNormalizer:
+    """Handles normalization and denormalization of actions."""
+
+    def __init__(self, action_bounds: torch.Tensor):
+        """Initialize the action normalizer.
+
+        Args:
+            action_bounds: Tensor of shape [2, action_dim] with lower and upper bounds
+        """
+        self.action_bounds = action_bounds
+        self.lower_bound, self.upper_bound = action_bounds
+        self.action_range = self.upper_bound - self.lower_bound
+        self.action_middle = (self.upper_bound + self.lower_bound) / 2
+
+    def normalize(self, action: torch.Tensor) -> torch.Tensor:
+        """Normalize actions from action space to [-1, 1].
+
+        Args:
+            action: Action in original space
+
+        Returns:
+            Normalized action in [-1, 1]
+        """
+        return 2.0 * (action - self.lower_bound) / self.action_range - 1.0
+
+    def denormalize(self, normalized_action: torch.Tensor) -> torch.Tensor:
+        """Denormalize actions from [-1, 1] to original action space.
+
+        Args:
+            normalized_action: Action in normalized space [-1, 1]
+
+        Returns:
+            Action in original space
+        """
+        # Clip normalized action to [-1, 1]
+        clipped_action = torch.clamp(normalized_action, -1.0, 1.0)
+        # Scale to action space
+        return self.lower_bound + (clipped_action + 1.0) / 2.0 * self.action_range
+
+    def clip_action(self, action: torch.Tensor) -> torch.Tensor:
+        """Clip action to be within bounds.
+
+        Args:
+            action: Action to clip
+
+        Returns:
+            Clipped action
+        """
+        return torch.max(torch.min(action, self.upper_bound), self.lower_bound)
 
 
 class ActorNetwork(nn.Module):
@@ -47,8 +98,11 @@ class ActorNetwork(nn.Module):
             [-1.0, 0.0, 0.5, 0.5],  # lower bounds
             [1.0, 1.0, 5.0, 5.0]    # upper bounds
         ], dtype=torch.float32, device=self.device)
+        
+        # Action normalizer
+        self.action_normalizer = ActionNormalizer(self.action_bounds)
 
-    def forward(self, state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Forward pass through the network.
 
         Args:
@@ -58,18 +112,18 @@ class ActorNetwork(nn.Module):
             action_mean: Mean of the action distribution
             action_log_std: Log standard deviation of the action distribution
             action: Sampled action
+            log_prob: Log probability of the sampled action
         """
         x = self.feature_extractor(state)
 
-        # Get mean of action distribution
-        action_mean = self.action_mean(x)
-
-        # Bound the action mean to our action space
-        action_mean = torch.tanh(action_mean)
-
-        # Scale to the action bounds
-        lower_bound, upper_bound = self.action_bounds
-        action_mean = lower_bound + (upper_bound - lower_bound) * (action_mean + 1) / 2
+        # Get raw action mean
+        raw_action_mean = self.action_mean(x)
+        
+        # Apply tanh to bound it to [-1, 1]
+        normalized_action_mean = torch.tanh(raw_action_mean)
+        
+        # Denormalize to action space
+        action_mean = self.action_normalizer.denormalize(normalized_action_mean)
 
         # Get log std and std
         action_log_std = self.action_log_std.expand_as(action_mean)
@@ -81,8 +135,8 @@ class ActorNetwork(nn.Module):
         # Reparameterization trick
         x_t = normal.rsample()
 
-        # Enforce action bounds
-        action = torch.max(torch.min(x_t, upper_bound), lower_bound)
+        # Clip action to bounds
+        action = self.action_normalizer.clip_action(x_t)
 
         # Calculate log probability of the action
         log_prob = normal.log_prob(action)

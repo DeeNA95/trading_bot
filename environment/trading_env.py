@@ -21,16 +21,22 @@ class TradingEnvironment(gym.Env):
                  commission: float = 0.001,
                  slippage: float = 0.0005,
                  max_leverage: float = 5.0,
+                 liquidation_threshold: float = 0.8,  
                  render_mode: Optional[str] = None):
         """Trading environment for reinforcement learning."""
         super().__init__()
         
         # Validate data
-        required_columns = ['open', 'high', 'low', 'close', 'volume', 
-                            'rsi', 'macd', 'macd_signal', 'atr']
+        required_columns = ['open', 'high', 'low', 'close', 'volume']
         missing_columns = [col for col in required_columns if col not in data.columns]
         if missing_columns:
             raise ValueError(f"Data missing required columns: {missing_columns}")
+            
+        # Check for recommended columns but don't require them
+        recommended_columns = ['rsi', 'macd', 'macd_signal', 'atr']
+        missing_recommended = [col for col in recommended_columns if col not in data.columns]
+        if missing_recommended:
+            print(f"Warning: Data missing recommended columns: {missing_recommended}")
             
         self.data = data
         self.reward_function = reward_function or RiskAdjustedReward()
@@ -39,6 +45,7 @@ class TradingEnvironment(gym.Env):
         self.commission = commission
         self.slippage = slippage
         self.max_leverage = max_leverage
+        self.liquidation_threshold = liquidation_threshold
         self.render_mode = render_mode
         
         # Action space: [direction, size, take_profit, stop_loss]
@@ -76,12 +83,11 @@ class TradingEnvironment(gym.Env):
         """Get feature list for the current observation."""
         base_features = [
             'open_norm', 'high_norm', 'low_norm', 'close_norm', 'volume_norm',
-            'rsi', 'macd', 'macd_signal'
         ]
         
         # Add features if they exist in the data
         optional_features = [
-            'bb_upper', 'bb_lower', 'stoch_k', 'stoch_d', 'adx', 
+            'rsi', 'macd', 'macd_signal', 'atr', 'bb_upper', 'bb_lower', 'stoch_k', 'stoch_d', 'adx', 
             'plus_di', 'minus_di', 'atr_pct'
         ]
         
@@ -174,83 +180,190 @@ class TradingEnvironment(gym.Env):
             
         return False, 0.0
         
+    def _calculate_liquidation_price(self, position_direction, position_price, leverage):
+        """
+        Calculate the liquidation price based on position direction, entry price, and leverage.
+        
+        For long positions: liquidation_price = entry_price * (1 - (1 / leverage) * (1 - liquidation_threshold))
+        For short positions: liquidation_price = entry_price * (1 + (1 / leverage) * (1 - liquidation_threshold))
+        
+        Args:
+            position_direction: Direction of position (1 for long, -1 for short)
+            position_price: Entry price of the position
+            leverage: Leverage used for the position
+            
+        Returns:
+            float: The liquidation price
+        """
+        if position_direction == 0 or leverage <= 0:
+            return None
+            
+        # Calculate the maintenance margin requirement
+        maintenance_margin = (1 / leverage) * (1 - self.liquidation_threshold)
+        
+        if position_direction > 0:  # Long position
+            liquidation_price = position_price * (1 - maintenance_margin)
+        else:  # Short position
+            liquidation_price = position_price * (1 + maintenance_margin)
+            
+        return liquidation_price
+        
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
         """Execute one step in the environment."""
-        # Parse action
-        direction = 1 if action[0] > 0.33 else (-1 if action[0] < -0.33 else 0)
-        size = action[1] * self.max_leverage
-        self.take_profit = action[2]
-        self.stop_loss = action[3]
-        
-        # Store the previous state
-        prev_balance = self.balance
-        transaction_cost = 0.0
-        
-        # Close existing position if direction changed
-        if self.position_direction != direction and self.position_size > 0:
-            unrealized_pnl = self._calculate_unrealized_pnl()
-            self.balance += unrealized_pnl
-            
-            # Apply transaction costs for closing
-            transaction_cost += abs(self.position_size) * self._get_current_price() * self.commission
-            self.balance -= transaction_cost
-            
-            self.position_size = 0
-            self.position_direction = 0
-            self.position_price = 0
-        
-        # Open new position
-        if direction != 0 and self.position_size == 0:
-            current_price = self._get_current_price()
-            self.position_direction = direction
-            
-            # Calculate position size based on available balance
-            max_position_value = self.balance * size
-            self.position_size = max_position_value / current_price
-            self.position_price = current_price
-            
-            # Apply transaction costs for opening
-            new_transaction_cost = max_position_value * self.commission
-            transaction_cost += new_transaction_cost
-            self.balance -= new_transaction_cost
-        
-        # Check take profit/stop loss
-        triggered, pnl_multiplier = self._apply_take_profit_stop_loss()
-        if triggered:
-            # Calculate PnL based on position value and price change percentage
-            position_value = abs(self.position_size) * self._get_current_price()
-            realized_pnl = position_value * pnl_multiplier
-            self.balance += realized_pnl
-            
-            # Apply transaction costs for closing on TP/SL
-            tp_sl_transaction_cost = position_value * self.commission
-            transaction_cost += tp_sl_transaction_cost
-            self.balance -= tp_sl_transaction_cost
-            
-            self.position_size = 0
-            self.position_direction = 0
-            self.position_price = 0
-        
-        # Move to next step
         self.current_step += 1
         
-        # Calculate reward
+        # Get current market data
+        current_price = self.data.iloc[self.current_step]['close']
+        prev_price = self.data.iloc[self.current_step - 1]['close']
+        
+        # Store previous state for reward calculation
+        prev_balance = self.balance
+        prev_position_size = self.position_size
+        prev_position_direction = self.position_direction
+        
+        # Decode the action
+        direction = action[0]  # -1 (short), 0 (hold), 1 (long)
+        size = action[1]       # 0.0 to 1.0 (percentage of balance to use)
+        take_profit = action[2]  # Take profit multiplier (relative to ATR)
+        stop_loss = action[3]    # Stop loss multiplier (relative to ATR)
+        
+        # Calculate position size based on leverage
+        leverage = size * self.max_leverage if direction != 0 else 0
+        position_value = self.balance * size
+        
+        # Check if we need to close existing position
+        transaction_cost = 0
+        unrealized_pnl = 0
+        holding_time = 0
+        
+        # Calculate market trend for trend alignment
+        trend = np.sign(current_price - prev_price)
+        trend_alignment = trend * self.position_direction if self.position_direction != 0 else 0
+        
+        # Calculate unrealized PnL for existing position
+        if self.position_size > 0:
+            holding_time = self.current_step - self.position_step
+            price_diff = current_price - self.position_price if self.position_direction > 0 else self.position_price - current_price
+            unrealized_pnl = price_diff * self.position_size
+            
+        # Check for liquidation before allowing new trades
+        liquidation_price = None
+        liquidation_risk = False
+        
+        if self.position_size > 0:
+            liquidation_price = self._calculate_liquidation_price(
+                self.position_direction, 
+                self.position_price, 
+                self.position_size * self.max_leverage / self.position_value if self.position_value > 0 else 0
+            )
+            
+            # Check if current price has crossed the liquidation price
+            if liquidation_price is not None:
+                if (self.position_direction > 0 and current_price <= liquidation_price) or \
+                   (self.position_direction < 0 and current_price >= liquidation_price):
+                    # Position is liquidated
+                    self.balance = self.balance - self.position_value  # Lose the margin
+                    self.position_size = 0
+                    self.position_direction = 0
+                    self.position_price = 0
+                    self.position_value = 0
+                    self.position_step = 0
+                    transaction_cost = 0  # No transaction cost on liquidation
+                    unrealized_pnl = 0
+                    
+                # Check if price is getting close to liquidation price (within 10%)
+                elif liquidation_price is not None:
+                    if self.position_direction > 0:
+                        distance_to_liquidation = (current_price - liquidation_price) / current_price
+                    else:
+                        distance_to_liquidation = (liquidation_price - current_price) / current_price
+                        
+                    liquidation_risk = distance_to_liquidation < 0.1  # Within 10% of liquidation
+        
+        # Close existing position if direction changes or size becomes zero
+        if self.position_size > 0 and (direction * self.position_direction <= 0 or size == 0):
+            # Calculate PnL
+            price_diff = current_price - self.position_price if self.position_direction > 0 else self.position_price - current_price
+            position_pnl = price_diff * self.position_size
+            
+            # Apply slippage to closing price
+            slippage_cost = current_price * self.slippage * self.position_size
+            
+            # Apply commission
+            commission_cost = current_price * self.commission * self.position_size
+            
+            # Update balance
+            self.balance += position_pnl - slippage_cost - commission_cost
+            transaction_cost = slippage_cost + commission_cost
+            
+            # Reset position
+            self.position_size = 0
+            self.position_direction = 0
+            self.position_price = 0
+            self.position_value = 0
+            self.position_step = 0
+            unrealized_pnl = 0
+        
+        # Open new position if direction is not zero and we don't have a position
+        if direction != 0 and self.position_size == 0:
+            # Calculate position size with leverage
+            self.position_value = position_value
+            self.position_size = position_value * leverage / current_price if current_price > 0 else 0
+            self.position_direction = 1 if direction > 0 else -1
+            
+            # Apply slippage to opening price
+            slippage_cost = current_price * self.slippage * self.position_size
+            
+            # Apply commission
+            commission_cost = current_price * self.commission * self.position_size
+            
+            # Update position price with slippage
+            self.position_price = current_price * (1 + self.position_direction * self.slippage)
+            
+            # Record transaction cost
+            transaction_cost = slippage_cost + commission_cost
+            
+            # Record step when position was opened
+            self.position_step = self.current_step
+            
+            # Calculate liquidation price for the new position
+            liquidation_price = self._calculate_liquidation_price(
+                self.position_direction, 
+                self.position_price, 
+                leverage
+            )
+        
+        # Get current observation
         observation = self._get_observation()
         
-        unrealized_pnl = self._calculate_unrealized_pnl()
-        
-        # Apply slippage to unrealized PnL if we have a position
-        if self.position_size > 0:
-            slippage_cost = abs(self.position_size) * self._get_current_price() * self.slippage
-            unrealized_pnl -= slippage_cost
+        # Calculate funding rate if available in the data
+        funding_rate = 0.0
+        if 'fundingRate' in self.data.columns:
+            funding_rate = self.data.iloc[self.current_step]['fundingRate']
+            
+            # Apply funding rate to position if we have one
+            if self.position_size > 0:
+                # For long positions: negative funding rate means we receive payment
+                # For short positions: positive funding rate means we receive payment
+                funding_payment = -funding_rate * self.position_value * self.position_direction
+                self.balance += funding_payment
         
         info = {
             'realized_pnl': self.balance - prev_balance,
             'unrealized_pnl': unrealized_pnl,
             'transaction_cost': transaction_cost,
-            'is_trade': direction != 0 and self.position_size == 0,
-            'leverage': size if direction != 0 else 0,
-            'drawdown': (self.max_balance - self.balance) / self.max_balance if self.max_balance > 0 else 0
+            'is_trade': direction != 0 and prev_position_size == 0,
+            'leverage': leverage,
+            'drawdown': (self.max_balance - self.balance) / self.max_balance if self.max_balance > 0 else 0,
+            'holding_time': holding_time,
+            'trend_alignment': trend_alignment,
+            'return': (self.balance - prev_balance) / prev_balance if prev_balance > 0 else 0,
+            # Futures-specific information
+            'funding_rate': funding_rate,
+            'liquidation_price': liquidation_price,
+            'current_price': current_price,
+            'position_direction': self.position_direction,
+            'liquidation_risk': liquidation_risk
         }
         reward = self.reward_function.calculate_reward(None, action, observation, info)
         
