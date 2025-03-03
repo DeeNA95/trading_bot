@@ -51,19 +51,19 @@ To test the model using historical data:
 make docker-inference-test
 ```
 
-### Paper Trading
+### Live Trading
 
-To run the model with paper trading through Alpaca:
+To run the model with live trading through Binance Futures:
 
 ```bash
-make docker-inference
+make docker-inference-binance
 ```
 
-Make sure your `.env` file contains valid Alpaca API credentials:
+Make sure your `.env` file contains valid Binance API credentials:
 
 ```
-ALPACA_API_KEY=your_api_key_here
-ALPACA_API_SECRET=your_api_secret_here
+BINANCE_API_KEY=your_api_key_here
+BINANCE_API_SECRET=your_api_secret_here
 ```
 
 ## Customizing Training Parameters

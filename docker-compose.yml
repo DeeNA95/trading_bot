@@ -23,7 +23,7 @@ services:
       - ./models:/app/models
       - ./logs:/app/logs
       - ./.env:/app/.env
-    command: ["inference.py", "--paper_trading", "--trade_interval", "3600"]
+    command: ["inference.py", "--binance_futures", "--trade_interval", "3600"]
     environment:
       - PYTHONUNBUFFERED=1
       

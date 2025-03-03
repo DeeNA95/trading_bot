@@ -4,7 +4,6 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-alpaca-py = "*"
 yfinance = "*"
 stable-baselines3 = "*"
 matplotlib = "*"
@@ -18,7 +17,6 @@ nbformat = "*"
 torch = "*"
 gymnasium = "*"
 tqdm = "*"
-alpaca-trade-api = "*"
 pykrakenapi = "*"
 requests = "*"
 binance-futures-connector = "*"
@@ -26,6 +24,7 @@ python-dotenv = "*"
 krakenx = "*"
 python-binance = "*"
 krakenex = "*"
+fastparquet = "*"
 
 [dev-packages]
 pytest = "*"

@@ -3,8 +3,10 @@ Tests for the action space normalization.
 """
 
 import unittest
-import torch
+
 import numpy as np
+import torch
+
 from agent.models import ActionNormalizer, ActorNetwork
 
 
@@ -13,10 +15,13 @@ class TestActionNormalizer(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.action_bounds = torch.tensor([
-            [-1.0, 0.0, 0.5, 0.5],  # lower bounds
-            [1.0, 1.0, 5.0, 5.0]    # upper bounds
-        ], dtype=torch.float32)
+        self.action_bounds = torch.tensor(
+            [
+                [-1.0, 0.0, 0.5, 0.5],  # lower bounds
+                [1.0, 1.0, 5.0, 5.0],  # upper bounds
+            ],
+            dtype=torch.float32,
+        )
         self.normalizer = ActionNormalizer(self.action_bounds)
 
     def test_normalize(self):
@@ -101,18 +106,18 @@ class TestActorNetworkWithNormalizer(unittest.TestCase):
         """Test that actions are properly bounded."""
         # Create a random state and move it to the same device as the actor
         state = torch.randn(1, self.state_dim).to(self.device)
-        
+
         # Forward pass
         with torch.no_grad():
             action_mean, action_log_std, action, log_prob = self.actor(state)
-        
+
         # Check that action is within bounds
         lower_bound, upper_bound = self.actor.action_bounds
-        
+
         for i in range(self.action_dim):
             self.assertGreaterEqual(action[0, i].item(), lower_bound[i].item())
             self.assertLessEqual(action[0, i].item(), upper_bound[i].item())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
