@@ -340,10 +340,10 @@ def main():
     )
     # MA Strategy specific parameters
     parser.add_argument(
-        "--short_window", type=int, default=20, help="Short-term MA window"
+        "--short_window", type=int, default=7, help="Short-term MA window"
     )
     parser.add_argument(
-        "--long_window", type=int, default=50, help="Long-term MA window"
+        "--long_window", type=int, default=25, help="Long-term MA window"
     )
     parser.add_argument(
         "--risk_per_trade", type=float, default=0.01, help="Risk per trade as % of account"
