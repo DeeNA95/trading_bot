@@ -20,7 +20,7 @@ client = UMFutures(
 )
 tp = 0.01
 sl = 0.01
-volume = 200
+volume = 50
 leverage = 2
 margin_type = 'ISOLATED'
 
@@ -35,11 +35,11 @@ def get_balance_usdt():
 
 
 def get_ticker_usdt():
-    tickers = ["BTCUSDT"]
+    tickers = ["BTCUSDT","ETHUSDT"]
     response = client.ticker_price(tickers)
     # Extract just the symbol names
     return [item['symbol'] for item in response] if isinstance(response, list) else [response['symbol']]
-
+print(get_ticker_usdt())
 
 def klines(symbol):
     try:
@@ -235,6 +235,7 @@ while True:
     if order == False:
         for elem in symbols:
             signal = check_macd_ema(elem)
+            print(signal, elem)
             if signal == "up":
                 print(f"buy signal on {elem}")
                 set_mode(elem, margin_type="ISOLATED")

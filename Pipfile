@@ -8,6 +8,7 @@ binance-futures-connector = "*"
 polars = "*"
 pandas = "*"
 ta = "*"
+finrl = "*"
 
 [dev-packages]
 
