@@ -1,30 +1,40 @@
+"""
+Reinforcement learning trading environment for Binance Futures.
+
+This module provides a gym-compatible environment for training reinforcement learning
+agents to trade on Binance Futures. It supports both backtesting on historical data
+and live trading with real-time market data.
+"""
+
+import json
+import logging
+import math
+import os
+import time
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import gymnasium as gym
 import numpy as np
 import pandas as pd
-import gymnasium as gym
-from gymnasium import spaces
-from typing import Dict, List, Tuple, Union, Optional, Any
-import os
-import math
-import json
 import requests
-from datetime import datetime, timedelta
-import time
-from dotenv import load_dotenv
+import ta
 from binance.um_futures import UMFutures
+from dotenv import load_dotenv
+from gymnasium import spaces
 
-# Import FinRL components
-from finrl.meta.env_cryptocurrency_trading.env_cryptocurrency import CryptoEnv
-from finrl.meta.preprocessor.preprocessors import FeatureEngineer
-from finrl.config import INDICATORS
+from .position_sizer import BinanceFuturesPositionSizer, VolatilityAdjustedPositionSizer
 
 # Import local modules
 from .reward import FuturesRiskAdjustedReward
-from .position_sizer import BinanceFuturesPositionSizer, VolatilityAdjustedPositionSizer
 
-class BinanceFuturesCryptoEnv(CryptoEnv):
+
+class BinanceFuturesCryptoEnv(gym.Env):
     """
-    Enhanced cryptocurrency trading environment for Binance Futures BTCUSDT
-    using FinRL framework.
+    Enhanced cryptocurrency trading environment for Binance Futures BTCUSDT.
+
+    Provides a gym environment that allows RL agents to interact with cryptocurrency
+    data for training and live trading on Binance Futures.
 
     Attributes:
         df: DataFrame containing OHLCV data and indicators
@@ -36,6 +46,8 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         use_risk_adjusted_rewards: Whether to use the FuturesRiskAdjustedReward system
     """
 
+    metadata = {"render_modes": ["human"]}
+
     def __init__(
         self,
         df: pd.DataFrame = None,
@@ -44,11 +56,11 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         leverage: int = 2,
         max_leverage: int = 20,
         trade_fee_percent: float = 0.0004,  # 0.04% Binance taker fee
-        initial_amount: float = 10000,
+        initial_balance: float = 10000,
         indicators: List[str] = None,
         symbol: str = "BTCUSDT",
         mode: str = "train",
-        base_url: str = None,
+        base_url: str = 'https://fapi.binance.com',
         margin_type: str = "ISOLATED",
         risk_reward_ratio: float = 1.5,
         stop_loss_percent: float = 0.01,
@@ -62,7 +74,8 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         include_funding_rate: bool = True,
         include_open_interest: bool = True,
         include_liquidation_data: bool = True,
-        dry_run: bool = False  # When True, don't execute actual trades
+        dry_run: bool = False,  # When True, don't execute actual trades
+        render_mode: str = None,
     ):
         """
         Initialize the Binance Futures crypto trading environment.
@@ -74,7 +87,7 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
             leverage: Trading leverage (1-125)
             max_leverage: Maximum allowed leverage
             trade_fee_percent: Trading fee percentage
-            initial_amount: Initial account balance in USDT
+            initial_balance: Initial account balance in USDT
             indicators: Technical indicators to use
             symbol: Trading pair symbol (default: BTCUSDT)
             mode: Running mode ('train' for backtesting, 'trade' for live trading)
@@ -92,18 +105,22 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
             include_funding_rate: Whether to include funding rate data
             include_open_interest: Whether to include open interest data
             include_liquidation_data: Whether to include liquidation data
+            dry_run: When True, don't execute actual trades
+            render_mode: Rendering mode for gym env
         """
-        # Call parent constructor from CryptoEnv
-        super().__init__(
-            df=df,
-            window_size=window_size,
-            frame_len=window_size,
-            commission=trade_fee_percent,
-            reward_scaling=1.0,
-            initial_amount=initial_amount,
-            # FinRL CryptoEnv uses a different parameter name
-            initial_coin=0.0  # Always start with 0 BTC
-        )
+        super().__init__()
+
+        # Store environment parameters
+        self.df = df
+        self.window_size = window_size
+        self.commission = trade_fee_percent
+        self.initial_balance = initial_balance
+        self.render_mode = render_mode
+
+        # Initialize state with balance
+        self.balance = self.initial_balance
+        self.current_step = 0
+        self.date = None
 
         # Set Binance Futures specific attributes
         self.symbol = symbol
@@ -126,14 +143,14 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         self.include_funding_rate = include_funding_rate
         self.include_open_interest = include_open_interest
         self.include_liquidation_data = include_liquidation_data
-        
+
         # Initialize position sizer
         self.position_sizer = BinanceFuturesPositionSizer(
             max_position_pct=self.max_position,
             position_sizer=VolatilityAdjustedPositionSizer(base_risk_pct=0.01),
             default_leverage=self.leverage,
             max_leverage=self.max_leverage,
-            dynamic_leverage=self.dynamic_leverage
+            dynamic_leverage=self.dynamic_leverage,
         )
 
         # Advanced data storage
@@ -153,7 +170,7 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
                 drawdown_penalty=0.2,
                 liquidation_penalty=self.liquidation_penalty_weight,
                 funding_rate_penalty=self.funding_rate_weight,
-                max_leverage=self.max_leverage
+                max_leverage=self.max_leverage,
             )
 
         # Set the trading mode
@@ -163,18 +180,23 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         # Setup Binance connection for live trading
         if self.live_trading:
             load_dotenv()
-            use_testnet = base_url is not None
-            self.api_key = os.getenv("binance_future_testnet_api" if use_testnet else "binance_future_api")
-            self.api_secret = os.getenv("binance_future_testnet_secret" if use_testnet else "binance_future_secret")
+            use_testnet = base_url is None
+            self.api_key = os.getenv(
+                "binance_future_testnet_api" if use_testnet else "binance_api2"
+            )
+            self.api_secret = os.getenv(
+                "binance_future_testnet_secret"
+                if use_testnet
+                else "binance_secret2"
+            )
 
             self.client = UMFutures(
-                key=self.api_key,
-                secret=self.api_secret,
-                base_url=base_url
+                key=self.api_key, secret=self.api_secret, base_url=base_url
             )
-            
+
             # Initialize execution module
             from .execution import BinanceFuturesExecutor
+
             self.executor = BinanceFuturesExecutor(
                 client=self.client,
                 symbol=self.symbol,
@@ -182,16 +204,16 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
                 margin_type=self.margin_type,
                 risk_reward_ratio=self.risk_reward_ratio,
                 stop_loss_percent=self.stop_loss_percent,
-                dry_run=self.dry_run
+                dry_run=self.dry_run,
             )
-            
+
             # Position status tracking
             self.position_status = {
                 "has_open_position": False,
                 "sl_triggered": False,
-                "tp_triggered": False
+                "tp_triggered": False,
             }
-            
+
             # Add trade history tracking
             self.trade_history = []
 
@@ -207,15 +229,13 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
             state_dim = df.shape[1] + 3  # +3 for balance, position, unrealized_pnl
         else:
             # If no df provided (like in live mode), use default dimension
-            if indicators is None:
-                indicators = INDICATORS  # Default FinRL indicators
-            state_dim = 5 + len(indicators) + 3  # OHLCV + indicators + account
+            state_dim = 25  # OHLCV + common indicators + account features
 
         self.observation_space = spaces.Box(
             low=-np.inf,
             high=np.inf,
             shape=(self.window_size, state_dim),
-            dtype=np.float32
+            dtype=np.float32,
         )
 
         # Track trading metrics
@@ -223,30 +243,75 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         self.current_position = 0
         self.entry_price = 0
         self.unrealized_pnl = 0
+        self.max_account_value = self.initial_balance
 
         # Stop loss and take profit levels
         self.stop_loss = None
         self.take_profit = None
+
+        # Create initial state
+        self._create_initial_state()
+
+    def _create_initial_state(self):
+        """Create initial state for the environment."""
+        if self.df is not None:
+            # For backtesting, use the first window_size rows of the dataframe
+            self.current_step = self.window_size - 1
+            data = self.df.iloc[: self.window_size].copy()
+
+            # Extract features
+            price_features = data.values
+
+            # Add account information
+            balance = np.ones(self.window_size) * self.balance
+            position = np.zeros(self.window_size)
+            unrealized_pnl = np.zeros(self.window_size)
+
+            # Combine into state and ensure it's float32
+            combined_data = np.column_stack(
+                (
+                    price_features,
+                    balance.reshape(-1, 1),
+                    position.reshape(-1, 1),
+                    unrealized_pnl.reshape(-1, 1),
+                )
+            )
+            self.state = combined_data.astype(np.float32)
+        else:
+            # For live trading, create an empty state that will be filled later
+            self.state = np.zeros(
+                (self.window_size, self.observation_space.shape[1]), dtype=np.float32
+            )
 
     def _init_binance_account(self):
         """Initialize Binance Futures account with leverage and margin type."""
         if self.live_trading:
             try:
                 # Set initial leverage
-                adaptive_leverage = self._calculate_adaptive_leverage() if self.dynamic_leverage else self.leverage
+                adaptive_leverage = (
+                    self._calculate_adaptive_leverage()
+                    if self.dynamic_leverage
+                    else self.leverage
+                )
 
                 self.client.change_leverage(
-                    symbol=self.symbol,
-                    leverage=adaptive_leverage,
-                    recvWindow=6000
+                    symbol=self.symbol, leverage=adaptive_leverage, recvWindow=6000
                 )
 
                 # Set margin type
-                self.client.change_margin_type(
-                    symbol=self.symbol,
-                    marginType=self.margin_type,
-                    recvWindow=6000
-                )
+                try:
+                    self.client.change_margin_type(
+                        symbol=self.symbol, marginType=self.margin_type, recvWindow=6000
+                    )
+                except Exception as e:
+                    # Check if it's the "No need to change margin type" error
+                    if "No need to change margin type" in str(e):
+                        logging.getLogger("BinanceFuturesExecutor").info(
+                            f"Margin type already set to {self.margin_type}"
+                        )
+                    else:
+                        # If it's a different error, raise it
+                        raise e
 
                 # Get account info to verify settings
                 account_info = self.client.account()
@@ -254,7 +319,9 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
                 # Initialize market data
                 self._update_market_data()
 
-                print(f"Account initialized - Balance: {self._get_balance_usdt()} USDT, Leverage: {adaptive_leverage}x")
+                print(
+                    f"Account initialized - Balance: {self._get_balance_usdt()} USDT, Leverage: {adaptive_leverage}x"
+                )
 
             except Exception as e:
                 print(f"Error initializing Binance account: {e}")
@@ -271,10 +338,16 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
             volatility_factor = 5.0  # Adjusts sensitivity to volatility
 
             if self.current_volatility > 0:
-                adaptive_leverage = max(1, min(
-                    self.max_leverage,
-                    int(self.max_leverage * (1 / (1 + self.current_volatility * volatility_factor)))
-                ))
+                adaptive_leverage = max(
+                    1,
+                    min(
+                        self.max_leverage,
+                        int(
+                            self.max_leverage
+                            * (1 / (1 + self.current_volatility * volatility_factor))
+                        ),
+                    ),
+                )
             else:
                 adaptive_leverage = self.leverage
 
@@ -298,7 +371,7 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
                     self.client.klines(
                         symbol=self.symbol,
                         interval=self.data_fetch_interval,
-                        limit=min(1000, candles_needed)  # API limit is 1000
+                        limit=min(1000, candles_needed),  # API limit is 1000
                     )
                 )
 
@@ -323,15 +396,19 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
                 scaled_volatility = min(1.0, volatility * 20)
 
                 self.current_volatility = scaled_volatility
-                self.volatility_history.append({
-                    "timestamp": datetime.now().isoformat(),
-                    "volatility": scaled_volatility
-                })
+                self.volatility_history.append(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "volatility": scaled_volatility,
+                    }
+                )
             else:
                 # For backtesting, calculate from dataframe if available
                 if self.df is not None:
                     current_idx = self.current_step
-                    start_idx = max(0, current_idx - (self.volatility_lookback * 4))  # Approximate candles for lookback
+                    start_idx = max(
+                        0, current_idx - (self.volatility_lookback * 4)
+                    )  # Approximate candles for lookback
 
                     if start_idx < current_idx:
                         prices = self.df.iloc[start_idx:current_idx]["close"].values
@@ -362,7 +439,7 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
                 print(f"Error getting balance: {e}")
                 return 0.0
         else:
-            return self.state[0]
+            return self.balance
 
     def _get_trading_params(self):
         """Get price and quantity precision for the symbol."""
@@ -392,26 +469,29 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
             if self.include_funding_rate:
                 funding_rate = self._get_funding_rate()
                 self.current_funding_rate = funding_rate
-                self.funding_rates.append({
-                    "timestamp": datetime.now().isoformat(),
-                    "rate": funding_rate
-                })
+                self.funding_rates.append(
+                    {"timestamp": datetime.now().isoformat(), "rate": funding_rate}
+                )
 
             # 2. Update open interest
             if self.include_open_interest:
                 new_open_interest = self._get_open_interest()
                 # Calculate open interest change
                 if self.current_open_interest > 0:
-                    self.open_interest_change = (new_open_interest - self.current_open_interest) / self.current_open_interest
+                    self.open_interest_change = (
+                        new_open_interest - self.current_open_interest
+                    ) / self.current_open_interest
                 else:
                     self.open_interest_change = 0
 
                 self.current_open_interest = new_open_interest
-                self.open_interest_history.append({
-                    "timestamp": datetime.now().isoformat(),
-                    "value": new_open_interest,
-                    "change": self.open_interest_change
-                })
+                self.open_interest_history.append(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "value": new_open_interest,
+                        "change": self.open_interest_change,
+                    }
+                )
 
             # 3. Update liquidation data
             if self.include_liquidation_data:
@@ -423,17 +503,21 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
             self._update_volatility()
 
             # 5. Dynamic leverage adjustment if needed
-            if self.dynamic_leverage and self.current_position == 0:  # Only adjust when not in a position
+            if (
+                self.dynamic_leverage
+                and hasattr(self, "current_position")
+                and self.current_position == 0
+            ):  # Only adjust when not in a position
                 adaptive_leverage = self._calculate_adaptive_leverage()
                 if adaptive_leverage != self.leverage:
                     self.leverage = adaptive_leverage
                     # Update leverage on exchange
                     self.client.change_leverage(
-                        symbol=self.symbol,
-                        leverage=self.leverage,
-                        recvWindow=6000
+                        symbol=self.symbol, leverage=self.leverage, recvWindow=6000
                     )
-                    print(f"Adjusted leverage to {self.leverage}x based on volatility of {self.current_volatility:.2%}")
+                    print(
+                        f"Adjusted leverage to {self.leverage}x based on volatility of {self.current_volatility:.2%}"
+                    )
 
         except Exception as e:
             print(f"Error updating market data: {e}")
@@ -444,8 +528,8 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
             # Get premium index (includes funding rate)
             response = self.client.mark_price(symbol=self.symbol)
 
-            if 'lastFundingRate' in response:
-                return float(response['lastFundingRate'])
+            if "lastFundingRate" in response:
+                return float(response["lastFundingRate"])
             return 0.0
 
         except Exception as e:
@@ -457,8 +541,8 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         try:
             response = self.client.open_interest(symbol=self.symbol)
 
-            if 'openInterest' in response:
-                return float(response['openInterest'])
+            if "openInterest" in response:
+                return float(response["openInterest"])
             return 0.0
 
         except Exception as e:
@@ -483,19 +567,22 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
 
                     # Filter for recent liquidations
                     recent_liquidations = [
-                        item for item in data
-                        if datetime.fromtimestamp(item['time']/1000) > one_hour_ago
+                        item
+                        for item in data
+                        if datetime.fromtimestamp(item["time"] / 1000) > one_hour_ago
                     ]
 
                     # Summarize
                     long_liquidations = sum(
-                        float(item['qty']) for item in recent_liquidations
-                        if item['side'] == 'BUY'  # Liquidated shorts are bought
+                        float(item["qty"])
+                        for item in recent_liquidations
+                        if item["side"] == "BUY"  # Liquidated shorts are bought
                     )
 
                     short_liquidations = sum(
-                        float(item['qty']) for item in recent_liquidations
-                        if item['side'] == 'SELL'  # Liquidated longs are sold
+                        float(item["qty"])
+                        for item in recent_liquidations
+                        if item["side"] == "SELL"  # Liquidated longs are sold
                     )
 
                     return {
@@ -503,7 +590,8 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
                         "long_liquidations": long_liquidations,
                         "short_liquidations": short_liquidations,
                         "total_liquidations": long_liquidations + short_liquidations,
-                        "ratio": long_liquidations / (short_liquidations + 1e-10)  # Prevent division by zero
+                        "ratio": long_liquidations
+                        / (short_liquidations + 1e-10),  # Prevent division by zero
                     }
 
             return None
@@ -522,9 +610,13 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         maintenance_margin_rate = 0.005  # 0.5% for BTC, adjust as needed
 
         if self.current_position > 0:  # Long position
-            liquidation_price = self.entry_price * (1 - (1 / self.leverage) + maintenance_margin_rate)
+            liquidation_price = self.entry_price * (
+                1 - (1 / self.leverage) + maintenance_margin_rate
+            )
         else:  # Short position
-            liquidation_price = self.entry_price * (1 + (1 / self.leverage) - maintenance_margin_rate)
+            liquidation_price = self.entry_price * (
+                1 + (1 / self.leverage) - maintenance_margin_rate
+            )
 
         return liquidation_price
 
@@ -532,27 +624,27 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         """Calculate position size based on account balance, leverage, and risk management."""
         # Get trading parameters
         _, qty_precision = self._get_trading_params() if self.live_trading else (8, 8)
-        
+
         # Calculate signal strength (could be modified to use actual signal strength)
         signal_strength = 1.0
-        
+
         # Use position sizer to calculate position size
         position_result = self.position_sizer.calculate_position_size(
-            account_balance=self.state[0],
+            account_balance=self.balance,
             current_price=price,
             signal_strength=signal_strength,
             volatility=self.current_volatility,
             leverage=self.leverage,
             qty_precision=qty_precision,
-            atr=self._get_atr()  # Pass ATR value for volatility-based sizing
+            atr=self._get_atr(),  # Pass ATR value for volatility-based sizing
         )
-        
+
         # Update leverage if it was changed by the position sizer
         if self.dynamic_leverage and position_result["leverage"] != self.leverage:
             self.leverage = position_result["leverage"]
-        
+
         return position_result["size_in_units"]
-        
+
     def _get_atr(self):
         """Get Average True Range for the current market."""
         if self.live_trading:
@@ -562,110 +654,142 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
                     self.client.klines(
                         symbol=self.symbol,
                         interval=self.data_fetch_interval,
-                        limit=14 + 1  # ATR needs at least 14 candles
+                        limit=14 + 1,  # ATR needs at least 14 candles
                     )
                 )
-                
-                if not klines.empty:
-                    klines = klines.iloc[:, 0:6]
-                    klines.columns = ["time", "open", "high", "low", "close", "volume"]
-                    klines = klines.astype(float)
-                    
-                    atr = ta.volatility.AverageTrueRange(
-                        klines["high"], klines["low"], klines["close"], window=14
-                    ).average_true_range().iloc[-1]
-                    
-                    return atr
+
+                if klines.empty:
+                    self.current_volatility = 0.0
+                    return
+
+                # Process klines
+                klines = klines.iloc[:, 0:6]
+                klines.columns = ["time", "open", "high", "low", "close", "volume"]
+                klines = klines.astype(float)
+
+                # Calculate returns
+                close_prices = klines["close"].values
+                returns = np.diff(np.log(close_prices))
+
+                # Calculate volatility (standard deviation of returns)
+                volatility = np.std(returns)
+
+                # Scale the volatility to a 0-1 range (approximately)
+                # High volatility is typically above 0.03-0.05 daily
+                scaled_volatility = min(1.0, volatility * 20)
+
+                self.current_volatility = scaled_volatility
+                self.volatility_history.append(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "volatility": scaled_volatility,
+                    }
+                )
             except Exception as e:
                 print(f"Error calculating ATR: {e}")
-                
+
             # Default if calculation fails
             return self._get_current_price() * 0.01  # 1% of price as default
         else:
             # For backtesting, use ATR from dataframe if available
-            if 'atr' in self.df.columns:
-                return self.df.iloc[self.current_step]['atr']
+            if "atr" in self.df.columns:
+                return self.df.iloc[self.current_step]["atr"]
             else:
-                return self.df.iloc[self.current_step]['close'] * 0.01  # 1% of price as default
+                return (
+                    self.df.iloc[self.current_step]["close"] * 0.01
+                )  # 1% of price as default
+
+    def _get_current_price(self):
+        """Get current price."""
+        if self.live_trading:
+            try:
+                ticker = self.client.ticker_price(symbol=self.symbol)
+                return float(ticker["price"])
+            except Exception as e:
+                print(f"Error getting current price: {e}")
+                return 0.0
+        else:
+            return self.df.iloc[self.current_step]["close"]
 
     def _execute_trade(self, action):
         """Execute a trade on Binance Futures using the executor module."""
         if not self.live_trading:
             # In backtest mode, trades are handled by _handle_backtesting_trade
             return
-            
+
         # Check position status first
         position_status = self.executor.check_position_status()
-        
+
         # Update internal position tracking
         self.position_status["has_open_position"] = position_status["position_open"]
-        
+
         # If position was closed by SL/TP, update trigger flags and record the trade
         if not position_status["position_open"] and position_status.get("trigger_type"):
             trigger_type = position_status["trigger_type"]
-            
+
             if trigger_type == "stop_loss":
                 self.position_status["sl_triggered"] = True
                 self.position_status["tp_triggered"] = False
             elif trigger_type == "take_profit":
                 self.position_status["sl_triggered"] = False
                 self.position_status["tp_triggered"] = True
-            
+
             # Record the trade in history
-            self.trade_history.append({
-                "timestamp": datetime.now().isoformat(),
-                "action": "close",
-                "trigger": trigger_type,
-                "position_direction": self.current_position > 0 and 1 or -1,
-                "position_size": abs(self.current_position),
-                "entry_price": self.entry_price
-            })
-            
+            self.trade_history.append(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "action": "close",
+                    "trigger": trigger_type,
+                    "position_direction": self.current_position > 0 and 1 or -1,
+                    "position_size": abs(self.current_position),
+                    "entry_price": self.entry_price,
+                }
+            )
+
             # Reset internal position tracking
             self.current_position = 0
             self.entry_price = 0
             self.unrealized_pnl = 0
-        
+
         # Skip if we already have an open position (external to our system) or if action is 0
         if self.position_status["has_open_position"] or action == 0:
             return
-        
+
         # Calculate USDT amount to allocate
         account_balance = self._get_balance_usdt()
         usdt_amount = account_balance * self.max_position
-        
+
         # Execute trade through executor
-        result = self.executor.execute_trade(
-            action=action,
-            usdt_amount=usdt_amount
-        )
-        
+        result = self.executor.execute_trade(action=action, usdt_amount=usdt_amount)
+
         # If trade was successful, update internal tracking
         if result["success"] and result["action"] not in ["hold", "error"]:
             # Update position tracking
             position_direction = 1 if result["action"] == "buy" else -1
             self.current_position = position_direction * result["quantity"]
             self.entry_price = result["price"]
-            
+
             # Update stop loss and take profit levels
             self.stop_loss = result["stop_loss"]
             self.take_profit = result["take_profit"]
-            
+
             # Update position status
             self.position_status["has_open_position"] = True
             self.position_status["sl_triggered"] = False
             self.position_status["tp_triggered"] = False
-            
+
             # Record trade in history
-            self.trade_history.append({
-                "timestamp": datetime.now().isoformat(),
-                "action": result["action"],
-                "position_direction": position_direction,
-                "position_size": result["quantity"],
-                "entry_price": result["price"],
-                "stop_loss": result["stop_loss"],
-                "take_profit": result["take_profit"]
-            })
+            self.trade_history.append(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "action": result["action"],
+                    "position_direction": position_direction,
+                    "position_size": result["quantity"],
+                    "entry_price": result["price"],
+                    "stop_loss": result["stop_loss"],
+                    "take_profit": result["take_profit"],
+                }
+            )
 
     def _handle_backtesting_trade(self, action, price):
         """Handle trade simulation in backtesting mode."""
@@ -674,23 +798,25 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
             pnl = 0
             if self.current_position < 0:
                 pnl = self.current_position * (price - self.entry_price) * self.leverage
-                self.state[0] += pnl  # Update balance
+                self.balance += pnl  # Update balance
 
                 # Record trade
-                self.trades.append({
-                    'entry_price': self.entry_price,
-                    'exit_price': price,
-                    'position': self.current_position,
-                    'pnl': pnl,
-                    'timestamp': self.date
-                })
+                self.trades.append(
+                    {
+                        "entry_price": self.entry_price,
+                        "exit_price": price,
+                        "position": self.current_position,
+                        "pnl": pnl,
+                        "timestamp": self.date,
+                    }
+                )
 
             # Calculate new position size
             position_size = self._calculate_position_size(price)
 
             # Apply trading fee
             fee = position_size * price * self.commission
-            self.state[0] -= fee
+            self.balance -= fee
 
             # Update position
             self.current_position = position_size
@@ -698,30 +824,34 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
 
             # Set stop loss and take profit
             self.stop_loss = price * (1 - self.stop_loss_percent)
-            self.take_profit = price * (1 + self.stop_loss_percent * self.risk_reward_ratio)
+            self.take_profit = price * (
+                1 + self.stop_loss_percent * self.risk_reward_ratio
+            )
 
         elif action == 2 and self.current_position >= 0:  # Sell/Short
             # Calculate PnL if closing a long
             pnl = 0
             if self.current_position > 0:
                 pnl = self.current_position * (price - self.entry_price) * self.leverage
-                self.state[0] += pnl  # Update balance
+                self.balance += pnl  # Update balance
 
                 # Record trade
-                self.trades.append({
-                    'entry_price': self.entry_price,
-                    'exit_price': price,
-                    'position': self.current_position,
-                    'pnl': pnl,
-                    'timestamp': self.date
-                })
+                self.trades.append(
+                    {
+                        "entry_price": self.entry_price,
+                        "exit_price": price,
+                        "position": self.current_position,
+                        "pnl": pnl,
+                        "timestamp": self.date,
+                    }
+                )
 
             # Calculate new position size
             position_size = self._calculate_position_size(price)
 
             # Apply trading fee
             fee = position_size * price * self.commission
-            self.state[0] -= fee
+            self.balance -= fee
 
             # Update position
             self.current_position = -position_size  # Negative for short
@@ -729,7 +859,9 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
 
             # Set stop loss and take profit
             self.stop_loss = price * (1 + self.stop_loss_percent)
-            self.take_profit = price * (1 - self.stop_loss_percent * self.risk_reward_ratio)
+            self.take_profit = price * (
+                1 - self.stop_loss_percent * self.risk_reward_ratio
+            )
 
     def step(self, action):
         """
@@ -742,14 +874,18 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
             tuple: (next_state, reward, done, truncated, info)
         """
         # Store previous state info for reward calculation
-        prev_account_value = self.state[0] + self.unrealized_pnl if hasattr(self, 'unrealized_pnl') else self.state[0]
-        
+        prev_account_value = self.balance + self.unrealized_pnl
+
         # Check for existing positions and modify action if needed
-        if self.live_trading and self.position_status["has_open_position"] and action != 0:
+        if (
+            self.live_trading
+            and self.position_status["has_open_position"]
+            and action != 0
+        ):
             # If we have an open position, force hold action
             print(f"Position already open, ignoring action {action} and forcing HOLD")
             action = 0
-        
+
         is_trade = action != 0 or self.current_position != 0
 
         # Get current data and price
@@ -758,23 +894,32 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
             self._update_market_data()
             current_price = float(self.client.ticker_price(self.symbol)["price"])
         else:
-            # Call the parent class step method to update state
+            # In backtesting mode, move to next step
             self.current_step += 1
-            if self.current_step >= len(self.df.index.unique()) - 1:
+            if self.current_step >= len(self.df.index) - 1:
                 # End of data
                 return self.state, 0, True, False, {"status": "Terminal state reached"}
 
             current_price = self.df.iloc[self.current_step]["close"]
-            self.date = self.df.index[self.current_step]
+            if isinstance(self.df.index, pd.DatetimeIndex):
+                self.date = self.df.index[self.current_step]
+            else:
+                self.date = None
 
             # For backtesting, try to get funding rate from data if available
-            if 'funding_rate' in self.df.columns:
-                self.current_funding_rate = self.df.iloc[self.current_step]["funding_rate"]
+            if "funding_rate" in self.df.columns:
+                self.current_funding_rate = self.df.iloc[self.current_step][
+                    "funding_rate"
+                ]
 
             # For backtesting, try to get open interest from data if available
-            if 'open_interest' in self.df.columns:
+            if "open_interest" in self.df.columns:
                 new_oi = self.df.iloc[self.current_step]["open_interest"]
-                self.open_interest_change = (new_oi - self.current_open_interest) / self.current_open_interest if self.current_open_interest > 0 else 0
+                self.open_interest_change = (
+                    (new_oi - self.current_open_interest) / self.current_open_interest
+                    if self.current_open_interest > 0
+                    else 0
+                )
                 self.current_open_interest = new_oi
 
             # Check for stop loss or take profit hit
@@ -797,10 +942,16 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         # Calculate unrealized PnL before the action
         old_unrealized_pnl = 0
         if self.current_position != 0:
-            old_unrealized_pnl = self.current_position * (current_price - self.entry_price) * self.leverage
+            old_unrealized_pnl = (
+                self.current_position
+                * (current_price - self.entry_price)
+                * self.leverage
+            )
 
         # Position direction before action
-        old_position_direction = 1 if self.current_position > 0 else (-1 if self.current_position < 0 else 0)
+        old_position_direction = (
+            1 if self.current_position > 0 else (-1 if self.current_position < 0 else 0)
+        )
 
         # Execute the action
         if self.live_trading:
@@ -810,15 +961,25 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
 
         # Calculate new unrealized PnL
         if self.current_position != 0:
-            self.unrealized_pnl = self.current_position * (current_price - self.entry_price) * self.leverage
+            self.unrealized_pnl = (
+                self.current_position
+                * (current_price - self.entry_price)
+                * self.leverage
+            )
         else:
             self.unrealized_pnl = 0
 
         # Calculate realized PnL from trade execution
-        realized_pnl = old_unrealized_pnl if action != 0 and old_position_direction != 0 else 0
+        realized_pnl = (
+            old_unrealized_pnl if action != 0 and old_position_direction != 0 else 0
+        )
 
         # Transaction cost (simplified)
-        transaction_cost = abs(self.current_position) * current_price * self.commission if action != 0 else 0
+        transaction_cost = (
+            abs(self.current_position) * current_price * self.commission
+            if action != 0
+            else 0
+        )
 
         # Update state with new market data
         if not self.live_trading:
@@ -829,12 +990,15 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
             self._update_live_state()
 
         # Calculate account value
-        account_value = self.state[0] + self.unrealized_pnl
+        account_value = self.balance + self.unrealized_pnl
 
         # Calculate max account value for drawdown
-        max_account_value = max(account_value, getattr(self, "max_account_value", account_value))
-        self.max_account_value = max_account_value
-        drawdown = (max_account_value - account_value) / max_account_value if max_account_value > 0 else 0
+        self.max_account_value = max(account_value, self.max_account_value)
+        drawdown = (
+            (self.max_account_value - account_value) / self.max_account_value
+            if self.max_account_value > 0
+            else 0
+        )
 
         # Calculate liquidation price
         liquidation_price = self._calculate_liquidation_price()
@@ -842,9 +1006,13 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         # Prepare info dictionary with enhanced data
         info = {
             "account_value": account_value,
-            "balance": self.state[0],
+            "balance": self.balance,
             "position": self.current_position,
-            "position_direction": 1 if self.current_position > 0 else (-1 if self.current_position < 0 else 0),
+            "position_direction": (
+                1
+                if self.current_position > 0
+                else (-1 if self.current_position < 0 else 0)
+            ),
             "entry_price": self.entry_price,
             "current_price": current_price,
             "realized_pnl": realized_pnl,
@@ -860,16 +1028,18 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
             "is_trade": is_trade,
             "transaction_cost": transaction_cost,
             "date": self.date if not self.live_trading else datetime.now(),
-            "new_balance": account_value
+            "new_balance": account_value,
         }
-        
+
         # Add position status for live trading
         if self.live_trading:
-            info.update({
-                "has_open_position": self.position_status["has_open_position"],
-                "sl_triggered": self.position_status["sl_triggered"],
-                "tp_triggered": self.position_status["tp_triggered"]
-            })
+            info.update(
+                {
+                    "has_open_position": self.position_status["has_open_position"],
+                    "sl_triggered": self.position_status["sl_triggered"],
+                    "tp_triggered": self.position_status["tp_triggered"],
+                }
+            )
 
         # Calculate reward
         if self.use_risk_adjusted_rewards:
@@ -878,11 +1048,15 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
                 state=self.state,
                 action=action,
                 next_state=self.state,  # Not actually used in our implementation
-                info=info
+                info=info,
             )
         else:
             # Simple reward based on PnL difference
-            reward = self.unrealized_pnl - old_unrealized_pnl
+            reward = (
+                self.unrealized_pnl - old_unrealized_pnl
+                if realized_pnl == 0
+                else realized_pnl
+            )
 
             # Apply risk-adjustment to reward: penalize for high drawdowns
             drawdown_penalty = 1.0 - drawdown
@@ -893,12 +1067,12 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         truncated = False
 
         # Bankruptcy check - if account value is too low
-        if account_value <= self.initial_amount * 0.1:  # 90% loss
+        if account_value <= self.initial_balance * 0.1:  # 90% loss
             done = True
             reward -= 100  # Extra penalty for bankruptcy
 
         # End of data check for backtesting
-        if not self.live_trading and self.current_step >= len(self.df.index.unique()) - 1:
+        if not self.live_trading and self.current_step >= len(self.df) - 1:
             done = True
 
         return self.state, reward, done, truncated, info
@@ -907,26 +1081,35 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         """Update the state with current market data and account information."""
         if not self.live_trading:
             # For backtesting, get data from the dataframe
-            data = self.df.iloc[self.current_step - self.window_size + 1:self.current_step + 1].copy()
+            data = self.df.iloc[
+                self.current_step - self.window_size + 1 : self.current_step + 1
+            ].copy()
 
             # Make sure we have window_size rows
             if len(data) < self.window_size:
-                padding = self.window_size - len(data)
-                padded_data = data.iloc[0:padding].copy()
-                data = pd.concat([padded_data, data])
+                # If we don't have enough rows, prepend the first row multiple times
+                missing_rows = self.window_size - len(data)
+                padding = pd.concat([data.iloc[[0]]] * missing_rows)
+                data = pd.concat([padding, data])
 
             # Extract features
             price_features = data.values
 
             # Add account information
-            balance = np.ones(self.window_size) * self.state[0]
+            balance = np.ones(self.window_size) * self.balance
             position = np.ones(self.window_size) * self.current_position
             unrealized_pnl = np.ones(self.window_size) * self.unrealized_pnl
 
-            # Combine into state
-            self.state = np.column_stack((price_features, balance.reshape(-1, 1),
-                                         position.reshape(-1, 1),
-                                         unrealized_pnl.reshape(-1, 1)))
+            # Combine into state and ensure it's float32
+            combined_data = np.column_stack(
+                (
+                    price_features,
+                    balance.reshape(-1, 1),
+                    position.reshape(-1, 1),
+                    unrealized_pnl.reshape(-1, 1),
+                )
+            )
+            self.state = combined_data.astype(np.float32)
 
         else:
             # For live trading, fetch data from Binance API
@@ -940,7 +1123,7 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
                 self.client.klines(
                     symbol=self.symbol,
                     interval=self.data_fetch_interval,
-                    limit=self.window_size
+                    limit=self.window_size,
                 )
             )
 
@@ -960,14 +1143,20 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
             feature_data = indicators_df.values
 
             # 4. Add account information
-            balance = np.ones(self.window_size) * self._get_balance_usdt()
+            balance = np.ones(self.window_size) * self.balance
             position = np.ones(self.window_size) * self.current_position
             unrealized_pnl = np.ones(self.window_size) * self.unrealized_pnl
 
-            # 5. Combine into state
-            self.state = np.column_stack((feature_data, balance.reshape(-1, 1),
-                                         position.reshape(-1, 1),
-                                         unrealized_pnl.reshape(-1, 1)))
+            # 5. Combine into state and ensure it's float32
+            combined_data = np.column_stack(
+                (
+                    feature_data,
+                    balance.reshape(-1, 1),
+                    position.reshape(-1, 1),
+                    unrealized_pnl.reshape(-1, 1),
+                )
+            )
+            self.state = combined_data.astype(np.float32)
 
             # Update date for reference
             self.date = datetime.now()
@@ -982,39 +1171,39 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         # Add basic indicators
         try:
             # MACD
-            macd = ta.trend.MACD(df['close'])
-            df['macd'] = macd.macd()
-            df['macd_signal'] = macd.macd_signal()
-            df['macd_diff'] = macd.macd_diff()
+            macd = ta.trend.MACD(df["close"])
+            df["macd"] = macd.macd()
+            df["macd_signal"] = macd.macd_signal()
+            df["macd_diff"] = macd.macd_diff()
 
             # RSI
-            df['rsi'] = ta.momentum.RSIIndicator(df['close']).rsi()
+            df["rsi"] = ta.momentum.RSIIndicator(df["close"]).rsi()
 
             # Bollinger Bands
-            bollinger = ta.volatility.BollingerBands(df['close'])
-            df['bb_high'] = bollinger.bollinger_hband()
-            df['bb_mid'] = bollinger.bollinger_mavg()
-            df['bb_low'] = bollinger.bollinger_lband()
+            bollinger = ta.volatility.BollingerBands(df["close"])
+            df["bb_high"] = bollinger.bollinger_hband()
+            df["bb_mid"] = bollinger.bollinger_mavg()
+            df["bb_low"] = bollinger.bollinger_lband()
 
             # EMA
-            df['ema_50'] = ta.trend.ema_indicator(df['close'], window=50)
-            df['ema_200'] = ta.trend.ema_indicator(df['close'], window=200)
+            df["ema_50"] = ta.trend.ema_indicator(df["close"], window=50)
+            df["ema_200"] = ta.trend.ema_indicator(df["close"], window=200)
 
             # ATR (Average True Range) - volatility indicator
-            df['atr'] = ta.volatility.AverageTrueRange(
-                df['high'], df['low'], df['close'], window=14
+            df["atr"] = ta.volatility.AverageTrueRange(
+                df["high"], df["low"], df["close"], window=14
             ).average_true_range()
 
             # Add market data if available
             if self.include_funding_rate:
-                df['funding_rate'] = self.current_funding_rate
+                df["funding_rate"] = self.current_funding_rate
 
             if self.include_open_interest:
-                df['open_interest'] = self.current_open_interest
-                df['open_interest_change'] = self.open_interest_change
+                df["open_interest"] = self.current_open_interest
+                df["open_interest_change"] = self.open_interest_change
 
             # Fill NaN values that may result from indicators that need longer lookbacks
-            df.fillna(method='ffill', inplace=True)
+            df = df.ffill()
             df.fillna(0, inplace=True)
 
             return df
@@ -1036,21 +1225,27 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         self.current_position = 0
         self.entry_price = 0
         self.unrealized_pnl = 0
-        self.stop_loss = None
-        self.take_profit = None
-        
+        self.max_account_value = self.initial_balance
+        self.balance = self.initial_balance
+
         # Reset position status for live trading
         if self.live_trading:
             # Check for any open positions on reset
-            if hasattr(self, 'executor'):
+            if hasattr(self, "executor"):
                 position_status = self.executor.check_position_status()
-                self.position_status["has_open_position"] = position_status["position_open"]
-                
+                self.position_status["has_open_position"] = position_status[
+                    "position_open"
+                ]
+
                 # If there's an open position, we need to sync our state with it
                 if self.position_status["has_open_position"]:
-                    self.current_position = position_status.get("position_size", 0) * position_status.get("position_direction", 0)
+                    self.current_position = position_status.get(
+                        "position_size", 0
+                    ) * position_status.get("position_direction", 0)
                     self.entry_price = position_status.get("entry_price", 0)
-                    print(f"Reset with existing position: {self.current_position} @ {self.entry_price}")
+                    print(
+                        f"Reset with existing position: {self.current_position} @ {self.entry_price}"
+                    )
                 else:
                     self.position_status["sl_triggered"] = False
                     self.position_status["tp_triggered"] = False
@@ -1065,8 +1260,11 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
                     self.window_size, len(self.df) - 100
                 )
 
-            # Set initial date
-            self.date = self.df.index[self.current_step]
+            # Set initial date if index is datetime
+            if isinstance(self.df.index, pd.DatetimeIndex):
+                self.date = self.df.index[self.current_step]
+            else:
+                self.date = None
 
             # Reset state
             self._update_state()
@@ -1075,12 +1273,15 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         else:
             # For live trading, initialize with current market data
             # Fetch initial data and set state
-            # This would involve getting OHLCV data from Binance API
+            self._update_live_state()
             info = {"status": "Live environment reset"}
-            return np.zeros((self.window_size, self.observation_space.shape[1])), info
+            return self.state, info
 
     def render(self):
         """Render the environment state."""
+        if self.render_mode != "human":
+            return
+
         if self.current_position == 0:
             position_type = "FLAT"
         elif self.current_position > 0:
@@ -1088,16 +1289,20 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
         else:
             position_type = "SHORT"
 
-        print(f"Date: {self.date if hasattr(self, 'date') else datetime.now()}")
-        print(f"Balance: {self.state[0]:.2f} USDT")
-        print(f"Position: {abs(self.current_position):.8f} {self.symbol} {position_type}")
+        print(
+            f"Date: {self.date if hasattr(self, 'date') and self.date is not None else datetime.now()}"
+        )
+        print(f"Balance: {self.balance:.2f} USDT")
+        print(
+            f"Position: {abs(self.current_position):.8f} {self.symbol} {position_type}"
+        )
         print(f"Entry Price: {self.entry_price:.2f} USDT")
         print(f"Unrealized PnL: {self.unrealized_pnl:.2f} USDT")
         print(f"Total Trades: {len(self.trades)}")
 
         # Calculate win rate
         if len(self.trades) > 0:
-            winning_trades = sum(1 for trade in self.trades if trade['pnl'] > 0)
+            winning_trades = sum(1 for trade in self.trades if trade["pnl"] > 0)
             win_rate = winning_trades / len(self.trades)
             print(f"Win Rate: {win_rate:.2%}")
 
@@ -1105,49 +1310,6 @@ class BinanceFuturesCryptoEnv(CryptoEnv):
             print(f"Stop Loss: {self.stop_loss:.2f} USDT")
             print(f"Take Profit: {self.take_profit:.2f} USDT")
 
-
-def prepare_crypto_data(start_date, end_date, symbol="BTCUSDT", interval="15m", indicators=None):
-    """
-    Prepare cryptocurrency data for the trading environment.
-
-    Args:
-        start_date: Start date for data fetching
-        end_date: End date for data fetching
-        symbol: Trading pair symbol
-        interval: Kline interval
-        indicators: List of indicator names to calculate
-
-    Returns:
-        DataFrame with OHLCV data and indicators
-    """
-    from finrl.meta.data_processors.processor_binance import BinanceProcessor
-
-    # Initialize data processor
-    processor = BinanceProcessor()
-
-    # Download data
-    df = processor.download_data(
-        start_date=start_date,
-        end_date=end_date,
-        ticker_list=[symbol],
-        time_interval=interval
-    )
-
-    # Add indicators
-    if indicators is None:
-        indicators = INDICATORS  # Default indicators from FinRL
-
-    fe = FeatureEngineer(
-        use_technical_indicator=True,
-        tech_indicator_list=indicators,
-        use_vix=False,
-        use_turbulence=False,
-        user_defined_feature=False
-    )
-
-    processed_df = fe.preprocess_data(df)
-
-    # Make sure the index is datetime
-    processed_df.index = pd.to_datetime(processed_df.index)
-
-    return processed_df
+    def close(self):
+        """Close the environment, releasing resources."""
+        pass

@@ -7,8 +7,12 @@ name = "pypi"
 binance-futures-connector = "*"
 polars = "*"
 pandas = "*"
-ta = "*"
 finrl = "*"
+exchange-calendars = "*"
+stockstats = "*"
+wrds = "*"
+ta = "*"
+tqdm = "*"
 
 [dev-packages]
 

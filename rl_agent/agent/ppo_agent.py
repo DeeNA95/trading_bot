@@ -1,7 +1,7 @@
 """
 Proximal Policy Optimization (PPO) agent for reinforcement learning in trading environments.
 
-This module implements a PPO agent that can be used to train a trading policy 
+This module implements a PPO agent that can be used to train a trading policy
 using various neural network architectures (CNN, LSTM, Transformer).
 """
 
@@ -16,6 +16,7 @@ import os
 from typing import Dict, List, Tuple, Optional, Union, Any
 from collections import deque
 import gymnasium as gym
+from tqdm import tqdm
 
 from .models import ActorCriticCNN, ActorCriticLSTM, ActorCriticTransformer
 
@@ -24,14 +25,14 @@ class PPOMemory:
     """
     Memory buffer for PPO algorithm to store experiences during training.
     """
-    
+
     def __init__(
-        self, 
+        self,
         batch_size: int
     ):
         """
         Initialize PPO memory buffer.
-        
+
         Args:
             batch_size: Batch size for sampling
         """
@@ -41,21 +42,21 @@ class PPOMemory:
         self.vals = []
         self.rewards = []
         self.dones = []
-        
+
         self.batch_size = batch_size
-    
+
     def store(
-        self, 
-        state: np.ndarray, 
-        action: int, 
-        probs: float, 
-        vals: float, 
-        reward: float, 
+        self,
+        state: np.ndarray,
+        action: int,
+        probs: float,
+        vals: float,
+        reward: float,
         done: bool
     ) -> None:
         """
         Store a transition in the buffer.
-        
+
         Args:
             state: Current state
             action: Action taken
@@ -70,7 +71,7 @@ class PPOMemory:
         self.vals.append(vals)
         self.rewards.append(reward)
         self.dones.append(done)
-    
+
     def clear(self) -> None:
         """Clear the memory buffer."""
         self.states = []
@@ -79,11 +80,11 @@ class PPOMemory:
         self.vals = []
         self.rewards = []
         self.dones = []
-    
+
     def generate_batches(self) -> Tuple[List[np.ndarray], ...]:
         """
         Generate batches of experiences for training.
-        
+
         Returns:
             Tuple of lists containing batched states, actions, old_probs, vals, rewards, dones, batches
         """
@@ -92,7 +93,7 @@ class PPOMemory:
         indices = np.arange(n_states, dtype=np.int64)
         np.random.shuffle(indices)
         batches = [indices[i:i+self.batch_size] for i in batch_start]
-        
+
         return (
             np.array(self.states),
             np.array(self.actions),
@@ -107,11 +108,11 @@ class PPOMemory:
 class PPOAgent:
     """
     Proximal Policy Optimization (PPO) agent for trading.
-    
-    This agent implements the PPO algorithm with clipped objective for 
+
+    This agent implements the PPO algorithm with clipped objective for
     training trading strategies in cryptocurrency markets.
     """
-    
+
     def __init__(
         self,
         env: gym.Env,
@@ -133,7 +134,7 @@ class PPOAgent:
     ):
         """
         Initialize the PPO agent.
-        
+
         Args:
             env: Gymnasium environment to train on
             model_type: Type of model to use ('cnn', 'lstm', 'transformer')
@@ -156,7 +157,7 @@ class PPOAgent:
         self.env = env
         self.input_shape = (env.window_size, env.observation_space.shape[1])
         self.action_dim = env.action_space.n
-        
+
         # Agent parameters
         self.lr = lr
         self.gamma = gamma
@@ -169,11 +170,11 @@ class PPOAgent:
         self.max_grad_norm = max_grad_norm
         self.use_gae = use_gae
         self.normalize_advantage = normalize_advantage
-        
+
         # Save path
         self.save_dir = save_dir
         os.makedirs(save_dir, exist_ok=True)
-        
+
         # Determine device
         if device == 'auto':
             if torch.cuda.is_available():
@@ -184,7 +185,7 @@ class PPOAgent:
                 self.device = torch.device('cpu')
         else:
             self.device = torch.device(device)
-        
+
         # Initialize actor-critic model
         if model_type.lower() == 'cnn':
             self.model = ActorCriticCNN(
@@ -209,59 +210,59 @@ class PPOAgent:
             )
         else:
             raise ValueError(f"Unknown model type: {model_type}")
-        
+
         # Optimizer
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
-        
+
         # Memory buffer
         self.memory = PPOMemory(batch_size)
-        
+
         # Training metrics
         self.policy_loss_history = []
         self.value_loss_history = []
         self.entropy_history = []
         self.reward_history = []
-        
+
         # Logger
         self.logger = logging.getLogger('PPOAgent')
         self.logger.setLevel(logging.INFO)
-        
+
         # Best model tracking
         self.best_reward = -float('inf')
-    
+
     def choose_action(self, state: np.ndarray) -> Tuple[int, np.ndarray, float]:
         """
         Choose an action based on the current state.
-        
+
         Args:
             state: Current environment state
-            
+
         Returns:
             Tuple of (action, action probabilities, value)
         """
         # Convert state to tensor
         state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        
+
         # Get action probabilities and value from model
         with torch.no_grad():
             if isinstance(self.model, ActorCriticLSTM):
                 logits, value = self.model(state_tensor, reset_hidden=False)
             else:
                 logits, value = self.model(state_tensor)
-            
+
             # Get action probabilities
             action_probs = torch.softmax(logits, dim=-1)
             dist = Categorical(action_probs)
-            
+
             # Sample action
             action = dist.sample().item()
-            
+
             # Get action probability and value
             action_prob = action_probs[0, action].item()
             value = value.item()
-        
+
         return action, action_prob, value
-    
+
     def evaluate_actions(
         self,
         states: torch.Tensor,
@@ -269,11 +270,11 @@ class PPOAgent:
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Evaluate the log probabilities, values, and entropy of actions.
-        
+
         Args:
             states: Batch of states
             actions: Batch of actions
-            
+
         Returns:
             Tuple of (action log probabilities, values, entropy)
         """
@@ -282,38 +283,38 @@ class PPOAgent:
             logits, values = self.model(states, reset_hidden=True)
         else:
             logits, values = self.model(states)
-        
+
         # Get action probabilities
         action_probs = torch.softmax(logits, dim=-1)
         dist = Categorical(action_probs)
-        
+
         # Get log probabilities of actions
         action_log_probs = dist.log_prob(actions)
-        
+
         # Get entropy
         entropy = dist.entropy()
-        
+
         return action_log_probs, values.squeeze(), entropy
-    
+
     def update(self) -> Dict[str, float]:
         """
         Update the policy and value networks using PPO.
-        
+
         Returns:
             Dictionary of training metrics
         """
         # Generate batches of experiences
         states, actions, old_probs, values, rewards, dones, batches = self.memory.generate_batches()
-        
+
         # Convert to tensors
         states = torch.FloatTensor(states).to(self.device)
         actions = torch.LongTensor(actions).to(self.device)
         old_probs = torch.FloatTensor(old_probs).to(self.device)
         values = torch.FloatTensor(values).to(self.device)
-        
+
         # Compute advantages using GAE (Generalized Advantage Estimation)
         advantages = np.zeros(len(rewards), dtype=np.float32)
-        
+
         if self.use_gae:
             # GAE calculation
             last_gae = 0
@@ -322,7 +323,7 @@ class PPOAgent:
                     next_value = 0
                 else:
                     next_value = values[t + 1]
-                
+
                 delta = rewards[t] + self.gamma * next_value * (1 - dones[t]) - values[t]
                 last_gae = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * last_gae
                 advantages[t] = last_gae
@@ -337,30 +338,40 @@ class PPOAgent:
                     if dones[k]:
                         break
                 advantages[t] = a_t - values[t]
-        
+
         advantages = torch.FloatTensor(advantages).to(self.device)
-        
+
         # Normalize advantages
         if self.normalize_advantage and len(advantages) > 1:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        
+
         # PPO update for n_epochs
         total_policy_loss = 0
         total_value_loss = 0
         total_entropy = 0
+
+        # Create progress bar for update epochs
+        epoch_pbar = tqdm(range(self.n_epochs), desc="PPO Update", leave=False)
         
-        for _ in range(self.n_epochs):
+        for _ in epoch_pbar:
+            batch_policy_loss = 0
+            batch_value_loss = 0
+            batch_entropy = 0
+            
+            # Create progress bar for batches
+            batch_pbar = tqdm(batches, desc="Batches", leave=False)
+            
             # Iterate over batches
-            for batch in batches:
+            for batch in batch_pbar:
                 # Evaluate actions
                 new_log_probs, new_values, entropy = self.evaluate_actions(
                     states[batch],
                     actions[batch]
                 )
-                
+
                 # Calculate ratio of new and old probabilities
                 prob_ratio = torch.exp(new_log_probs - torch.log(old_probs[batch]))
-                
+
                 # Clipped surrogate objective
                 weighted_probs = advantages[batch] * prob_ratio
                 weighted_clipped_probs = advantages[batch] * torch.clamp(
@@ -368,56 +379,76 @@ class PPOAgent:
                     1.0 - self.policy_clip,
                     1.0 + self.policy_clip
                 )
-                
+
                 # Policy loss (negative because we want to maximize rewards)
                 policy_loss = -torch.min(weighted_probs, weighted_clipped_probs).mean()
-                
+
                 # Value loss
                 returns = advantages[batch] + values[batch]
                 value_loss = torch.nn.functional.mse_loss(new_values, returns)
-                
+
                 # Entropy bonus for exploration
                 entropy_loss = entropy.mean()
-                
+
                 # Total loss
                 loss = (
                     policy_loss
                     + self.value_coef * value_loss
                     - self.entropy_coef * entropy_loss  # Minus because we want to maximize entropy
                 )
-                
+
                 # Optimize
                 self.optimizer.zero_grad()
                 loss.backward()
-                
+
                 # Clip gradients
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
-                
+
                 self.optimizer.step()
+
+                # Update batch metrics
+                batch_policy_loss += policy_loss.item()
+                batch_value_loss += value_loss.item()
+                batch_entropy += entropy_loss.item()
                 
-                total_policy_loss += policy_loss.item()
-                total_value_loss += value_loss.item()
-                total_entropy += entropy_loss.item()
-        
+                # Update batch progress bar
+                batch_pbar.set_postfix({
+                    'policy_loss': f"{policy_loss.item():.4f}",
+                    'value_loss': f"{value_loss.item():.4f}"
+                })
+            
+            # Update total metrics
+            total_policy_loss += batch_policy_loss
+            total_value_loss += batch_value_loss
+            total_entropy += batch_entropy
+            
+            # Update epoch progress bar
+            avg_policy_loss_epoch = batch_policy_loss / len(batches)
+            avg_value_loss_epoch = batch_value_loss / len(batches)
+            epoch_pbar.set_postfix({
+                'policy_loss': f"{avg_policy_loss_epoch:.4f}",
+                'value_loss': f"{avg_value_loss_epoch:.4f}"
+            })
+
         # Clear memory
         self.memory.clear()
-        
+
         # Compute average losses
         avg_policy_loss = total_policy_loss / (self.n_epochs * len(batches))
         avg_value_loss = total_value_loss / (self.n_epochs * len(batches))
         avg_entropy = total_entropy / (self.n_epochs * len(batches))
-        
+
         # Store metrics
         self.policy_loss_history.append(avg_policy_loss)
         self.value_loss_history.append(avg_value_loss)
         self.entropy_history.append(avg_entropy)
-        
+
         return {
             'policy_loss': avg_policy_loss,
             'value_loss': avg_value_loss,
             'entropy': avg_entropy
         }
-    
+
     def train(
         self,
         num_episodes: int,
@@ -430,7 +461,7 @@ class PPOAgent:
     ) -> Dict[str, List[float]]:
         """
         Train the agent.
-        
+
         Args:
             num_episodes: Number of episodes to train for
             max_steps: Maximum number of steps per episode
@@ -439,19 +470,22 @@ class PPOAgent:
             save_freq: Frequency of saving the model
             eval_freq: Frequency of evaluating the model
             num_eval_episodes: Number of episodes to evaluate on
-            
+
         Returns:
             Dictionary of training history
         """
         start_time = time.time()
-        
+
         # Training metrics
         total_steps = 0
         best_eval_reward = -float('inf')
         episode_rewards = []
-        
+
         self.logger.info(f"Starting training for {num_episodes} episodes...")
         self.logger.info(f"Device: {self.device}")
+
+        # Create progress bar
+        pbar = tqdm(total=num_episodes, desc="Training Progress")
         
         for episode in range(1, num_episodes + 1):
             # Reset environment
@@ -460,27 +494,37 @@ class PPOAgent:
             truncated = False
             episode_reward = 0
             step = 0
-            
+
             # Reset LSTM hidden state if using LSTM
             if isinstance(self.model, ActorCriticLSTM):
                 self.model.reset_hidden_state()
+
+            # Create episode step progress bar
+            episode_pbar = tqdm(total=max_steps, desc=f"Episode {episode}", leave=False)
             
             while not (done or truncated) and step < max_steps:
                 # Choose action
                 action, action_prob, value = self.choose_action(state)
-                
+
                 # Take step in environment
                 next_state, reward, done, truncated, _ = self.env.step(action)
-                
+
                 # Store transition in memory
                 self.memory.store(state, action, action_prob, value, reward, done)
-                
+
                 # Update state and metrics
                 state = next_state
                 episode_reward += reward
                 total_steps += 1
                 step += 1
                 
+                # Update episode progress bar
+                episode_pbar.update(1)
+                episode_pbar.set_postfix({
+                    'reward': f"{episode_reward:.2f}",
+                    'action': action
+                })
+
                 # Update policy if memory is full
                 if total_steps % update_freq == 0:
                     update_metrics = self.update()
@@ -490,11 +534,20 @@ class PPOAgent:
                         f"value_loss={update_metrics['value_loss']:.4f}, "
                         f"entropy={update_metrics['entropy']:.4f}"
                     )
+                    # Update main progress bar postfix with update metrics
+                    pbar.set_postfix({
+                        'policy_loss': f"{update_metrics['policy_loss']:.4f}",
+                        'value_loss': f"{update_metrics['value_loss']:.4f}",
+                        'entropy': f"{update_metrics['entropy']:.4f}"
+                    })
+
+            # Close episode progress bar
+            episode_pbar.close()
             
             # Store episode reward
             episode_rewards.append(episode_reward)
             self.reward_history.append(episode_reward)
-            
+
             # Log episode metrics
             if episode % log_freq == 0:
                 avg_reward = np.mean(episode_rewards[-log_freq:])
@@ -505,7 +558,12 @@ class PPOAgent:
                     f"Steps: {total_steps}, "
                     f"Time: {elapsed_time:.2f}s"
                 )
-            
+                # Update main progress bar with reward info
+                pbar.set_postfix({
+                    'avg_reward': f"{avg_reward:.2f}",
+                    'steps': total_steps
+                })
+
             # Evaluate model
             if episode % eval_freq == 0:
                 eval_reward = self.evaluate(num_eval_episodes)
@@ -513,7 +571,11 @@ class PPOAgent:
                     f"Evaluation at episode {episode}: "
                     f"Mean reward: {eval_reward:.2f}"
                 )
-                
+                # Update main progress bar with eval info
+                pbar.set_postfix({
+                    'eval_reward': f"{eval_reward:.2f}"
+                })
+
                 # Save best model
                 if eval_reward > best_eval_reward:
                     best_eval_reward = eval_reward
@@ -521,14 +583,23 @@ class PPOAgent:
                     self.logger.info(
                         f"New best model with evaluation reward: {best_eval_reward:.2f}"
                     )
-            
+                    pbar.set_postfix({
+                        'best_reward': f"{best_eval_reward:.2f}"
+                    })
+
             # Save checkpoint
             if episode % save_freq == 0:
                 self.save(os.path.join(self.save_dir, f'model_ep{episode}.pt'))
+            
+            # Update main progress bar
+            pbar.update(1)
+
+        # Close main progress bar
+        pbar.close()
         
         # Save final model
         self.save(os.path.join(self.save_dir, 'final_model.pt'))
-        
+
         # Return training history
         return {
             'rewards': self.reward_history,
@@ -536,90 +607,115 @@ class PPOAgent:
             'value_loss': self.value_loss_history,
             'entropy': self.entropy_history
         }
-    
+
     def evaluate(self, num_episodes: int = 10) -> float:
         """
         Evaluate the agent.
-        
+
         Args:
             num_episodes: Number of episodes to evaluate on
-            
+
         Returns:
             Mean reward over evaluation episodes
         """
         total_rewards = []
+
+        # Create progress bar for evaluation
+        eval_pbar = tqdm(range(num_episodes), desc="Evaluating", leave=False)
         
-        for _ in range(num_episodes):
+        for i in eval_pbar:
             state, _ = self.env.reset()
             done = False
             truncated = False
             episode_reward = 0
-            
+            step = 0
+
             # Reset LSTM hidden state if using LSTM
             if isinstance(self.model, ActorCriticLSTM):
                 self.model.reset_hidden_state()
-            
+
             while not (done or truncated):
                 # Choose action (no exploration)
                 with torch.no_grad():
                     state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-                    
+
                     if isinstance(self.model, ActorCriticLSTM):
                         logits, _ = self.model(state_tensor, reset_hidden=False)
                     else:
                         logits, _ = self.model(state_tensor)
-                        
+
                     action_probs = torch.softmax(logits, dim=-1)
                     action = torch.argmax(action_probs, dim=1).item()
-                
+
                 # Take step in environment
                 state, reward, done, truncated, _ = self.env.step(action)
                 episode_reward += reward
-            
+                step += 1
+                
+                # Update progress bar
+                eval_pbar.set_postfix({
+                    'ep': i+1,
+                    'reward': f"{episode_reward:.2f}",
+                    'steps': step
+                })
+
             total_rewards.append(episode_reward)
-        
+            
+            # Update progress bar with final episode reward
+            eval_pbar.set_postfix({
+                'ep': i+1,
+                'reward': f"{episode_reward:.2f}",
+                'steps': step
+            })
+
         mean_reward = np.mean(total_rewards)
         return mean_reward
-    
+
     def save(self, path: str) -> None:
         """
         Save the agent to disk.
-        
+
         Args:
             path: Path to save the agent to
         """
         # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        
+
         # Save model
         torch.save({
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'model_type': self.model.__class__.__name__,
+            'architecture': self.model.__class__.__name__,
+            'timestamp': time.strftime("%Y%m%d-%H%M%S"),
             'reward_history': self.reward_history,
             'policy_loss_history': self.policy_loss_history,
             'value_loss_history': self.value_loss_history,
             'entropy_history': self.entropy_history,
         }, path)
-    
+
     def load(self, path: str) -> None:
         """
         Load the agent from disk.
-        
+
         Args:
             path: Path to load the agent from
         """
         # Load checkpoint
-        checkpoint = torch.load(path, map_location=self.device)
-        
+        try:
+            # First try with weights_only=False (for backward compatibility)
+            checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        except Exception as e:
+            print(f"Warning: Could not load with weights_only=False, trying with weights_only=True: {e}")
+            # If that fails, try with weights_only=True
+            checkpoint = torch.load(path, map_location=self.device, weights_only=True)
+
         # Load model
         self.model.load_state_dict(checkpoint['model_state_dict'])
-        
-        # Load optimizer
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        
-        # Load history
-        self.reward_history = checkpoint.get('reward_history', [])
-        self.policy_loss_history = checkpoint.get('policy_loss_history', [])
-        self.value_loss_history = checkpoint.get('value_loss_history', [])
-        self.entropy_history = checkpoint.get('entropy_history', [])
+
+        # Load optimizer if available
+        if 'optimizer_state_dict' in checkpoint:
+            try:
+                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            except Exception as e:
+                print(f"Warning: Could not load optimizer state: {e}")

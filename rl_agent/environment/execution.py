@@ -4,40 +4,48 @@ Trade execution logic for Binance Futures.
 This module handles the execution of trades on Binance Futures, including
 position entry, stop-loss, and take-profit orders.
 """
-
-import time
+import os
 import logging
-from typing import Dict, Optional, Any, Tuple, List
+import time
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
 from binance.um_futures import UMFutures
-from datetime import datetime
-
-
+from dotenv import load_dotenv
+load_dotenv()
+API = os.getenv("binance_api2")
+SECRET = os.getenv('binance_secret2')
 class BinanceFuturesExecutor:
     """
     Executes and tracks trades on Binance Futures with proper risk management.
-    
+
     This class encapsulates the logic for:
     - Opening positions with appropriate leverage and margin
     - Setting stop-loss and take-profit orders
     - Tracking open positions and orders
     - Handling position exits and cleanup
     """
-    
+
     def __init__(
         self,
-        client: UMFutures,
+        client: UMFutures = UMFutures(
+            base_url="https://fapi.binance.com",
+            key = API,
+            secret = SECRET
+
+            ),
         symbol: str = "BTCUSDT",
         leverage: int = 2,
         margin_type: str = "ISOLATED",
         risk_reward_ratio: float = 1.5,
         stop_loss_percent: float = 0.01,
         recv_window: int = 6000,
-        dry_run: bool = False
+        dry_run: bool = False,
     ):
         """
         Initialize the Binance Futures trade executor.
-        
+
         Args:
             client: Binance UMFutures client instance
             symbol: Trading pair symbol
@@ -56,108 +64,110 @@ class BinanceFuturesExecutor:
         self.stop_loss_percent = stop_loss_percent
         self.recv_window = recv_window
         self.dry_run = dry_run
-        
+
         # Logger
-        self.logger = logging.getLogger('BinanceFuturesExecutor')
+        self.logger = logging.getLogger("BinanceFuturesExecutor")
         self.logger.setLevel(logging.INFO)
-        
+
         # Position tracking
         self.position_open = False
         self.position_direction = 0  # 1 for long, -1 for short, 0 for no position
         self.position_size = 0.0
         self.entry_price = 0.0
         self.entry_time = None
-        
+
         # Order tracking
         self.entry_order_id = None
         self.stop_loss_order_id = None
         self.take_profit_order_id = None
-        
+
         # Price precision info
         self.price_precision = None
         self.qty_precision = None
-        
+
         # Initialize
         if not dry_run:
             self._update_trading_precision()
             self._initialize_account_settings()
             self._check_existing_positions()
-    
+
     def _update_trading_precision(self) -> None:
         """Get symbol precision settings from exchange."""
         try:
             exchange_info = self.client.exchange_info()
-            for symbol_info in exchange_info['symbols']:
-                if symbol_info['symbol'] == self.symbol:
-                    self.price_precision = symbol_info['pricePrecision']
-                    self.qty_precision = symbol_info['quantityPrecision']
+            for symbol_info in exchange_info["symbols"]:
+                if symbol_info["symbol"] == self.symbol:
+                    self.price_precision = symbol_info["pricePrecision"]
+                    self.qty_precision = symbol_info["quantityPrecision"]
                     break
-            
+
             if self.price_precision is None:
                 self.price_precision = 2
                 self.qty_precision = 5
-                self.logger.warning(f"Could not find precision info for {self.symbol}, using defaults")
-                
+                self.logger.warning(
+                    f"Could not find precision info for {self.symbol}, using defaults"
+                )
+
         except Exception as e:
             self.logger.error(f"Error getting trading parameters: {e}")
             self.price_precision = 2
             self.qty_precision = 5
-    
+
     def _initialize_account_settings(self) -> None:
         """Initialize account leverage and margin settings."""
         try:
             # Set leverage
             self.client.change_leverage(
-                symbol=self.symbol,
-                leverage=self.leverage,
-                recvWindow=self.recv_window
+                symbol=self.symbol, leverage=self.leverage, recvWindow=self.recv_window
             )
-            
+
             # Set margin type
             self.client.change_margin_type(
                 symbol=self.symbol,
                 marginType=self.margin_type,
-                recvWindow=self.recv_window
+                recvWindow=self.recv_window,
             )
-            
-            self.logger.info(f"Account initialized for {self.symbol} with {self.leverage}x leverage, {self.margin_type} margin")
-            
+
+            self.logger.info(
+                f"Account initialized for {self.symbol} with {self.leverage}x leverage, {self.margin_type} margin"
+            )
+
         except Exception as e:
             if "No need to change margin type" in str(e):
                 self.logger.info(f"Margin type already set to {self.margin_type}")
             else:
                 self.logger.error(f"Error initializing account settings: {e}")
-    
+
     def _check_existing_positions(self) -> None:
         """Check if there are already open positions for the symbol."""
         try:
             positions = self.client.get_position_risk(symbol=self.symbol)
-            
+
             for position in positions:
-                if position['symbol'] == self.symbol:
-                    position_amt = float(position['positionAmt'])
-                    
+                if position["symbol"] == self.symbol:
+                    position_amt = float(position["positionAmt"])
+
                     if position_amt != 0:
                         self.position_open = True
                         self.position_size = abs(position_amt)
                         self.position_direction = 1 if position_amt > 0 else -1
-                        self.entry_price = float(position['entryPrice'])
+                        self.entry_price = float(position["entryPrice"])
                         self.logger.info(
                             f"Found existing {self.symbol} position: "
                             f"{'Long' if position_amt > 0 else 'Short'} {self.position_size} "
                             f"at {self.entry_price}"
                         )
                         return
-            
+
             # If we get here, no open position
             self.position_open = False
             self.position_direction = 0
             self.position_size = 0
             self.entry_price = 0
-            
+
         except Exception as e:
             self.logger.error(f"Error checking existing positions: {e}")
-    
+
     def _check_open_orders(self) -> List[Dict]:
         """Check for open orders for the symbol."""
         try:
@@ -166,68 +176,90 @@ class BinanceFuturesExecutor:
         except Exception as e:
             self.logger.error(f"Error checking open orders: {e}")
             return []
-    
+
     def get_current_price(self) -> float:
         """Get current price of the symbol."""
         try:
             ticker = self.client.ticker_price(symbol=self.symbol)
-            return float(ticker['price'])
+            return float(ticker["price"])
         except Exception as e:
             self.logger.error(f"Error getting current price: {e}")
             return 0.0
-    
+
     def calculate_quantity(self, usdt_amount: float) -> float:
         """
         Calculate the quantity of the asset to buy based on USDT amount.
-        
+
         Args:
             usdt_amount: Amount in USDT to allocate
-            
+
         Returns:
             Quantity of the asset
         """
         current_price = self.get_current_price()
-        
+
         if current_price == 0:
             self.logger.error("Cannot calculate quantity with price = 0")
             return 0.0
-        
-        quantity = usdt_amount / current_price
-        
+
+        # Binance minimum order value of 20 USD
+        MIN_ORDER_VALUE = 20.0
+
+        max_trade_allocation = 0.5
+        max_allocation_amount = usdt_amount * max_trade_allocation
+
+        # Calculate quantity based on allocation
+        quantity = min(
+            usdt_amount / current_price, max_allocation_amount / current_price
+        )
+
+        # Check if order value meets minimum requirement
+        order_value = quantity * current_price
+        if order_value < MIN_ORDER_VALUE:
+            # Adjust quantity to meet minimum order value
+            quantity = (MIN_ORDER_VALUE * 1.01) / current_price
+            self.logger.info(f"Adjusted order size to meet minimum value requirement of {MIN_ORDER_VALUE} USD")
+
         # Round to appropriate precision
         if self.qty_precision is not None:
             quantity = round(quantity, self.qty_precision)
-        
+
+        # Double-check after rounding
+        if quantity * current_price < MIN_ORDER_VALUE:
+            # If after rounding it's still below minimum, adjust again
+            quantity = MIN_ORDER_VALUE / current_price
+            quantity = round(quantity, self.qty_precision)
+            # quantity += 10 ** (-self.qty_precision)
+
         return quantity
-    
+
     def cancel_all_orders(self) -> bool:
         """Cancel all open orders for the symbol."""
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Cancelling all orders for {self.symbol}")
             return True
-            
+
         try:
             result = self.client.cancel_open_orders(
-                symbol=self.symbol,
-                recvWindow=self.recv_window
+                symbol=self.symbol, recvWindow=self.recv_window
             )
             self.logger.info(f"Cancelled all orders for {self.symbol}")
-            
+
             # Reset order IDs
             self.stop_loss_order_id = None
             self.take_profit_order_id = None
-            
+
             return True
-            
+
         except Exception as e:
             self.logger.error(f"Error cancelling orders: {e}")
             return False
-    
+
     def close_position(self) -> bool:
         """Close any open position for the symbol."""
         if not self.position_open:
             return True
-            
+
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Closing position for {self.symbol}")
             self.position_open = False
@@ -235,54 +267,56 @@ class BinanceFuturesExecutor:
             self.position_size = 0
             self.entry_price = 0
             return True
-            
+
         try:
             # Cancel all open orders first
             self.cancel_all_orders()
-            
+
             # Close position with market order
             side = "SELL" if self.position_direction > 0 else "BUY"
-            
+
             self.client.new_order(
                 symbol=self.symbol,
                 side=side,
                 type="MARKET",
                 quantity=self.position_size,
-                recvWindow=self.recv_window
+                recvWindow=self.recv_window,
             )
-            
-            self.logger.info(f"Closed {self.symbol} position: {side} {self.position_size}")
-            
+
+            self.logger.info(
+                f"Closed {self.symbol} position: {side} {self.position_size}"
+            )
+
             # Reset position tracking
             self.position_open = False
             self.position_direction = 0
             self.position_size = 0
             self.entry_price = 0
-            
+
             return True
-            
+
         except Exception as e:
             self.logger.error(f"Error closing position: {e}")
             return False
-    
+
     def execute_trade(
         self,
         action: int,  # 0: hold, 1: buy/long, 2: sell/short
         quantity: float = None,
         usdt_amount: float = None,
         custom_sl_percent: float = None,
-        custom_tp_ratio: float = None
+        custom_tp_ratio: float = None,
     ) -> Dict[str, Any]:
         """
         Execute a trade with proper stop-loss and take-profit orders.
-        
+
         Args:
             action: Trading action (0: hold, 1: buy/long, 2: sell/short)
             quantity: Quantity to trade (override calculated quantity)
             usdt_amount: USDT amount to use for calculating quantity
             custom_sl_percent: Custom stop loss percentage
             custom_tp_ratio: Custom take profit ratio
-            
+
         Returns:
             Dictionary with trade information
         """
@@ -294,65 +328,75 @@ class BinanceFuturesExecutor:
                 "position_direction": self.position_direction,
                 "position_size": self.position_size,
                 "entry_price": self.entry_price,
-                "success": True
+                "success": True,
             }
-        
+
         # Get current price and calculate quantity if not provided
         current_price = self.get_current_price()
-        
+
         if current_price == 0:
             return {
                 "action": "error",
                 "message": "Could not get current price",
-                "success": False
+                "success": False,
             }
-        
+
         # If quantity not provided, calculate it from USDT amount
         if quantity is None:
             if usdt_amount is None:
                 return {
                     "action": "error",
                     "message": "Either quantity or usdt_amount must be provided",
-                    "success": False
+                    "success": False,
                 }
-            
+
             quantity = self.calculate_quantity(usdt_amount)
-        
+
         # Use provided stop loss or default
-        sl_percent = custom_sl_percent if custom_sl_percent is not None else self.stop_loss_percent
-        tp_ratio = custom_tp_ratio if custom_tp_ratio is not None else self.risk_reward_ratio
-        
+        sl_percent = (
+            custom_sl_percent
+            if custom_sl_percent is not None
+            else self.stop_loss_percent
+        )
+        tp_ratio = (
+            custom_tp_ratio if custom_tp_ratio is not None else self.risk_reward_ratio
+        )
+
         # Determine side and order parameters
         if action == 1:  # Buy/Long
             side = "BUY"
             sl_price = round(current_price * (1 - sl_percent), self.price_precision)
-            tp_price = round(current_price * (1 + sl_percent * tp_ratio), self.price_precision)
-            
+            tp_price = round(
+                current_price * (1 + sl_percent * tp_ratio), self.price_precision
+            )
+
         elif action == 2:  # Sell/Short
             side = "SELL"
             sl_price = round(current_price * (1 + sl_percent), self.price_precision)
-            tp_price = round(current_price * (1 - sl_percent * tp_ratio), self.price_precision)
-            
+            tp_price = round(
+                current_price * (1 - sl_percent * tp_ratio), self.price_precision
+            )
+
         else:
             return {
                 "action": "error",
                 "message": f"Invalid action: {action}",
-                "success": False
+                "success": False,
             }
-        
+
         # Execute in dry run mode
         if self.dry_run:
             self.logger.info(
                 f"[DRY RUN] Opening {side} position: {quantity} {self.symbol} @ {current_price} "
                 f"with SL @ {sl_price}, TP @ {tp_price}"
             )
-            
+
             self.position_open = True
             self.position_direction = 1 if side == "BUY" else -1
             self.position_size = quantity
             self.entry_price = current_price
             self.entry_time = datetime.now()
-            
+
             return {
                 "action": side.lower(),
                 "quantity": quantity,
@@ -361,9 +405,9 @@ class BinanceFuturesExecutor:
                 "take_profit": tp_price,
                 "position_open": True,
                 "position_direction": self.position_direction,
-                "success": True
+                "success": True,
             }
-        
+
         # Execute real trade
         try:
             # Step 1: Place the main market order
@@ -372,42 +416,52 @@ class BinanceFuturesExecutor:
                 side=side,
                 type="MARKET",
                 quantity=quantity,
-                recvWindow=self.recv_window
+                recvWindow=self.recv_window,
             )
-            
+
             # Wait a moment for the order to be executed
             time.sleep(1)
-            
+
             # Step 2: Get the executed price (important for accurate SL/TP)
             execution_price = None
             try:
                 # Get fill price from order info
                 order_info = self.client.get_order(
                     symbol=self.symbol,
-                    orderId=entry_order['orderId'],
-                    recvWindow=self.recv_window
+                    orderId=entry_order["orderId"],
+                    recvWindow=self.recv_window,
                 )
-                
-                if order_info.get('status') == 'FILLED':
-                    execution_price = float(order_info.get('avgPrice', current_price))
+
+                if order_info.get("status") == "FILLED":
+                    execution_price = float(order_info.get("avgPrice", current_price))
                 else:
                     execution_price = current_price
-                    
+
             except Exception as e:
-                self.logger.warning(f"Could not get fill price, using current price: {e}")
+                self.logger.warning(
+                    f"Could not get fill price, using current price: {e}"
+                )
                 execution_price = current_price
-            
+
             # Recalculate SL/TP based on actual execution price
             if action == 1:  # Buy/Long
-                sl_price = round(execution_price * (1 - sl_percent), self.price_precision)
-                tp_price = round(execution_price * (1 + sl_percent * tp_ratio), self.price_precision)
+                sl_price = round(
+                    execution_price * (1 - sl_percent), self.price_precision
+                )
+                tp_price = round(
+                    execution_price * (1 + sl_percent * tp_ratio), self.price_precision
+                )
             else:  # Sell/Short
-                sl_price = round(execution_price * (1 + sl_percent), self.price_precision)
-                tp_price = round(execution_price * (1 - sl_percent * tp_ratio), self.price_precision)
-            
+                sl_price = round(
+                    execution_price * (1 + sl_percent), self.price_precision
+                )
+                tp_price = round(
+                    execution_price * (1 - sl_percent * tp_ratio), self.price_precision
+                )
+
             # Step 3: Place stop loss order
             opposite_side = "SELL" if side == "BUY" else "BUY"
-            
+
             sl_order = self.client.new_order(
                 symbol=self.symbol,
                 side=opposite_side,
@@ -415,10 +469,11 @@ class BinanceFuturesExecutor:
                 timeInForce="GTC",
                 quantity=quantity,
                 stopPrice=sl_price,
+                stopPx=sl_price,
                 recvWindow=self.recv_window,
-                closePosition=True
+                closePosition=True,
             )
-            
+
             # Step 4: Place take profit order
             tp_order = self.client.new_order(
                 symbol=self.symbol,
@@ -428,26 +483,26 @@ class BinanceFuturesExecutor:
                 quantity=quantity,
                 stopPrice=tp_price,
                 recvWindow=self.recv_window,
-                closePosition=True
+                closePosition=True,
             )
-            
+
             # Update position tracking
             self.position_open = True
             self.position_direction = 1 if side == "BUY" else -1
             self.position_size = quantity
             self.entry_price = execution_price
             self.entry_time = datetime.now()
-            
+
             # Update order tracking
-            self.entry_order_id = entry_order['orderId']
-            self.stop_loss_order_id = sl_order['orderId']
-            self.take_profit_order_id = tp_order['orderId']
-            
+            self.entry_order_id = entry_order["orderId"]
+            self.stop_loss_order_id = sl_order["orderId"]
+            self.take_profit_order_id = tp_order["orderId"]
+
             self.logger.info(
                 f"Opened {side} position: {quantity} {self.symbol} @ {execution_price} "
                 f"with SL @ {sl_price}, TP @ {tp_price}"
             )
-            
+
             return {
                 "action": side.lower(),
                 "quantity": quantity,
@@ -459,31 +514,24 @@ class BinanceFuturesExecutor:
                 "entry_order_id": self.entry_order_id,
                 "sl_order_id": self.stop_loss_order_id,
                 "tp_order_id": self.take_profit_order_id,
-                "success": True
+                "success": True,
             }
-            
+
         except Exception as e:
             self.logger.error(f"Error executing trade: {e}")
-            
-            return {
-                "action": "error",
-                "message": str(e),
-                "success": False
-            }
-    
+
+            return {"action": "error", "message": str(e), "success": False}
+
     def check_position_status(self) -> Dict[str, Any]:
         """
         Check the status of the current position.
-        
+
         Returns:
             Dictionary with position information
         """
         if not self.position_open:
-            return {
-                "position_open": False,
-                "trigger_type": None
-            }
-            
+            return {"position_open": False, "trigger_type": None}
+
         if self.dry_run:
             # In dry run, just return the current position info
             return {
@@ -491,78 +539,82 @@ class BinanceFuturesExecutor:
                 "position_direction": self.position_direction,
                 "position_size": self.position_size,
                 "entry_price": self.entry_price,
-                "trigger_type": None
+                "trigger_type": None,
             }
-        
+
         try:
             # Check if position still exists
             positions = self.client.get_position_risk(symbol=self.symbol)
             position_exists = False
-            
+
             for position in positions:
-                if position['symbol'] == self.symbol:
-                    position_amt = float(position['positionAmt'])
-                    
+                if position["symbol"] == self.symbol:
+                    position_amt = float(position["positionAmt"])
+
                     if position_amt != 0:
                         position_exists = True
                         break
-            
+
             # If position no longer exists but we thought it did, determine how it was closed
             if not position_exists and self.position_open:
                 # Check if SL or TP orders are still open
                 open_orders = self._check_open_orders()
-                
+
                 # If SL still exists, it was closed by TP
-                sl_exists = any(order['orderId'] == self.stop_loss_order_id for order in open_orders)
-                
+                sl_exists = any(
+                    order["orderId"] == self.stop_loss_order_id for order in open_orders
+                )
+
                 # If TP still exists, it was closed by SL
-                tp_exists = any(order['orderId'] == self.take_profit_order_id for order in open_orders)
-                
+                tp_exists = any(
+                    order["orderId"] == self.take_profit_order_id
+                    for order in open_orders
+                )
+
                 # Cancel any remaining orders
                 if sl_exists or tp_exists:
                     self.cancel_all_orders()
-                
+
                 # Determine trigger type
                 if sl_exists and not tp_exists:
                     trigger_type = "take_profit"
                 elif tp_exists and not sl_exists:
                     trigger_type = "stop_loss"
                 else:
-                    trigger_type = "manual"  # Closed manually or both SL and TP were cancelled
-                
+                    trigger_type = (
+                        "manual"  # Closed manually or both SL and TP were cancelled
+                    )
+
                 # Update position tracking
                 old_direction = self.position_direction
                 self.position_open = False
                 self.position_direction = 0
                 self.position_size = 0
-                
+
                 self.logger.info(
                     f"Position closed by {trigger_type}: "
                     f"{'Long' if old_direction > 0 else 'Short'} position on {self.symbol}"
                 )
-                
-                return {
-                    "position_open": False,
-                    "trigger_type": trigger_type
-                }
-            
+
+                return {"position_open": False, "trigger_type": trigger_type}
+
             # Position still exists
             return {
                 "position_open": position_exists,
                 "position_direction": self.position_direction,
                 "position_size": self.position_size,
                 "entry_price": self.entry_price,
-                "trigger_type": None
+                "trigger_type": None,
             }
-            
+
         except Exception as e:
             self.logger.error(f"Error checking position status: {e}")
-            
+
             return {
                 "position_open": self.position_open,
                 "position_direction": self.position_direction,
                 "position_size": self.position_size,
                 "entry_price": self.entry_price,
                 "trigger_type": None,
-                "error": str(e)
+                "error": str(e),
             }
