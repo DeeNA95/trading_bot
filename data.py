@@ -10,51 +10,74 @@ import pandas as pd
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
 from dotenv import load_dotenv
+from google.cloud import secretmanager, storage
 
+
+logger = logging.getLogger(__name__)
 
 class DataHandler:
     """
     Class for retrieving, processing, and preprocessing Binance Futures market data.
     This includes fetching raw klines data, adding technical and risk metrics,
     incorporating futures-specific metrics (funding rates, open interest, liquidations),
-    and splitting the data into training and testing sets for machine learning.
     """
 
     def __init__(self):
-        load_dotenv()
 
-        binance_key = os.getenv("binance_api")
-        binance_secret = os.getenv("binance_secret")
+        try:
+            self.gcloud_client = secretmanager.SecretManagerServiceClient()
+            project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "seraphic-bliss-451413-c8")
+
+            binance_key_response = self.gcloud_client.access_secret_version(
+                name=f"projects/{project_id}/secrets/BINANCE_API_KEY/versions/latest"
+            )
+            binance_key = binance_key_response.payload.data.decode("UTF-8").strip()
+
+            binance_secret_response = self.gcloud_client.access_secret_version(
+                name=f"projects/{project_id}/secrets/BINANCE_SECRET_KEY/versions/latest"
+            )
+            binance_secret = binance_secret_response.payload.data.decode("UTF-8").strip()
+
+            logger.info("Successfully retrieved Binance credentials from Google Secret Manager")
+
+        except Exception as e:
+            logger.error(f"Could not retrieve from Google Secret Manager: {e}")
+            load_dotenv()
+            binance_key = os.getenv("binance_api")
+            binance_secret = os.getenv("binance_secret")
+            logger.info("Falling back to .env file for Binance credentials")
 
         if not binance_key or not binance_secret:
             raise ValueError(
                 "Binance API credentials not found in environment variables. "
-                "Ensure that binance_future_testnet_api and binance_future_testnet_secret are set in your .env file."
+                "Ensure that binance_api and binance_secret are set in your .env file."
             )
 
+        # init binance client
         self.client = Client(
             api_key=binance_key,
             api_secret=binance_secret,
             requests_params={"timeout": 100},
         )
-        logging.info("Binance Futures client initialized successfully.")
+        logger.info("Binance Futures client initialized successfully.")
 
-    def get_futures_data(self, symbol, interval="1m", start_time=None, end_time=None):
+    def get_futures_data(self, symbol, interval="1h", start_time=None, end_time=None):
         """
         Fetch historical futures data using Binance klines endpoint.
         Data is retrieved in chunks to bypass the API row limit.
         """
         if start_time is None:
             start_time = datetime.now() - timedelta(
-                days=7
-            )  # Default to 7 days for 1m data
+                days=30
+            )  #default to 30 days for 1h data
+
         if end_time is None:
             end_time = datetime.now()
 
         all_data = []
         # Determine chunk size based on the interval
         if interval == "1m":
-            chunk_size = timedelta(hours=12)
+            chunk_size = timedelta(hours=12) #60x12 chunks
         elif interval in ["3m", "5m", "15m"]:
             chunk_size = timedelta(days=1)
         else:
@@ -67,7 +90,7 @@ class DataHandler:
                 klines = self.client.futures_klines(
                     symbol=symbol,
                     interval=interval,
-                    startTime=int(current_start.timestamp() * 1000),
+                    startTime=int(current_start.timestamp() * 1000), #since in ms
                     endTime=int(current_end.timestamp() * 1000),
                     limit=1500,  # Maximum allowed by Binance
                 )
@@ -122,11 +145,12 @@ class DataHandler:
             current_start = datetime.fromtimestamp(last_close / 1000)
 
         if not all_data:
+            logger.error('Returned Empty DataFrame')
             return pd.DataFrame()
 
         combined_data = pd.concat(all_data)
         combined_data.sort_index(inplace=True)
-        logging.info(f"Retrieved {len(combined_data)} data points for {symbol}.")
+        logger.info(f"Retrieved {len(combined_data)} data points for {symbol}.")
         return combined_data
 
     def calculate_technical_indicators(self, df):
@@ -157,7 +181,7 @@ class DataHandler:
         result["bb_lower"] = result["bb_middle"] - 2 * bb_std
 
         # MACD and Signal
-        ema_12 = close.ewm(span=12, adjust=False).mean()
+        ema_12 = close.ewm(span=12, adjust=False).mean() #expo MA accross 12 timespans
         ema_26 = close.ewm(span=26, adjust=False).mean()
         result["macd"] = ema_12 - ema_26
         result["macd_signal"] = result["macd"].ewm(span=9, adjust=False).mean()
@@ -202,48 +226,84 @@ class DataHandler:
         logging.info("Calculating technical indicators...")
         return result
 
-    def calculate_risk_metrics(self, df, window=20):
+    def calculate_risk_metrics(self, df, window=24, interval="1h"):
         """
         Calculate risk-related metrics: volatility, VaR, CVaR, max drawdown,
         Sharpe, Sortino, and Calmar ratios.
         """
         result = df.copy()
-        result["daily_return"] = result["close"].pct_change()
-        result["volatility"] = result["daily_return"].rolling(window=window).std()
-        result["var_95"] = result["daily_return"].rolling(window=window).quantile(0.05)
+        result["timely_return"] = result["close"].pct_change()
+        result["volatility"] = result["timely_return"].rolling(window=window).std()
+        result["var_95"] = result["timely_return"].rolling(window=window).quantile(0.05)
 
-        def calculate_cvar(returns):
+        def calculate_cvar(returns): #continuous variance
             var = returns.quantile(0.05)
             return returns[returns <= var].mean()
 
         result["cvar_95"] = (
-            result["daily_return"]
+            result["timely_return"]
             .rolling(window=window)
             .apply(calculate_cvar, raw=False)
         )
 
         rolling_max = result["close"].rolling(window=window, min_periods=1).max()
         drawdown = result["close"] / rolling_max - 1.0
-        result["max_drawdown"] = drawdown.rolling(window=window).min()
+        result["max_drawdown"] = drawdown.rolling(window=window).min() #weird finance thing min over the window is max drawdown usually cause negative
 
+        # Determine annualization factor based on interval
+        if interval.endswith("m"):
+            # For minute-based intervals
+            minutes = int(interval[:-1])
+            annualization_factor = np.sqrt(
+                525600 / minutes
+            )  # 525600 = minutes in a year (365*24*60)
+        elif interval.endswith("h"):
+            # For hour-based intervals
+            hours = int(interval[:-1])
+            annualization_factor = np.sqrt(8760 / hours)  # 8760 = hours in a year (365*24)
+        elif interval.endswith("d"):
+            # For day-based intervals
+            days = int(interval[:-1])
+            annualization_factor = np.sqrt(365 / days)  # 365 = days in a year
+        else:
+            # Default to daily for unknown intervals
+            annualization_factor = np.sqrt(365)
+
+        # Calculate ratios with appropriate annualization
         result["sharpe_ratio"] = (
-            result["daily_return"].rolling(window=window).mean()
-            / result["daily_return"].rolling(window=window).std()
-        ) * np.sqrt(252)
+            result["timely_return"].rolling(window=window).mean()
+            / result["timely_return"].rolling(window=window).std()
+        ) * annualization_factor
 
-        downside = result["daily_return"].copy()
+        downside = result["timely_return"].copy()
         downside[downside > 0] = 0
         result["sortino_ratio"] = (
-            result["daily_return"].rolling(window=window).mean()
+            result["timely_return"].rolling(window=window).mean()
             / downside.rolling(window=window).std()
-        ) * np.sqrt(252)
+        ) * annualization_factor
 
         result["calmar_ratio"] = (
-            result["daily_return"].rolling(window=window).mean() * 252
+            result["timely_return"].rolling(window=window).mean()
+            * (365 * 24 / self.get_periods_per_day(interval))
         ) / result["max_drawdown"].abs()
 
-        logging.info("Calculating risk metrics...")
+        logger.info("Calculating risk metrics...")
         return result
+
+    @staticmethod
+    def get_periods_per_day(interval):
+        """Helper function to calculate periods per day for a given interval"""
+        if interval.endswith('m'):
+            minutes = int(interval[:-1])
+            return 24 * 60 / minutes
+        elif interval.endswith('h'):
+            hours = int(interval[:-1])
+            return 24 / hours
+        elif interval.endswith('d'):
+            days = int(interval[:-1])
+            return 1 / days
+        else:
+            return 1
 
     def identify_trade_setups(self, df):
         """
@@ -380,7 +440,7 @@ class DataHandler:
         # Open interest: using futures_open_interest_hist endpoint
         oi_params = {
             "symbol": symbol,
-            "interval": interval,  # Changed from 'period' to 'interval'
+            "period": interval,  # Changed from 'period' to 'interval'
             "limit": 500,  # Changed from 1000 to 500
             "startTime": int(start_time.timestamp() * 1000),
             "endTime": int(end_time.timestamp() * 1000),
@@ -444,7 +504,7 @@ class DataHandler:
         return result
 
     def process_market_data(
-        self, symbol, interval="1m", start_time=None, end_time=None, save_path=None
+        self, symbol, interval="1h", start_time=None, end_time=None, save_path=None
     ):
         """
         Comprehensive function to retrieve futures data, add all metrics (technical,
@@ -470,7 +530,7 @@ class DataHandler:
 
         df = self.calculate_technical_indicators(df)
         df = self.add_futures_metrics(df, symbol, interval, start_time, end_time)
-        df = self.calculate_risk_metrics(df)
+        df = self.calculate_risk_metrics(df, interval)
         df = self.identify_trade_setups(df)
         df = df.ffill().bfill()
 
@@ -480,43 +540,31 @@ class DataHandler:
 
         return df
 
-    def preprocess_data_for_ml(self, df):
-        """
-        Preprocess the data for machine learning:
-          - Calculate technical, risk, and trade setup indicators.
-          - Split the data: the last 10% is used as test data.
-        Returns:
-          train_data, test_data (DataFrames)
-        """
-        df = self.calculate_technical_indicators(df)
-        df = self.calculate_risk_metrics(df)
-        df = self.identify_trade_setups(df)
-        df = df.ffill().bfill()
-
-        split_idx = int(len(df) * 0.9)
-        train_data = df.iloc[:split_idx]
-        test_data = df.iloc[split_idx:]
-        return train_data, test_data
-
     def save_data_to_csv(self, df, file_path):
         """Save DataFrame to CSV."""
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        df.reset_index(inplace=True)
-        df.to_csv(file_path, index=False)
-        logging.info(f"Data saved to {file_path}")
 
-    def save_train_test_data(self, train_data, test_data, path):
-        """Save training and testing data as parquet files."""
-        os.makedirs(path, exist_ok=True)
-        train_file = os.path.join(path, "train_data.parquet")
-        test_file = os.path.join(path, "test_data.parquet")
-        train_data.to_parquet(train_file)
-        test_data.to_parquet(test_file)
-        logging.info(f"Training data saved to {train_file}")
-        logging.info(f"Testing data saved to {test_file}")
+        if file_path.startswith('gs://'):
+            # parse bucket and blob path
+            path_parts = file_path[5:].split('/', 1)
+            bucket_name = path_parts[0]
+            blob_path = path_parts[1] if len(path_parts) > 1 else ''
 
+            csv_string = df.to_csv(index=False)
 
-if __name__ == "__main__":
+            # upload to GCS
+            storage_client = storage.Client()
+            bucket = storage_client.bucket(bucket_name)
+            blob = bucket.blob(blob_path)
+            blob.upload_from_string(csv_string, content_type='text/csv')
+            logger.info(f"Data saved to GCS: {file_path}")
+
+        else:
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            df.reset_index(inplace=True)
+            df.to_csv(file_path, index=False)
+            logging.info(f"Data saved to {file_path}")
+
+def parse_args():
     parser = argparse.ArgumentParser(
         description="Binance Futures data processing utility"
     )
@@ -548,7 +596,11 @@ if __name__ == "__main__":
         default="data",
         help="Directory to save processed data",
     )
-    args = parser.parse_args()
+    return parser.parse_args()
+
+if __name__ == "__main__":
+
+    args = parse_args()
 
     end_date = (
         datetime.now()
@@ -568,12 +620,8 @@ if __name__ == "__main__":
         args.symbol, args.interval, start_date, end_date
     )
 
-    # Preprocess for machine learning (split into training and testing data: last 10% for testing)
-    train_data, test_data = data_handler.preprocess_data_for_ml(processed_data)
-
     # Save the processed data as CSV and the train/test data as parquet files
     processed_csv = os.path.join(
         args.output_dir, f"{args.symbol}_{args.interval}_with_metrics.csv"
     )
     data_handler.save_data_to_csv(processed_data, processed_csv)
-    # data_handler.save_train_test_data(train_data, test_data, args.output_dir)
