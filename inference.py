@@ -20,6 +20,7 @@ from rl_agent.environment.trading_env import BinanceFuturesCryptoEnv
 from rl_agent.agent.ppo_agent import PPOAgent
 from rl_agent.agent.models import ActorCriticCNN, ActorCriticLSTM, ActorCriticTransformer
 from data import DataHandler
+from google.cloud import secretmanager, storage
 
 # Set up logging
 logging.basicConfig(
@@ -68,19 +69,34 @@ def check_api_keys():
     Returns:
         bool: True if keys are set, False otherwise
     """
-    # api_key = os.getenv("binance_future_testnet_api")
-    # api_secret = os.getenv("binance_future_testnet_secret")
-    api_key = os.getenv("binance_api2")
-    api_secret = os.getenv("binance_secret2")
+    try:
+        self.gcloud_client = secretmanager.SecretManagerServiceClient()
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "seraphic-bliss-451413-c8")
 
-    if not api_key or not api_secret:
-        logger.error("Binance Futures testnet API keys not found in .env file")
-        logger.error("Please set binance_future_testnet_api and binance_future_testnet_secret in your .env file")
-        logger.error("You can use the .env.template file as a reference")
-        return False
+        binance_key_response = self.gcloud_client.access_secret_version(
+            name=f"projects/{project_id}/secrets/BINANCE_API_KEY/versions/latest"
+        )
+        binance_key = binance_key_response.payload.data.decode("UTF-8").strip()
 
-    logger.info("API keys found in .env file")
-    return True
+        binance_secret_response = self.gcloud_client.access_secret_version(
+            name=f"projects/{project_id}/secrets/BINANCE_SECRET_KEY/versions/latest"
+        )
+        binance_secret = binance_secret_response.payload.data.decode("UTF-8").strip()
+
+        logger.info("Successfully retrieved Binance credentials from Google Secret Manager")
+
+    except Exception as e:
+        logger.error(f"Could not retrieve from Google Secret Manager: {e}")
+        load_dotenv()
+        binance_key = os.getenv("binance_api")
+        binance_secret = os.getenv("binance_secret")
+        logger.info("Falling back to .env file for Binance credentials")
+
+    if not binance_key or not binance_secret:
+        raise ValueError(
+            "Binance API credentials not found in environment variables. "
+            "Ensure that binance_api and binance_secret are set in your .env file."
+        )
 
 class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
     """
