@@ -9,6 +9,7 @@ import logging
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
+import math
 
 import numpy as np
 from binance.um_futures import UMFutures
@@ -227,9 +228,9 @@ class BinanceFuturesExecutor:
         # Double-check after rounding
         if quantity * current_price < MIN_ORDER_VALUE:
             # If after rounding it's still below minimum, adjust again
-            quantity = MIN_ORDER_VALUE / current_price
-            quantity = round(quantity, self.qty_precision)
-            # quantity += 10 ** (-self.qty_precision)
+            min_quantity = MIN_ORDER_VALUE / current_price
+            # Round up to the allowed precision
+            quantity = math.ceil(min_quantity * (10 ** self.qty_precision)) / (10 ** self.qty_precision)
 
         return quantity
 

@@ -117,7 +117,7 @@ class PPOAgent:
         self,
         env: gym.Env,
         model_type: str = 'lstm',
-        hidden_dim: int = 128,
+        hidden_dim: int = 128, #size of first hidden dim
         lr: float = 3e-4,
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
@@ -130,7 +130,8 @@ class PPOAgent:
         device: str = 'auto',
         save_dir: str = 'models',
         use_gae: bool = True,
-        normalize_advantage: bool = True
+        normalize_advantage: bool = True,
+        weight_decay: float = 0.01
     ):
         """
         Initialize the PPO agent.
@@ -152,6 +153,7 @@ class PPOAgent:
             save_dir: Directory to save models to
             use_gae: Whether to use Generalized Advantage Estimation
             normalize_advantage: Whether to normalize advantages
+            weight_decay: L2 regularization parameter
         """
         # Environment info
         self.env = env
@@ -170,6 +172,7 @@ class PPOAgent:
         self.max_grad_norm = max_grad_norm
         self.use_gae = use_gae
         self.normalize_advantage = normalize_advantage
+        self.weight_decay = weight_decay
 
         # Save path
         self.save_dir = save_dir
@@ -211,8 +214,8 @@ class PPOAgent:
         else:
             raise ValueError(f"Unknown model type: {model_type}")
 
-        # Optimizer
-        self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
+        # Optimizer with L2 regularization
+        self.optimizer = optim.Adam(self.model.parameters(), lr=lr, weight_decay=self.weight_decay)
 
         # Memory buffer
         self.memory = PPOMemory(batch_size)
@@ -352,15 +355,15 @@ class PPOAgent:
 
         # Create progress bar for update epochs
         epoch_pbar = tqdm(range(self.n_epochs), desc="PPO Update", leave=False)
-        
+
         for _ in epoch_pbar:
             batch_policy_loss = 0
             batch_value_loss = 0
             batch_entropy = 0
-            
+
             # Create progress bar for batches
             batch_pbar = tqdm(batches, desc="Batches", leave=False)
-            
+
             # Iterate over batches
             for batch in batch_pbar:
                 # Evaluate actions
@@ -410,18 +413,18 @@ class PPOAgent:
                 batch_policy_loss += policy_loss.item()
                 batch_value_loss += value_loss.item()
                 batch_entropy += entropy_loss.item()
-                
+
                 # Update batch progress bar
                 batch_pbar.set_postfix({
                     'policy_loss': f"{policy_loss.item():.4f}",
                     'value_loss': f"{value_loss.item():.4f}"
                 })
-            
+
             # Update total metrics
             total_policy_loss += batch_policy_loss
             total_value_loss += batch_value_loss
             total_entropy += batch_entropy
-            
+
             # Update epoch progress bar
             avg_policy_loss_epoch = batch_policy_loss / len(batches)
             avg_value_loss_epoch = batch_value_loss / len(batches)
@@ -486,7 +489,7 @@ class PPOAgent:
 
         # Create progress bar
         pbar = tqdm(total=num_episodes, desc="Training Progress")
-        
+
         for episode in range(1, num_episodes + 1):
             # Reset environment
             state, _ = self.env.reset()
@@ -501,7 +504,7 @@ class PPOAgent:
 
             # Create episode step progress bar
             episode_pbar = tqdm(total=max_steps, desc=f"Episode {episode}", leave=False)
-            
+
             while not (done or truncated) and step < max_steps:
                 # Choose action
                 action, action_prob, value = self.choose_action(state)
@@ -517,7 +520,7 @@ class PPOAgent:
                 episode_reward += reward
                 total_steps += 1
                 step += 1
-                
+
                 # Update episode progress bar
                 episode_pbar.update(1)
                 episode_pbar.set_postfix({
@@ -543,7 +546,7 @@ class PPOAgent:
 
             # Close episode progress bar
             episode_pbar.close()
-            
+
             # Store episode reward
             episode_rewards.append(episode_reward)
             self.reward_history.append(episode_reward)
@@ -590,13 +593,13 @@ class PPOAgent:
             # Save checkpoint
             if episode % save_freq == 0:
                 self.save(os.path.join(self.save_dir, f'model_ep{episode}.pt'))
-            
+
             # Update main progress bar
             pbar.update(1)
 
         # Close main progress bar
         pbar.close()
-        
+
         # Save final model
         self.save(os.path.join(self.save_dir, 'final_model.pt'))
 
@@ -622,7 +625,7 @@ class PPOAgent:
 
         # Create progress bar for evaluation
         eval_pbar = tqdm(range(num_episodes), desc="Evaluating", leave=False)
-        
+
         for i in eval_pbar:
             state, _ = self.env.reset()
             done = False
@@ -651,7 +654,7 @@ class PPOAgent:
                 state, reward, done, truncated, _ = self.env.step(action)
                 episode_reward += reward
                 step += 1
-                
+
                 # Update progress bar
                 eval_pbar.set_postfix({
                     'ep': i+1,
@@ -660,7 +663,7 @@ class PPOAgent:
                 })
 
             total_rewards.append(episode_reward)
-            
+
             # Update progress bar with final episode reward
             eval_pbar.set_postfix({
                 'ep': i+1,

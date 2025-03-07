@@ -48,6 +48,7 @@ class ActorCriticCNN(nn.Module):
         n_filters: List[int] = [64, 128],
         kernel_sizes: List[int] = [3, 2],
         activation_fn: nn.Module = nn.GELU(),
+        dropout: float = 0.2,
         device: str = 'auto'
     ):
         """
@@ -60,6 +61,7 @@ class ActorCriticCNN(nn.Module):
             n_filters: Number of filters in each CNN layer
             kernel_sizes: Kernel sizes for CNN layers
             activation_fn: Activation function to use
+            dropout: Dropout probability for regularization
             device: Device to run the model on ('cpu', 'cuda', 'mps', or 'auto')
         """
         super(ActorCriticCNN, self).__init__()
@@ -117,20 +119,28 @@ class ActorCriticCNN(nn.Module):
 
         # Actor (policy network)
         self.actor = nn.Sequential(
-            nn.Linear(flattened_size, hidden_dim),
+            nn.Linear(flattened_size, 128),
             activation_fn,
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Dropout(dropout),
+            nn.Linear(128, 256),
             activation_fn,
-            nn.Linear(hidden_dim, action_dim)
+            nn.Dropout(dropout),
+            nn.Linear(256, 57),
+            activation_fn,
+            nn.Linear(57, action_dim)
         )
 
         # Critic (value network)
         self.critic = nn.Sequential(
-            nn.Linear(flattened_size, hidden_dim),
+            nn.Linear(flattened_size, 128),
             activation_fn,
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Dropout(dropout),
+            nn.Linear(128, 256),
             activation_fn,
-            nn.Linear(hidden_dim, 1)
+            nn.Dropout(dropout),
+            nn.Linear(256, 57),
+            activation_fn,
+            nn.Linear(57, 1)
         )
 
         # Initialize weights
@@ -182,7 +192,7 @@ class ActorCriticLSTM(nn.Module):
         action_dim: int,
         hidden_dim: int = 128,
         lstm_layers: int = 2,
-        dropout: float = 0.1,
+        dropout: float = 0.2,
         activation_fn: nn.Module = nn.GELU(),
         device: str = 'auto'
     ):
@@ -224,16 +234,28 @@ class ActorCriticLSTM(nn.Module):
 
         # Actor (policy network)
         self.actor = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Linear(hidden_dim, 128),
             activation_fn,
-            nn.Linear(hidden_dim, action_dim)
+            nn.Dropout(dropout),
+            nn.Linear(128, 256),
+            activation_fn,
+            nn.Dropout(dropout),
+            nn.Linear(256, 57),
+            activation_fn,
+            nn.Linear(57, action_dim)
         )
 
         # Critic (value network)
         self.critic = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Linear(hidden_dim, 128),
             activation_fn,
-            nn.Linear(hidden_dim, 1)
+            nn.Dropout(dropout),
+            nn.Linear(128, 256),
+            activation_fn,
+            nn.Dropout(dropout),
+            nn.Linear(256, 57),
+            activation_fn,
+            nn.Linear(57, 1)
         )
 
         # Hidden state for LSTM
@@ -314,7 +336,7 @@ class ActorCriticTransformer(nn.Module):
         hidden_dim: int = 128,
         n_heads: int = 4,
         n_layers: int = 3,
-        dropout: float = 0.1,
+        dropout: float = 0.2,
         activation_fn: nn.Module = nn.GELU(),
         device: str = 'auto'
     ):
@@ -377,16 +399,28 @@ class ActorCriticTransformer(nn.Module):
 
         # Actor (policy network)
         self.actor = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Linear(hidden_dim, 128),
             activation_fn,
-            nn.Linear(hidden_dim, action_dim)
+            nn.Dropout(dropout),
+            nn.Linear(128, 256),
+            activation_fn,
+            nn.Dropout(dropout),
+            nn.Linear(256, 57),
+            activation_fn,
+            nn.Linear(57, action_dim)
         )
 
         # Critic (value network)
         self.critic = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Linear(hidden_dim, 128),
             activation_fn,
-            nn.Linear(hidden_dim, 1)
+            nn.Dropout(dropout),
+            nn.Linear(128, 256),
+            activation_fn,
+            nn.Dropout(dropout),
+            nn.Linear(256, 57),
+            activation_fn,
+            nn.Linear(57, 1)
         )
 
         # Initialize weights

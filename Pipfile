@@ -13,6 +13,8 @@ stockstats = "*"
 wrds = "*"
 ta = "*"
 tqdm = "*"
+google-cloud-secret-manager = ">=2.10.0"
+google = "*"
 
 [dev-packages]
 
