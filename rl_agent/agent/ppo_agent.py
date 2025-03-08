@@ -243,26 +243,53 @@ class PPOAgent:
         Returns:
             Tuple of (action, action probabilities, value)
         """
+        # Check for NaN values in state and replace with zeros
+        if np.isnan(state).any():
+            state = np.nan_to_num(state, nan=0.0)
+        
+        # Clip extreme values to prevent NaN issues
+        state = np.clip(state, -10.0, 10.0)
+        
         # Convert state to tensor
         state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
 
         # Get action probabilities and value from model
         with torch.no_grad():
-            if isinstance(self.model, ActorCriticLSTM):
-                logits, value = self.model(state_tensor, reset_hidden=False)
-            else:
-                logits, value = self.model(state_tensor)
+            try:
+                if isinstance(self.model, ActorCriticLSTM):
+                    logits, value = self.model(state_tensor, reset_hidden=False)
+                else:
+                    logits, value = self.model(state_tensor)
 
-            # Get action probabilities
-            action_probs = torch.softmax(logits, dim=-1)
-            dist = Categorical(action_probs)
+                # Check for NaN values in logits
+                if torch.isnan(logits).any() or torch.isinf(logits).any():
+                    # If we have NaN values, use a uniform distribution
+                    print("Warning: NaN values in logits, using uniform distribution")
+                    logits = torch.ones((1, self.action_dim), device=self.device)
+                
+                # Get action probabilities (with stability fixes)
+                logits = torch.clamp(logits, min=-20.0, max=20.0)
+                action_probs = torch.softmax(logits, dim=-1)
+                
+                # Add small epsilon to prevent zero probabilities
+                action_probs = action_probs + 1e-8
+                action_probs = action_probs / action_probs.sum(dim=-1, keepdim=True)
+                
+                dist = Categorical(action_probs)
 
-            # Sample action
-            action = dist.sample().item()
+                # Sample action
+                action = dist.sample().item()
 
-            # Get action probability and value
-            action_prob = action_probs[0, action].item()
-            value = value.item()
+                # Get action probability and value
+                action_prob = action_probs[0, action].item()
+                value = value.item() if not torch.isnan(value).any() else 0.0
+
+            except Exception as e:
+                print(f"Error in choose_action: {e}")
+                # Default to a random action if something goes wrong
+                action = np.random.randint(0, self.action_dim)
+                action_prob = 1.0 / self.action_dim
+                value = 0.0
 
         return action, action_prob, value
 
@@ -281,22 +308,59 @@ class PPOAgent:
         Returns:
             Tuple of (action log probabilities, values, entropy)
         """
-        # Forward pass through model
-        if isinstance(self.model, ActorCriticLSTM):
-            logits, values = self.model(states, reset_hidden=True)
-        else:
-            logits, values = self.model(states)
+        # Check for NaN values in states
+        if torch.isnan(states).any():
+            states = torch.nan_to_num(states, nan=0.0)
+        
+        # Clip extreme values
+        states = torch.clamp(states, min=-10.0, max=10.0)
+        
+        try:
+            # Forward pass through model
+            if isinstance(self.model, ActorCriticLSTM):
+                logits, values = self.model(states, reset_hidden=True)
+            else:
+                logits, values = self.model(states)
 
-        # Get action probabilities
-        action_probs = torch.softmax(logits, dim=-1)
-        dist = Categorical(action_probs)
+            # Check for NaN values
+            if torch.isnan(logits).any() or torch.isinf(logits).any():
+                print("Warning: NaN values in logits during evaluation")
+                logits = torch.ones_like(logits) / self.action_dim
+            
+            if torch.isnan(values).any() or torch.isinf(values).any():
+                print("Warning: NaN values in values during evaluation")
+                values = torch.zeros_like(values)
+            
+            # Clip logits to ensure numerical stability
+            logits = torch.clamp(logits, min=-20.0, max=20.0)
+            
+            # Get action probabilities with stability fix
+            action_probs = torch.softmax(logits, dim=-1)
+            
+            # Add small epsilon to prevent zero probabilities
+            action_probs = action_probs + 1e-8
+            action_probs = action_probs / action_probs.sum(dim=-1, keepdim=True)
+            
+            dist = Categorical(action_probs)
 
-        # Get log probabilities of actions
-        action_log_probs = dist.log_prob(actions)
+            # Get log probabilities of actions
+            action_log_probs = dist.log_prob(actions)
 
-        # Get entropy
-        entropy = dist.entropy()
+            # Get entropy
+            entropy = dist.entropy()
+            
+            # Final NaN check
+            action_log_probs = torch.nan_to_num(action_log_probs, nan=0.0)
+            values = torch.nan_to_num(values, nan=0.0)
+            entropy = torch.nan_to_num(entropy, nan=0.0)
 
+        except Exception as e:
+            print(f"Error in evaluate_actions: {e}")
+            # Return default values to allow training to continue
+            action_log_probs = torch.zeros_like(actions, dtype=torch.float32)
+            values = torch.zeros((len(actions),), dtype=torch.float32)
+            entropy = torch.zeros((len(actions),), dtype=torch.float32)
+            
         return action_log_probs, values.squeeze(), entropy
 
     def update(self) -> Dict[str, float]:

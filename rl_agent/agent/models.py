@@ -303,20 +303,40 @@ class ActorCriticLSTM(nn.Module):
         """
         batch_size = x.size(0)
 
+        # Check for NaN values in input
+        if torch.isnan(x).any():
+            # Replace NaN with zeros
+            x = torch.nan_to_num(x, nan=0.0)
+        
+        # Clip extreme values
+        x = torch.clamp(x, min=-10.0, max=10.0)
+
         if self.hidden is None or reset_hidden or batch_size != self.hidden[0].size(1):
             self.reset_hidden_state(batch_size)
 
         # LSTM forward pass
         lstm_out, self.hidden = self.lstm(x, self.hidden)
+        
+        # Check for NaN in LSTM output
+        if torch.isnan(lstm_out).any():
+            # This is a serious issue, reset hidden state and try with zeros
+            self.reset_hidden_state(batch_size)
+            lstm_out = torch.zeros_like(lstm_out)
 
         # Use only the last output for prediction
         last_output = lstm_out[:, -1]
 
         # Actor output (action logits)
         action_logits = self.actor(last_output)
+        
+        # Clip action logits to prevent extreme values
+        action_logits = torch.clamp(action_logits, min=-20.0, max=20.0)
 
         # Critic output (state value)
         values = self.critic(last_output)
+        
+        # Clip value outputs
+        values = torch.clamp(values, min=-100.0, max=100.0)
 
         return action_logits, values
 

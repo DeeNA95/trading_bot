@@ -77,6 +77,24 @@ def train_agent(
             print(f"Dropping column {column} as it cannot be converted to float")
             df = df.drop(columns=[column])
     
+    # Replace NaN, inf values with 0
+    df = df.replace([np.inf, -np.inf], np.nan)
+    df = df.fillna(0)
+    
+    # Normalize data to prevent NaN in model outputs
+    for col in df.columns:
+        if col not in ['open_time', 'date', 'timestamp']:
+            # Use robust normalization to handle outliers
+            median = df[col].median()
+            iqr = df[col].quantile(0.75) - df[col].quantile(0.25)
+            if iqr > 0:
+                df[col] = (df[col] - median) / (iqr + 1e-8)
+            else:
+                # If IQR is 0, just center the data
+                df[col] = df[col] - median
+                
+    print(f"Data shape: {df.shape}")
+    
     env = BinanceFuturesCryptoEnv(
         df=df,
         symbol=symbol,
