@@ -1,7 +1,7 @@
 #! /bin/zsh
 
 pipenv run python inference.py \
-  --model_path models/XRP/lstm/best_model.pt \
+  --model_path gs://crypto_trading_models/LSTM/XRP/best_model.pt \
   --model_type lstm \
   --symbol XRPUSDT \
   --window_size 24 \

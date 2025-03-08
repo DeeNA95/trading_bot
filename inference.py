@@ -305,13 +305,46 @@ def load_agent(args):
     logger.info(f"Loading model from {args.model_path}")
 
     # First load the model to get its input shape
-    try:
-        # Try with weights_only=False
-        checkpoint = torch.load(args.model_path, map_location='cpu', weights_only=False)
-    except Exception as e:
-        logger.warning(f"Could not load with weights_only=False, trying with weights_only=True: {e}")
-        # If that fails, try with weights_only=True
-        checkpoint = torch.load(args.model_path, map_location='cpu', weights_only=True)
+    if args.model_path.startswith("gs://"):
+        try:
+            # Import Google Cloud Storage
+            from google.cloud import storage
+            import io
+            
+            # Parse bucket and blob path
+            path_parts = args.model_path[5:].split("/", 1)
+            bucket_name = path_parts[0]
+            blob_path = path_parts[1] if len(path_parts) > 1 else ""
+            
+            # Download from GCS to a buffer
+            storage_client = storage.Client()
+            bucket = storage_client.bucket(bucket_name)
+            blob = bucket.blob(blob_path)
+            
+            buffer = io.BytesIO()
+            blob.download_to_file(buffer)
+            buffer.seek(0)
+            
+            # Try to load with weights_only=False
+            try:
+                checkpoint = torch.load(buffer, map_location='cpu', weights_only=False)
+            except Exception as e:
+                logger.warning(f"Could not load with weights_only=False, trying with weights_only=True: {e}")
+                buffer.seek(0)
+                checkpoint = torch.load(buffer, map_location='cpu', weights_only=True)
+                
+            logger.info(f"Model loaded from GCS: {args.model_path}")
+        except Exception as e:
+            raise RuntimeError(f"Error loading model from GCS: {e}")
+    else:
+        # Load from local file
+        try:
+            # Try with weights_only=False
+            checkpoint = torch.load(args.model_path, map_location='cpu', weights_only=False)
+        except Exception as e:
+            logger.warning(f"Could not load with weights_only=False, trying with weights_only=True: {e}")
+            # If that fails, try with weights_only=True
+            checkpoint = torch.load(args.model_path, map_location='cpu', weights_only=True)
 
     # Extract the input shape based on model type
     input_dim = None
