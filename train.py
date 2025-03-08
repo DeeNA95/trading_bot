@@ -55,6 +55,28 @@ def train_agent(
 
     # Create environment
     print(f"Creating environment with {model_type} model...")
+    
+    # Convert string columns like 'trade_setup' to numerical values
+    # Replace 'none' with numerical value
+    if 'trade_setup' in df.columns:
+        # Map trade setup values to numerical equivalents
+        setup_mapping = {
+            'none': 0.0,
+            'strong_bullish': 1.0,
+            'strong_bearish': -1.0,
+            'bullish_reversal': 0.5,
+            'bearish_reversal': -0.5
+        }
+        df['trade_setup'] = df['trade_setup'].map(setup_mapping)
+    
+    # Convert all object/string columns to float
+    for column in df.select_dtypes(include=['object']).columns:
+        try:
+            df[column] = df[column].astype(float)
+        except:
+            print(f"Dropping column {column} as it cannot be converted to float")
+            df = df.drop(columns=[column])
+    
     env = BinanceFuturesCryptoEnv(
         df=df,
         symbol=symbol,
