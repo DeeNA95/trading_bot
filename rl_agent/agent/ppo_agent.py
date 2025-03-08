@@ -19,6 +19,7 @@ import gymnasium as gym
 from tqdm import tqdm
 
 from .models import ActorCriticCNN, ActorCriticLSTM, ActorCriticTransformer
+from google.cloud import secretmanager, storage
 
 
 class PPOMemory:
@@ -246,10 +247,10 @@ class PPOAgent:
         # Check for NaN values in state and replace with zeros
         if np.isnan(state).any():
             state = np.nan_to_num(state, nan=0.0)
-        
+
         # Clip extreme values to prevent NaN issues
         state = np.clip(state, -10.0, 10.0)
-        
+
         # Convert state to tensor
         state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
 
@@ -266,15 +267,15 @@ class PPOAgent:
                     # If we have NaN values, use a uniform distribution
                     print("Warning: NaN values in logits, using uniform distribution")
                     logits = torch.ones((1, self.action_dim), device=self.device)
-                
+
                 # Get action probabilities (with stability fixes)
                 logits = torch.clamp(logits, min=-20.0, max=20.0)
                 action_probs = torch.softmax(logits, dim=-1)
-                
+
                 # Add small epsilon to prevent zero probabilities
                 action_probs = action_probs + 1e-8
                 action_probs = action_probs / action_probs.sum(dim=-1, keepdim=True)
-                
+
                 dist = Categorical(action_probs)
 
                 # Sample action
@@ -311,10 +312,10 @@ class PPOAgent:
         # Check for NaN values in states
         if torch.isnan(states).any():
             states = torch.nan_to_num(states, nan=0.0)
-        
+
         # Clip extreme values
         states = torch.clamp(states, min=-10.0, max=10.0)
-        
+
         try:
             # Forward pass through model
             if isinstance(self.model, ActorCriticLSTM):
@@ -326,21 +327,21 @@ class PPOAgent:
             if torch.isnan(logits).any() or torch.isinf(logits).any():
                 print("Warning: NaN values in logits during evaluation")
                 logits = torch.ones_like(logits) / self.action_dim
-            
+
             if torch.isnan(values).any() or torch.isinf(values).any():
                 print("Warning: NaN values in values during evaluation")
                 values = torch.zeros_like(values)
-            
+
             # Clip logits to ensure numerical stability
             logits = torch.clamp(logits, min=-20.0, max=20.0)
-            
+
             # Get action probabilities with stability fix
             action_probs = torch.softmax(logits, dim=-1)
-            
+
             # Add small epsilon to prevent zero probabilities
             action_probs = action_probs + 1e-8
             action_probs = action_probs / action_probs.sum(dim=-1, keepdim=True)
-            
+
             dist = Categorical(action_probs)
 
             # Get log probabilities of actions
@@ -348,7 +349,7 @@ class PPOAgent:
 
             # Get entropy
             entropy = dist.entropy()
-            
+
             # Final NaN check
             action_log_probs = torch.nan_to_num(action_log_probs, nan=0.0)
             values = torch.nan_to_num(values, nan=0.0)
@@ -360,7 +361,7 @@ class PPOAgent:
             action_log_probs = torch.zeros_like(actions, dtype=torch.float32)
             values = torch.zeros((len(actions),), dtype=torch.float32)
             entropy = torch.zeros((len(actions),), dtype=torch.float32)
-            
+
         return action_log_probs, values.squeeze(), entropy
 
     def update(self) -> Dict[str, float]:
@@ -740,16 +741,13 @@ class PPOAgent:
 
     def save(self, path: str) -> None:
         """
-        Save the agent to disk.
+        Save the agent to disk or cloud storage.
 
         Args:
-            path: Path to save the agent to
+            path: Path to save the agent to (local path or gs:// URL)
         """
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-
-        # Save model
-        torch.save({
+        # Prepare model data
+        model_data = {
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'model_type': self.model.__class__.__name__,
@@ -759,23 +757,99 @@ class PPOAgent:
             'policy_loss_history': self.policy_loss_history,
             'value_loss_history': self.value_loss_history,
             'entropy_history': self.entropy_history,
-        }, path)
+        }
+
+        if path.startswith("gs://"):
+            # Import Google Cloud Storage if needed
+            try:
+                from google.cloud import storage
+                import io
+            except ImportError:
+                raise ImportError("google-cloud-storage is required to save to GCS. Install with pip install google-cloud-storage")
+
+            # Parse bucket and blob path
+            path_parts = path[5:].split("/", 1)
+            bucket_name = path_parts[0]
+            blob_path = path_parts[1] if len(path_parts) > 1 else ""
+
+            # Save to a temporary buffer first
+            buffer = io.BytesIO()
+            torch.save(model_data, buffer)
+            buffer.seek(0)
+
+            # Upload to GCS
+            try:
+                storage_client = storage.Client()
+                bucket = storage_client.bucket(bucket_name)
+                blob = bucket.blob(blob_path)
+                blob.upload_from_file(buffer, content_type='application/octet-stream')
+                print(f"Model saved to GCS: {path}")
+            except Exception as e:
+                print(f"Error saving model to GCS: {e}")
+                raise
+        else:
+            # Save locally
+            # Create directory if it doesn't exist
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+
+            # Save model
+            torch.save(model_data, path)
+            print(f"Model saved locally: {path}")
 
     def load(self, path: str) -> None:
         """
-        Load the agent from disk.
+        Load the agent from disk or cloud storage.
 
         Args:
-            path: Path to load the agent from
+            path: Path to load the agent from (local path or gs:// URL)
         """
-        # Load checkpoint
-        try:
-            # First try with weights_only=False (for backward compatibility)
-            checkpoint = torch.load(path, map_location=self.device, weights_only=False)
-        except Exception as e:
-            print(f"Warning: Could not load with weights_only=False, trying with weights_only=True: {e}")
-            # If that fails, try with weights_only=True
-            checkpoint = torch.load(path, map_location=self.device, weights_only=True)
+        if path.startswith("gs://"):
+            # Import Google Cloud Storage if needed
+            try:
+                from google.cloud import storage
+                import io
+            except ImportError:
+                raise ImportError("google-cloud-storage is required to load from GCS. Install with pip install google-cloud-storage")
+
+            # Parse bucket and blob path
+            path_parts = path[5:].split("/", 1)
+            bucket_name = path_parts[0]
+            blob_path = path_parts[1] if len(path_parts) > 1 else ""
+
+            try:
+                # Download from GCS to a buffer
+                storage_client = storage.Client()
+                bucket = storage_client.bucket(bucket_name)
+                blob = bucket.blob(blob_path)
+                
+                buffer = io.BytesIO()
+                blob.download_to_file(buffer)
+                buffer.seek(0)
+                
+                # Load checkpoint from buffer
+                try:
+                    # First try with weights_only=False
+                    checkpoint = torch.load(buffer, map_location=self.device, weights_only=False)
+                except Exception as e:
+                    print(f"Warning: Could not load with weights_only=False, trying with weights_only=True: {e}")
+                    # Reset buffer and try again with weights_only=True
+                    buffer.seek(0)
+                    checkpoint = torch.load(buffer, map_location=self.device, weights_only=True)
+                
+                print(f"Model loaded from GCS: {path}")
+            except Exception as e:
+                raise RuntimeError(f"Error loading model from GCS: {e}")
+        else:
+            # Load from local file
+            try:
+                # First try with weights_only=False (for backward compatibility)
+                checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+            except Exception as e:
+                print(f"Warning: Could not load with weights_only=False, trying with weights_only=True: {e}")
+                # If that fails, try with weights_only=True
+                checkpoint = torch.load(path, map_location=self.device, weights_only=True)
+            
+            print(f"Model loaded from local file: {path}")
 
         # Load model
         self.model.load_state_dict(checkpoint['model_state_dict'])
@@ -786,3 +860,13 @@ class PPOAgent:
                 self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             except Exception as e:
                 print(f"Warning: Could not load optimizer state: {e}")
+                
+        # Load training history if available
+        if 'reward_history' in checkpoint:
+            self.reward_history = checkpoint['reward_history']
+        if 'policy_loss_history' in checkpoint:
+            self.policy_loss_history = checkpoint['policy_loss_history']
+        if 'value_loss_history' in checkpoint:
+            self.value_loss_history = checkpoint['value_loss_history']
+        if 'entropy_history' in checkpoint:
+            self.entropy_history = checkpoint['entropy_history']
