@@ -18,85 +18,127 @@ from dotenv import load_dotenv
 
 from rl_agent.environment.trading_env import BinanceFuturesCryptoEnv
 from rl_agent.agent.ppo_agent import PPOAgent
-from rl_agent.agent.models import ActorCriticCNN, ActorCriticLSTM, ActorCriticTransformer
+from rl_agent.agent.models import (
+    ActorCriticCNN,
+    ActorCriticLSTM,
+    ActorCriticTransformer,
+)
 from data import DataHandler
 from google.cloud import secretmanager, storage
 
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("inference.log"),
-        logging.StreamHandler()
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("inference.log"), logging.StreamHandler()],
 )
 logger = logging.getLogger("inference")
 
+
 def parse_args():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="Run inference with a trained RL agent on Binance Futures")
+    parser = argparse.ArgumentParser(
+        description="Run inference with a trained RL agent on Binance Futures"
+    )
 
-    parser.add_argument("--model_path", type=str, required=True,
-                        help="Path to the trained model file")
-    parser.add_argument("--model_type", type=str, default="lstm", choices=["cnn", "lstm", "transformer"],
-                        help="Type of model architecture")
-    parser.add_argument("--symbol", type=str, default="BTCUSDT",
-                        help="Trading symbol")
-    parser.add_argument("--window_size", type=int, default=24,
-                        help="Observation window size")
-    parser.add_argument("--leverage", type=int, default=2,
-                        help="Trading leverage")
-    parser.add_argument("--interval", type=str, default="15m",
-                        help="Data fetch interval")
-    parser.add_argument("--initial_balance", type=float, default=10000,
-                        help="Initial balance for the trading account")
-    parser.add_argument("--stop_loss", type=float, default=0.01,
-                        help="Stop loss percentage")
-    parser.add_argument("--risk_reward", type=float, default=1.5,
-                        help="Risk-reward ratio (take profit to stop loss)")
-    parser.add_argument("--dry_run", action="store_true",
-                        help="Run in dry-run mode (no actual trades)")
-    parser.add_argument("--sleep_time", type=int, default=60,
-                        help="Sleep time between iterations in seconds")
+    parser.add_argument(
+        "--model_path", type=str, required=True, help="Path to the trained model file"
+    )
+    parser.add_argument(
+        "--model_type",
+        type=str,
+        default="lstm",
+        choices=["cnn", "lstm", "transformer"],
+        help="Type of model architecture",
+    )
+    parser.add_argument("--symbol", type=str, default="BTCUSDT", help="Trading symbol")
+    parser.add_argument(
+        "--window_size", type=int, default=24, help="Observation window size"
+    )
+    parser.add_argument("--leverage", type=int, default=2, help="Trading leverage")
+    parser.add_argument(
+        "--interval", type=str, default="15m", help="Data fetch interval"
+    )
+    parser.add_argument(
+        "--initial_balance",
+        type=float,
+        default=10000,
+        help="Initial balance for the trading account",
+    )
+    parser.add_argument(
+        "--stop_loss", type=float, default=0.01, help="Stop loss percentage"
+    )
+    parser.add_argument(
+        "--risk_reward",
+        type=float,
+        default=1.5,
+        help="Risk-reward ratio (take profit to stop loss)",
+    )
+    parser.add_argument(
+        "--dry_run", action="store_true", help="Run in dry-run mode (no actual trades)"
+    )
+    parser.add_argument(
+        "--sleep_time",
+        type=int,
+        default=60,
+        help="Sleep time between iterations in seconds",
+    )
 
     return parser.parse_args()
 
+
 def check_api_keys():
     """
-    Check if the required API keys are set in the .env file.
+    Check if the required API keys are set and return them.
 
     Returns:
-        bool: True if keys are set, False otherwise
+        tuple: (api_key, api_secret) if keys are found, raises ValueError otherwise
     """
+    binance_key = None
+    binance_secret = None
+    
     try:
-        self.gcloud_client = secretmanager.SecretManagerServiceClient()
+        gcloud_client = secretmanager.SecretManagerServiceClient()
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "seraphic-bliss-451413-c8")
 
-        binance_key_response = self.gcloud_client.access_secret_version(
+        binance_key_response = gcloud_client.access_secret_version(
             name=f"projects/{project_id}/secrets/BINANCE_API_KEY/versions/latest"
         )
         binance_key = binance_key_response.payload.data.decode("UTF-8").strip()
 
-        binance_secret_response = self.gcloud_client.access_secret_version(
+        binance_secret_response = gcloud_client.access_secret_version(
             name=f"projects/{project_id}/secrets/BINANCE_SECRET_KEY/versions/latest"
         )
         binance_secret = binance_secret_response.payload.data.decode("UTF-8").strip()
 
-        logger.info("Successfully retrieved Binance credentials from Google Secret Manager")
+        logger.info(
+            "Successfully retrieved Binance credentials from Google Secret Manager"
+        )
 
     except Exception as e:
         logger.error(f"Could not retrieve from Google Secret Manager: {e}")
         load_dotenv()
-        binance_key = os.getenv("binance_api")
-        binance_secret = os.getenv("binance_secret")
+        # Try multiple possible environment variable names
+        binance_key = os.getenv("binance_api") or os.getenv("binance_future_api") or os.getenv("binance_api2")
+        binance_secret = os.getenv("binance_secret") or os.getenv("binance_future_secret") or os.getenv("binance_secret2")
         logger.info("Falling back to .env file for Binance credentials")
 
     if not binance_key or not binance_secret:
         raise ValueError(
             "Binance API credentials not found in environment variables. "
-            "Ensure that binance_api and binance_secret are set in your .env file."
+            "Ensure that API credentials are set in your .env file or Google Secret Manager."
         )
+        
+    # Set these in environment variables for other components to use
+    os.environ["binance_api"] = binance_key
+    os.environ["binance_secret"] = binance_secret
+    os.environ["binance_future_api"] = binance_key
+    os.environ["binance_future_secret"] = binance_secret
+    os.environ["binance_api2"] = binance_key
+    os.environ["binance_secret2"] = binance_secret
+    
+    return binance_key, binance_secret
+
 
 class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
     """
@@ -125,11 +167,22 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
 
             # Determine fetch interval in seconds
             interval_map = {
-                "1m": 60, "3m": 180, "5m": 300, "15m": 900,
-                "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400,
-                "6h": 21600, "8h": 28800, "12h": 43200, "1d": 86400
+                "1m": 60,
+                "3m": 180,
+                "5m": 300,
+                "15m": 900,
+                "30m": 1800,
+                "1h": 3600,
+                "2h": 7200,
+                "4h": 14400,
+                "6h": 21600,
+                "8h": 28800,
+                "12h": 43200,
+                "1d": 86400,
             }
-            interval_seconds = interval_map.get(self.data_fetch_interval, 900)  # Default to 15m
+            interval_seconds = interval_map.get(
+                self.data_fetch_interval, 900
+            )  # Default to 15m
 
             # Fetch new data if interval has passed or processed_df is None
             if time_diff >= interval_seconds * 0.8 or self.processed_df is None:
@@ -138,7 +191,7 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
                 # Set time range for data fetch (window_size + buffer candles)
                 end_time = current_time
                 start_time = end_time - timedelta(
-                    minutes=int(interval_seconds/60) * (self.window_size + 10)
+                    minutes=int(interval_seconds / 60) * (self.window_size + 10)
                 )
 
                 # Use DataHandler to get and process data with all metrics
@@ -146,19 +199,26 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
                     symbol=self.symbol,
                     interval=self.data_fetch_interval,
                     start_time=start_time,
-                    end_time=end_time
+                    end_time=end_time,
                 )
 
                 # Apply all the same transformations as in data.py
-                processed_data = self.data_handler.calculate_technical_indicators(raw_data)
-                processed_data = self.data_handler.calculate_risk_metrics(processed_data)
+                processed_data = self.data_handler.calculate_technical_indicators(
+                    raw_data
+                )
+                processed_data = self.data_handler.calculate_risk_metrics(
+                    processed_data
+                )
                 processed_data = self.data_handler.identify_trade_setups(processed_data)
 
                 # Try to add futures-specific metrics if possible
                 try:
                     processed_data = self.data_handler.add_futures_metrics(
-                        processed_data, self.symbol, self.data_fetch_interval,
-                        start_time, end_time
+                        processed_data,
+                        self.symbol,
+                        self.data_fetch_interval,
+                        start_time,
+                        end_time,
                     )
                 except Exception as e:
                     logger.warning(f"Could not add futures metrics: {e}")
@@ -176,10 +236,12 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
                 num_features = processed_data.shape[1]
                 logger.info(f"Data updated successfully with {num_features} features")
                 if num_features < 57:
-                    logger.warning(f"Expected 57 features, but got only {num_features}. Some metrics may be missing.")
+                    logger.warning(
+                        f"Expected 57 features, but got only {num_features}. Some metrics may be missing."
+                    )
             # Get the last window_size rows from processed data
             if len(self.processed_df) >= self.window_size:
-                data = self.processed_df.iloc[-self.window_size:].copy()
+                data = self.processed_df.iloc[-self.window_size :].copy()
             else:
                 # If we don't have enough data, pad with the first row
                 missing_rows = self.window_size - len(self.processed_df)
@@ -188,24 +250,24 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
                 data = pd.concat([padding, self.processed_df])
 
             # Drop non-numeric columns like 'symbol' that can't be converted to float
-            if 'symbol' in data.columns:
-                data = data.drop(columns=['symbol'])
+            if "symbol" in data.columns:
+                data = data.drop(columns=["symbol"])
 
             # Convert any remaining string columns to numeric if possible
-            for col in data.select_dtypes(include=['object']).columns:
-                if col == 'trade_setup':
+            for col in data.select_dtypes(include=["object"]).columns:
+                if col == "trade_setup":
                     # Convert trade_setup to numeric (0=none, 1=bullish, 2=bearish, etc)
                     setup_map = {
-                        'none': 0,
-                        'strong_bullish': 1,
-                        'strong_bearish': 2,
-                        'bullish_reversal': 3,
-                        'bearish_reversal': 4
+                        "none": 0,
+                        "strong_bullish": 1,
+                        "strong_bearish": 2,
+                        "bullish_reversal": 3,
+                        "bearish_reversal": 4,
                     }
                     data[col] = data[col].map(setup_map).fillna(0)
                 else:
                     # Try to convert other object columns to numeric
-                    data[col] = pd.to_numeric(data[col], errors='coerce').fillna(0)
+                    data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0)
 
             # Extract features
             feature_data = data.values
@@ -246,7 +308,9 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
                     logger.error(f"Columns with infinite values: {inf_columns}")
 
                 # Check column data types
-                logger.error(f"Data types in feature_data: {[(col, data[col].dtype) for col in data.columns]}")
+                logger.error(
+                    f"Data types in feature_data: {[(col, data[col].dtype) for col in data.columns]}"
+                )
 
                 # Identify problem columns that can't be converted to float32
                 problem_columns = []
@@ -272,21 +336,23 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
                         )
                     )
                     self.state = combined_data.astype(np.float32)
-                    logger.info(f"Recovered by dropping problem columns. New state shape: {self.state.shape}")
+                    logger.info(
+                        f"Recovered by dropping problem columns. New state shape: {self.state.shape}"
+                    )
 
             # Update date for reference
             self.date = current_time
 
             # Extract market data for environment
             if not data.empty:
-                if 'volatility' in data.columns:
-                    self.current_volatility = data.iloc[-1]['volatility']
-                if 'fundingRate' in data.columns:
-                    self.current_funding_rate = data.iloc[-1]['fundingRate']
-                if 'sumOpenInterest' in data.columns:
-                    self.current_open_interest = data.iloc[-1]['sumOpenInterest']
-                if 'oi_change' in data.columns:
-                    self.open_interest_change = data.iloc[-1]['oi_change']
+                if "volatility" in data.columns:
+                    self.current_volatility = data.iloc[-1]["volatility"]
+                if "fundingRate" in data.columns:
+                    self.current_funding_rate = data.iloc[-1]["fundingRate"]
+                if "sumOpenInterest" in data.columns:
+                    self.current_open_interest = data.iloc[-1]["sumOpenInterest"]
+                if "oi_change" in data.columns:
+                    self.open_interest_change = data.iloc[-1]["oi_change"]
 
         except Exception as e:
             logger.error(f"Error updating live state: {e}", exc_info=True)
@@ -310,29 +376,31 @@ def load_agent(args):
             # Import Google Cloud Storage
             from google.cloud import storage
             import io
-            
+
             # Parse bucket and blob path
             path_parts = args.model_path[5:].split("/", 1)
             bucket_name = path_parts[0]
             blob_path = path_parts[1] if len(path_parts) > 1 else ""
-            
+
             # Download from GCS to a buffer
             storage_client = storage.Client()
             bucket = storage_client.bucket(bucket_name)
             blob = bucket.blob(blob_path)
-            
+
             buffer = io.BytesIO()
             blob.download_to_file(buffer)
             buffer.seek(0)
-            
+
             # Try to load with weights_only=False
             try:
-                checkpoint = torch.load(buffer, map_location='cpu', weights_only=False)
+                checkpoint = torch.load(buffer, map_location="cpu", weights_only=False)
             except Exception as e:
-                logger.warning(f"Could not load with weights_only=False, trying with weights_only=True: {e}")
+                logger.warning(
+                    f"Could not load with weights_only=False, trying with weights_only=True: {e}"
+                )
                 buffer.seek(0)
-                checkpoint = torch.load(buffer, map_location='cpu', weights_only=True)
-                
+                checkpoint = torch.load(buffer, map_location="cpu", weights_only=True)
+
             logger.info(f"Model loaded from GCS: {args.model_path}")
         except Exception as e:
             raise RuntimeError(f"Error loading model from GCS: {e}")
@@ -340,49 +408,57 @@ def load_agent(args):
         # Load from local file
         try:
             # Try with weights_only=False
-            checkpoint = torch.load(args.model_path, map_location='cpu', weights_only=False)
+            checkpoint = torch.load(
+                args.model_path, map_location="cpu", weights_only=False
+            )
         except Exception as e:
-            logger.warning(f"Could not load with weights_only=False, trying with weights_only=True: {e}")
+            logger.warning(
+                f"Could not load with weights_only=False, trying with weights_only=True: {e}"
+            )
             # If that fails, try with weights_only=True
-            checkpoint = torch.load(args.model_path, map_location='cpu', weights_only=True)
+            checkpoint = torch.load(
+                args.model_path, map_location="cpu", weights_only=True
+            )
 
     # Extract the input shape based on model type
     input_dim = None
-    model_state = checkpoint['model_state_dict']
+    model_state = checkpoint["model_state_dict"]
 
-    if args.model_type.lower() == 'lstm':
-        if 'lstm.weight_ih_l0' in model_state:
-            lstm_weights = model_state['lstm.weight_ih_l0']
+    if args.model_type.lower() == "lstm":
+        if "lstm.weight_ih_l0" in model_state:
+            lstm_weights = model_state["lstm.weight_ih_l0"]
             input_dim = lstm_weights.shape[1]
         else:
             raise ValueError("LSTM weights not found in model state dict")
-    elif args.model_type.lower() == 'cnn':
+    elif args.model_type.lower() == "cnn":
         # For CNN, find the first conv layer to determine input shape
         for key in model_state:
-            if 'cnn_layers.0.weight' in key:
+            if "cnn_layers.0.weight" in key:
                 conv_weights = model_state[key]
                 input_dim = conv_weights.shape[1] * args.window_size
                 break
         if input_dim is None:
             # Fallback method: try to infer from linear layer dimensions
             for key in model_state:
-                if 'actor.0.weight' in key:
+                if "actor.0.weight" in key:
                     # Infer from the first linear layer in actor network
                     linear_weights = model_state[key]
                     input_dim = linear_weights.shape[1]
                     break
         if input_dim is None:
             raise ValueError("Could not detect input dimension from CNN model")
-    elif args.model_type.lower() == 'transformer':
+    elif args.model_type.lower() == "transformer":
         # For transformer, look at input embedding layer
-        if 'input_embedding.weight' in model_state:
-            embedding_weights = model_state['input_embedding.weight']
+        if "input_embedding.weight" in model_state:
+            embedding_weights = model_state["input_embedding.weight"]
             input_dim = embedding_weights.shape[1] * args.window_size
         else:
             raise ValueError("Transformer input embedding weights not found")
 
     if input_dim is None:
-        raise ValueError(f"Could not determine input dimension for model type: {args.model_type}")
+        raise ValueError(
+            f"Could not determine input dimension for model type: {args.model_type}"
+        )
 
     logger.info(f"Detected input dimension from model: {input_dim}")
 
@@ -393,36 +469,44 @@ def load_agent(args):
         leverage=args.leverage,
         mode="trade",  # Live trading mode
         # base_url="https://testnet.binancefuture.com",  # Use testnet
-        base_url='https://fapi.binance.com',  # Use mainnet
+        base_url="https://fapi.binance.com",  # Use mainnet
         margin_type="ISOLATED",
         risk_reward_ratio=args.risk_reward,
         stop_loss_percent=args.stop_loss,
         data_fetch_interval=args.interval,
         initial_balance=args.initial_balance,
-        dry_run=args.dry_run
+        dry_run=args.dry_run,
     )
 
     # Create a custom agent with the correct input shape
     class CustomPPOAgent(PPOAgent):
         def __init__(self, env, model_type, hidden_dim, save_dir, input_dim, lr=3e-4):
             # Pass lr parameter explicitly to avoid TypeError
-            super().__init__(env=env, model_type=model_type, hidden_dim=hidden_dim, lr=lr, save_dir=save_dir)
+            super().__init__(
+                env=env,
+                model_type=model_type,
+                hidden_dim=hidden_dim,
+                lr=lr,
+                save_dir=save_dir,
+            )
             # Store model type and input dimension
             self.model_type = model_type
             self.hidden_dim = hidden_dim
 
             # Handle input dimension based on model type
-            if model_type.lower() == 'lstm':
+            if model_type.lower() == "lstm":
                 # For LSTM, input_dim is the feature dimension for each timestep
                 self.expected_feature_dim = input_dim
                 self.input_shape = (env.window_size, input_dim)
-            elif model_type.lower() == 'cnn':
+            elif model_type.lower() == "cnn":
                 # For CNN, typical shapes are (channels, timesteps) or (timesteps, channels)
                 # We need to ensure the dimension matches what the model expects
                 features_per_timestep = input_dim // env.window_size
                 self.expected_feature_dim = input_dim
                 self.input_shape = (features_per_timestep, env.window_size)
-                logger.info(f"CNN input shape: {self.input_shape} (features_per_timestep, window_size)")
+                logger.info(
+                    f"CNN input shape: {self.input_shape} (features_per_timestep, window_size)"
+                )
             else:
                 # For transformer and other models
                 self.expected_feature_dim = input_dim
@@ -434,26 +518,26 @@ def load_agent(args):
         def _initialize_model(self):
             """Initialize the model with the correct input shape."""
             # Based on the model type, initialize the appropriate model
-            if self.model_type.lower() == 'cnn':
+            if self.model_type.lower() == "cnn":
                 self.model = ActorCriticCNN(
                     input_shape=self.input_shape,
                     action_dim=self.action_dim,
                     hidden_dim=self.hidden_dim,
-                    device=self.device
+                    device=self.device,
                 )
-            elif self.model_type.lower() == 'lstm':
+            elif self.model_type.lower() == "lstm":
                 self.model = ActorCriticLSTM(
                     input_shape=self.input_shape,  # Use the exact shape from the trained model
                     action_dim=self.action_dim,
                     hidden_dim=self.hidden_dim,
-                    device=self.device
+                    device=self.device,
                 )
-            elif self.model_type.lower() == 'transformer':
+            elif self.model_type.lower() == "transformer":
                 self.model = ActorCriticTransformer(
                     input_shape=self.input_shape,
                     action_dim=self.action_dim,
                     hidden_dim=self.hidden_dim,
-                    device=self.device
+                    device=self.device,
                 )
             else:
                 raise ValueError(f"Unknown model type: {self.model_type}")
@@ -465,19 +549,25 @@ def load_agent(args):
             """Override to handle input dimension mismatch and check for NaN values."""
             # Check for NaN values in the state
             if np.isnan(state).any():
-                logger.warning(f"NaN values detected in the state, replacing with zeros")
+                logger.warning(
+                    f"NaN values detected in the state, replacing with zeros"
+                )
                 state = np.nan_to_num(state, nan=0.0)
 
             # If state dimension doesn't match expected, pad or transform it
             if state.shape[1] != self.expected_feature_dim:
                 # Log dimension mismatch
-                logger.info(f"State dimension mismatch. Got {state.shape[1]}, expected {self.expected_feature_dim}")
+                logger.info(
+                    f"State dimension mismatch. Got {state.shape[1]}, expected {self.expected_feature_dim}"
+                )
                 # Pad the state to match expected dimensions
                 padded_state = self._pad_state(state)
 
                 # Double-check for NaNs in padded state
                 if np.isnan(padded_state).any():
-                    logger.warning(f"NaN values detected in padded state, replacing with zeros")
+                    logger.warning(
+                        f"NaN values detected in padded state, replacing with zeros"
+                    )
                     padded_state = np.nan_to_num(padded_state, nan=0.0)
 
                 try:
@@ -509,10 +599,12 @@ def load_agent(args):
             # Concatenate state with padding
             padded_state = np.concatenate([state, padding], axis=1)
 
-            logger.info(f"Padded state from {current_features} to {self.expected_feature_dim} features")
+            logger.info(
+                f"Padded state from {current_features} to {self.expected_feature_dim} features"
+            )
 
             # For CNN models, need to reshape the state differently
-            if self.model_type.lower() == 'cnn':
+            if self.model_type.lower() == "cnn":
                 # For CNN, need to reshape to [batch_size, channels, height, width]
                 # Since the model was trained with a specific input shape, we need to match it
                 logger.info(f"Reshaping for CNN model. Input shape: {self.input_shape}")
@@ -523,7 +615,7 @@ def load_agent(args):
 
                 # If we have more features than expected, truncate
                 if padded_state.shape[1] > self.expected_feature_dim:
-                    padded_state = padded_state[:, :self.expected_feature_dim]
+                    padded_state = padded_state[:, : self.expected_feature_dim]
 
                 # Reshape to [1, channels, timesteps]
                 try:
@@ -538,7 +630,9 @@ def load_agent(args):
                     logger.info(f"CNN input reshaped to {reshaped.shape}")
                     return reshaped
                 except Exception as e:
-                    logger.error(f"Error reshaping for CNN: {e}. Using original padded state.")
+                    logger.error(
+                        f"Error reshaping for CNN: {e}. Using original padded state."
+                    )
 
             return padded_state
 
@@ -548,7 +642,7 @@ def load_agent(args):
         model_type=args.model_type,
         hidden_dim=128,
         save_dir=os.path.dirname(args.model_path),
-        input_dim=input_dim
+        input_dim=input_dim,
     )
 
     # Load the trained model
@@ -556,19 +650,26 @@ def load_agent(args):
     logger.info(f"Model loaded successfully with input shape {agent.input_shape}")
 
     # For CNN models, let's add extra debugging to verify the expected shape
-    if args.model_type.lower() == 'cnn':
+    if args.model_type.lower() == "cnn":
         # Inspect the first convolutional layer to confirm input shape expectations
-        if hasattr(agent.model, 'cnn_layers') and len(agent.model.cnn_layers) > 0:
+        if hasattr(agent.model, "cnn_layers") and len(agent.model.cnn_layers) > 0:
             first_conv = agent.model.cnn_layers[0]
-            logger.info(f"First CNN layer info: in_channels={first_conv.in_channels}, "
-                        f"out_channels={first_conv.out_channels}, kernel_size={first_conv.kernel_size}")
-            logger.info(f"This confirms the model expects input with {first_conv.in_channels} channels")
+            logger.info(
+                f"First CNN layer info: in_channels={first_conv.in_channels}, "
+                f"out_channels={first_conv.out_channels}, kernel_size={first_conv.kernel_size}"
+            )
+            logger.info(
+                f"This confirms the model expects input with {first_conv.in_channels} channels"
+            )
 
             # Update expected feature dim if needed based on actual model architecture
             agent.expected_feature_dim = first_conv.in_channels * agent.input_shape[1]
-            logger.info(f"Updated expected_feature_dim to {agent.expected_feature_dim} based on CNN architecture")
+            logger.info(
+                f"Updated expected_feature_dim to {agent.expected_feature_dim} based on CNN architecture"
+            )
 
     return agent, env
+
 
 def run_inference(agent, env, args):
     """
@@ -580,8 +681,10 @@ def run_inference(agent, env, args):
         args: Command line arguments
     """
     logger.info(f"Starting inference on {args.symbol} with {args.model_type} model")
-    logger.info(f"Trading parameters: Leverage={args.leverage}, Stop Loss={args.stop_loss*100}%, "
-                f"Risk-Reward={args.risk_reward}, Interval={args.interval}")
+    logger.info(
+        f"Trading parameters: Leverage={args.leverage}, Stop Loss={args.stop_loss*100}%, "
+        f"Risk-Reward={args.risk_reward}, Interval={args.interval}"
+    )
 
     if args.dry_run:
         logger.info("Running in DRY RUN mode - no actual trades will be executed")
@@ -592,7 +695,9 @@ def run_inference(agent, env, args):
     # Log state dimensions to ensure we're getting the right data
     logger.info(f"State shape: {state.shape}")
     if isinstance(env, CustomBinanceFuturesCryptoEnv) and env.processed_df is not None:
-        logger.info(f"Number of features in processed data: {env.processed_df.shape[1]}")
+        logger.info(
+            f"Number of features in processed data: {env.processed_df.shape[1]}"
+        )
         # Show the feature names for debugging
         logger.info(f"Features: {list(env.processed_df.columns)}")
 
@@ -610,8 +715,10 @@ def run_inference(agent, env, args):
                 logger.info(f"Action probability: {action_prob:.4f}")
             else:
                 # If it's an array, log each probability
-                logger.info(f"Action probabilities: {action_names[0]}: {action_prob[0]:.4f}, "
-                            f"{action_names[1]}: {action_prob[1]:.4f}, {action_names[2]}: {action_prob[2]:.4f}")
+                logger.info(
+                    f"Action probabilities: {action_names[0]}: {action_prob[0]:.4f}, "
+                    f"{action_names[1]}: {action_prob[1]:.4f}, {action_names[2]}: {action_prob[2]:.4f}"
+                )
 
             logger.info(f"Selected action: {action_names[action]}")
 
@@ -621,14 +728,18 @@ def run_inference(agent, env, args):
             # Log the result
             logger.info(f"Reward: {reward:.4f}")
             logger.info(f"Account value: {info['account_value']:.2f} USDT")
-            logger.info(f"Position: {info['position']:.8f} {args.symbol} "
-                        f"(Direction: {'+' if info['position_direction'] > 0 else '-' if info['position_direction'] < 0 else '0'})")
+            logger.info(
+                f"Position: {info['position']:.8f} {args.symbol} "
+                f"(Direction: {'+' if info['position_direction'] > 0 else '-' if info['position_direction'] < 0 else '0'})"
+            )
 
-            if info['position_direction'] != 0:
+            if info["position_direction"] != 0:
                 logger.info(f"Entry price: {info['entry_price']:.2f} USDT")
                 logger.info(f"Unrealized PnL: {info['unrealized_pnl']:.2f} USDT")
-                if 'liquidation_price' in info and info['liquidation_price'] > 0:
-                    logger.info(f"Liquidation price: {info['liquidation_price']:.2f} USDT")
+                if "liquidation_price" in info and info["liquidation_price"] > 0:
+                    logger.info(
+                        f"Liquidation price: {info['liquidation_price']:.2f} USDT"
+                    )
 
             # Update state
             state = next_state
@@ -646,6 +757,7 @@ def run_inference(agent, env, args):
         env.close()
         logger.info("Inference ended")
 
+
 def main():
     """Main function."""
     # Load environment variables
@@ -654,15 +766,23 @@ def main():
     # Parse arguments
     args = parse_args()
 
-    # Check if API keys are set
-    if not check_api_keys():
-        return
+    # Check if API keys are set and get them
+    api_key, api_secret = check_api_keys()
+    
+    # Set these in environment variables for other components to use
+    os.environ["binance_api"] = api_key
+    os.environ["binance_secret"] = api_secret
+    os.environ["binance_future_api"] = api_key
+    os.environ["binance_future_secret"] = api_secret
+    os.environ["binance_api2"] = api_key
+    os.environ["binance_secret2"] = api_secret
 
     # Load agent and environment
     agent, env = load_agent(args)
 
     # Run inference
     run_inference(agent, env, args)
+
 
 if __name__ == "__main__":
     main()

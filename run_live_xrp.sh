@@ -1,4 +1,4 @@
-#! /bin/zsh
+#! /bin/sh
 
 pipenv run python inference.py \
   --model_path gs://crypto_trading_models/LSTM/XRP/best_model.pt \
