@@ -1,12 +1,12 @@
 #!/bin/bash
 # Run live trading with the best model on Binance Futures testnet
 
-pipenv run python inference.py \
+nohup pipenv run python inference.py \
   --model_path lstm_btc/best_model.pt \
   --model_type lstm \
   --symbol BTCUSDT \
   --window_size 24 \
-  --leverage 200 \
+  --leverage 20 \
   --interval 15m \
   --initial_balance 12 \
   --stop_loss 0.05 \

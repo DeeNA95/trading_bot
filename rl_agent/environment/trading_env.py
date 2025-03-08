@@ -711,8 +711,16 @@ class BinanceFuturesCryptoEnv(gym.Env):
         else:
             return self.df.iloc[self.current_step]["close"]
 
-    def _execute_trade(self, action):
-        """Execute a trade on Binance Futures using the executor module."""
+    def _execute_trade(self, action, scale_in=False, scale_out=False, scale_percentage=0.5):
+        """
+        Execute a trade on Binance Futures using the executor module.
+        
+        Args:
+            action: The action to take (0=hold, 1=buy/long, 2=sell/short)
+            scale_in: Whether to scale into an existing position
+            scale_out: Whether to scale out of an existing position
+            scale_percentage: Percentage of position to scale in/out (0.5 = 50%)
+        """
         if not self.live_trading:
             # In backtest mode, trades are handled by _handle_backtesting_trade
             return
@@ -751,11 +759,72 @@ class BinanceFuturesCryptoEnv(gym.Env):
             self.entry_price = 0
             self.unrealized_pnl = 0
 
-        # Skip if we already have an open position (external to our system) or if action is 0
+        # Handle scaling logic
+        if self.position_status["has_open_position"] and (scale_in or scale_out):
+            # Calculate position size/amount for scaling
+            account_balance = self._get_balance_usdt()
+            usdt_amount = account_balance * self.max_position * scale_percentage
+            
+            # Execute scaling operation through executor
+            result = self.executor.execute_trade(
+                action=action, 
+                usdt_amount=usdt_amount,
+                scale_in=scale_in, 
+                scale_out=scale_out,
+                scale_percentage=scale_percentage
+            )
+            
+            # Update position tracking based on scaling result
+            if result["success"]:
+                if result["action"] == "scale_in":
+                    # Update position size and entry price from executor
+                    position_direction = 1 if self.current_position > 0 else -1
+                    self.current_position = position_direction * result["position_size"]
+                    self.entry_price = result["entry_price"]
+                    self.stop_loss = result.get("stop_loss", self.stop_loss)
+                    self.take_profit = result.get("take_profit", self.take_profit)
+                    
+                    # Record the scaling action
+                    self.trade_history.append({
+                        "timestamp": datetime.now().isoformat(),
+                        "action": "scale_in",
+                        "position_direction": position_direction,
+                        "added_size": result["quantity"],
+                        "total_size": result["position_size"],
+                        "avg_entry_price": result["entry_price"],
+                        "stop_loss": result.get("stop_loss", self.stop_loss),
+                        "take_profit": result.get("take_profit", self.take_profit),
+                    })
+                
+                elif result["action"] == "scale_out":
+                    # Update position size
+                    position_direction = 1 if self.current_position > 0 else -1
+                    if result["position_size"] <= 0:
+                        # Position fully closed
+                        self.current_position = 0
+                        self.entry_price = 0
+                        self.position_status["has_open_position"] = False
+                    else:
+                        # Position partially closed
+                        self.current_position = position_direction * result["position_size"]
+                    
+                    # Record the scaling action
+                    self.trade_history.append({
+                        "timestamp": datetime.now().isoformat(),
+                        "action": "scale_out",
+                        "position_direction": position_direction,
+                        "removed_size": result["quantity"],
+                        "remaining_size": result["position_size"],
+                        "price": result["price"],
+                    })
+            
+            return
+
+        # Skip if we already have an open position (not scaling) or if action is 0
         if self.position_status["has_open_position"] or action == 0:
             return
 
-        # Calculate USDT amount to allocate
+        # Calculate USDT amount to allocate for new positions
         account_balance = self._get_balance_usdt()
         usdt_amount = account_balance * self.max_position
 
@@ -863,12 +932,15 @@ class BinanceFuturesCryptoEnv(gym.Env):
                 1 - self.stop_loss_percent * self.risk_reward_ratio
             )
 
-    def step(self, action):
+    def step(self, action, scale_in=False, scale_out=False, scale_percentage=0.5):
         """
         Take a step in the environment.
 
         Args:
             action: 0 = Hold, 1 = Buy/Long, 2 = Sell/Short
+            scale_in: Whether to scale into an existing position (add to it)
+            scale_out: Whether to scale out of an existing position (reduce it)
+            scale_percentage: Percentage to scale in/out (0.5 = 50%)
 
         Returns:
             tuple: (next_state, reward, done, truncated, info)
@@ -881,8 +953,10 @@ class BinanceFuturesCryptoEnv(gym.Env):
             self.live_trading
             and self.position_status["has_open_position"]
             and action != 0
+            and not scale_in 
+            and not scale_out
         ):
-            # If we have an open position, force hold action
+            # If we have an open position and not scaling, force hold action
             print(f"Position already open, ignoring action {action} and forcing HOLD")
             action = 0
 
@@ -955,8 +1029,9 @@ class BinanceFuturesCryptoEnv(gym.Env):
 
         # Execute the action
         if self.live_trading:
-            self._execute_trade(action)
+            self._execute_trade(action, scale_in, scale_out, scale_percentage)
         else:
+            # TODO: Implement scaling in backtesting mode
             self._handle_backtesting_trade(action, current_price)
 
         # Calculate new unrealized PnL
@@ -1038,6 +1113,9 @@ class BinanceFuturesCryptoEnv(gym.Env):
                     "has_open_position": self.position_status["has_open_position"],
                     "sl_triggered": self.position_status["sl_triggered"],
                     "tp_triggered": self.position_status["tp_triggered"],
+                    "scale_in": scale_in,
+                    "scale_out": scale_out,
+                    "scale_percentage": scale_percentage,
                 }
             )
 

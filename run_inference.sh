@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run inference with the best model in dry-run mode
 
-pipenv run python inference.py \
+nohup pipenv run python inference.py \
   --model_path models/best_model.pt \
   --model_type lstm \
   --symbol BTCUSDT \

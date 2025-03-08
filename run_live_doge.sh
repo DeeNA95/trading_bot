@@ -1,6 +1,6 @@
 #! /bin/zsh
 
-pipenv run python inference.py \
+nohup pipenv run python inference.py \
   --model_path models/DOGE/lstm/best_model.pt \
   --model_type lstm \
   --symbol DOGEUSDT \

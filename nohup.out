@@ -1,0 +1,14 @@
+Loading .env environment variables...
+Traceback (most recent call last):
+  File "/Users/dna/trading_bot/inference.py", line 20, in <module>
+    from rl_agent.agent.ppo_agent import PPOAgent
+  File "/Users/dna/trading_bot/rl_agent/agent/ppo_agent.py", line 22, in <module>
+    from google.cloud import secretmanager, storage
+ImportError: cannot import name 'storage' from 'google.cloud' (unknown location)
+Loading .env environment variables...
+Traceback (most recent call last):
+  File "/Users/dna/trading_bot/inference.py", line 20, in <module>
+    from rl_agent.agent.ppo_agent import PPOAgent
+  File "/Users/dna/trading_bot/rl_agent/agent/ppo_agent.py", line 22, in <module>
+    from google.cloud import secretmanager, storage
+ImportError: cannot import name 'storage' from 'google.cloud' (unknown location)

@@ -1,6 +1,6 @@
 #! /bin/sh
 
-pipenv run python inference.py \
+nohup pipenv run python inference.py \
   --model_path gs://crypto_trading_models/LSTM/XRP/best_model.pt \
   --model_type lstm \
   --symbol XRPUSDT \
