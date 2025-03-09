@@ -612,6 +612,25 @@ class BinanceFuturesExecutor:
             # Make sure we don't try to reduce more than we have
             quantity = min(quantity, self.position_size)
             
+            # Round to the appropriate precision for this symbol
+            if self.qty_precision is not None:
+                quantity = round(quantity, self.qty_precision)
+                
+            # Ensure quantity is not zero after rounding and meets minimum order requirements
+            if quantity <= 0:
+                # Use the minimum quantity allowed for this symbol
+                quantity = float(f"{{:.{self.qty_precision}f}}".format(10 ** (-self.qty_precision)))
+            
+            # Check if it's too small for the exchange
+            MIN_ORDER_VALUE = 20.0  # Binance minimum order value (20 USDT)
+            order_value = quantity * current_price
+            if order_value < MIN_ORDER_VALUE:
+                # Adjust quantity to meet minimum order value
+                min_quantity = MIN_ORDER_VALUE / current_price
+                # Round to the precision allowed by the exchange
+                quantity = math.ceil(min_quantity * (10 ** self.qty_precision)) / (10 ** self.qty_precision)
+                self.logger.info(f"Adjusted scaling quantity to meet minimum order value of {MIN_ORDER_VALUE} USDT")
+            
             # For scaling out, we need to take the opposite action of our position
             side = "SELL" if position_is_long else "BUY"
             
@@ -670,8 +689,16 @@ class BinanceFuturesExecutor:
                     opposite_side = "SELL" if position_is_long else "BUY"
                     
                     # Get current SL and TP levels (estimated)
-                    sl_price = self.entry_price * (1 - custom_sl_percent if position_is_long else 1 + custom_sl_percent)
-                    tp_price = self.entry_price * (1 + custom_sl_percent * custom_tp_ratio if position_is_long else 1 - custom_sl_percent * custom_tp_ratio)
+                    sl_percent = custom_sl_percent if custom_sl_percent is not None else self.stop_loss_percent
+                    tp_ratio = custom_tp_ratio if custom_tp_ratio is not None else self.risk_reward_ratio
+                    
+                    sl_price = self.entry_price * (1 - sl_percent if position_is_long else 1 + sl_percent)
+                    tp_price = self.entry_price * (1 + sl_percent * tp_ratio if position_is_long else 1 - sl_percent * tp_ratio)
+                    
+                    # Round to the appropriate price precision
+                    if self.price_precision is not None:
+                        sl_price = round(sl_price, self.price_precision)
+                        tp_price = round(tp_price, self.price_precision)
                     
                     # Place new SL order for remaining position
                     sl_order = self.client.new_order(
@@ -732,6 +759,25 @@ class BinanceFuturesExecutor:
             # If quantity not provided, calculate it from USDT amount
             if quantity is None:
                 quantity = self.calculate_quantity(usdt_amount)
+            
+            # Round to the appropriate precision for this symbol
+            if self.qty_precision is not None:
+                quantity = round(quantity, self.qty_precision)
+                
+            # Ensure quantity is not zero after rounding and meets minimum order requirements
+            if quantity <= 0:
+                # Use the minimum quantity allowed for this symbol
+                quantity = float(f"{{:.{self.qty_precision}f}}".format(10 ** (-self.qty_precision)))
+            
+            # Check if it's too small for the exchange
+            MIN_ORDER_VALUE = 20.0  # Binance minimum order value (20 USDT)
+            order_value = quantity * current_price
+            if order_value < MIN_ORDER_VALUE:
+                # Adjust quantity to meet minimum order value
+                min_quantity = MIN_ORDER_VALUE / current_price
+                # Round to the precision allowed by the exchange
+                quantity = math.ceil(min_quantity * (10 ** self.qty_precision)) / (10 ** self.qty_precision)
+                self.logger.info(f"Adjusted scaling quantity to meet minimum order value of {MIN_ORDER_VALUE} USDT")
                 
             side = "BUY" if position_is_long else "SELL"
             
