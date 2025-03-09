@@ -15,6 +15,7 @@ from google.cloud import secretmanager, storage
 
 logger = logging.getLogger(__name__)
 
+
 class DataHandler:
     """
     Class for retrieving, processing, and preprocessing Binance Futures market data.
@@ -36,9 +37,13 @@ class DataHandler:
             binance_secret_response = self.gcloud_client.access_secret_version(
                 name=f"projects/{project_id}/secrets/BINANCE_SECRET_KEY/versions/latest"
             )
-            binance_secret = binance_secret_response.payload.data.decode("UTF-8").strip()
+            binance_secret = binance_secret_response.payload.data.decode(
+                "UTF-8"
+            ).strip()
 
-            logger.info("Successfully retrieved Binance credentials from Google Secret Manager")
+            logger.info(
+                "Successfully retrieved Binance credentials from Google Secret Manager"
+            )
 
         except Exception as e:
             logger.error(f"Could not retrieve from Google Secret Manager: {e}")
@@ -61,7 +66,7 @@ class DataHandler:
         )
         logger.info("Binance Futures client initialized successfully.")
 
-    def get_futures_data(self, symbol, interval="1h", start_time=None, end_time=None):
+    def get_futures_data(self, symbol, interval="1m", start_time=None, end_time=None):
         """
         Fetch historical futures data using Binance klines endpoint.
         Data is retrieved in chunks to bypass the API row limit.
@@ -69,7 +74,7 @@ class DataHandler:
         if start_time is None:
             start_time = datetime.now() - timedelta(
                 days=30
-            )  #default to 30 days for 1h data
+            )  # default to 30 days for 1h data
 
         if end_time is None:
             end_time = datetime.now()
@@ -77,7 +82,7 @@ class DataHandler:
         all_data = []
         # Determine chunk size based on the interval
         if interval == "1m":
-            chunk_size = timedelta(hours=12) #60x12 chunks
+            chunk_size = timedelta(hours=12)  # 60x12 chunks
         elif interval in ["3m", "5m", "15m"]:
             chunk_size = timedelta(days=1)
         else:
@@ -90,7 +95,7 @@ class DataHandler:
                 klines = self.client.futures_klines(
                     symbol=symbol,
                     interval=interval,
-                    startTime=int(current_start.timestamp() * 1000), #since in ms
+                    startTime=int(current_start.timestamp() * 1000),  # since in ms
                     endTime=int(current_end.timestamp() * 1000),
                     limit=1500,  # Maximum allowed by Binance
                 )
@@ -145,7 +150,7 @@ class DataHandler:
             current_start = datetime.fromtimestamp(last_close / 1000)
 
         if not all_data:
-            logger.error('Returned Empty DataFrame')
+            logger.error("Returned Empty DataFrame")
             return pd.DataFrame()
 
         combined_data = pd.concat(all_data)
@@ -181,7 +186,7 @@ class DataHandler:
         result["bb_lower"] = result["bb_middle"] - 2 * bb_std
 
         # MACD and Signal
-        ema_12 = close.ewm(span=12, adjust=False).mean() #expo MA accross 12 timespans
+        ema_12 = close.ewm(span=12, adjust=False).mean()  # expo MA accross 12 timespans
         ema_26 = close.ewm(span=26, adjust=False).mean()
         result["macd"] = ema_12 - ema_26
         result["macd_signal"] = result["macd"].ewm(span=9, adjust=False).mean()
@@ -226,17 +231,22 @@ class DataHandler:
         logging.info("Calculating technical indicators...")
         return result
 
-    def calculate_risk_metrics(self, df, window=24, interval="1h"):
+    def calculate_risk_metrics(self, df, interval="1h"):
         """
         Calculate risk-related metrics: volatility, VaR, CVaR, max drawdown,
         Sharpe, Sortino, and Calmar ratios.
         """
+        # Determine window size based on interval
+        periods_per_day = self.get_periods_per_day(interval)
+        window = int(24 * periods_per_day)  # 24 hours worth of data points
+
         result = df.copy()
         result["timely_return"] = result["close"].pct_change()
+        # Use periods instead of time-based window
         result["volatility"] = result["timely_return"].rolling(window=window).std()
         result["var_95"] = result["timely_return"].rolling(window=window).quantile(0.05)
 
-        def calculate_cvar(returns): #continuous variance
+        def calculate_cvar(returns):  # continuous variance
             var = returns.quantile(0.05)
             return returns[returns <= var].mean()
 
@@ -248,7 +258,9 @@ class DataHandler:
 
         rolling_max = result["close"].rolling(window=window, min_periods=1).max()
         drawdown = result["close"] / rolling_max - 1.0
-        result["max_drawdown"] = drawdown.rolling(window=window).min() #weird finance thing min over the window is max drawdown usually cause negative
+        result["max_drawdown"] = drawdown.rolling(
+            window=window
+        ).min()  # weird finance thing min over the window is max drawdown usually cause negative
 
         # Determine annualization factor based on interval
         if interval.endswith("m"):
@@ -260,7 +272,9 @@ class DataHandler:
         elif interval.endswith("h"):
             # For hour-based intervals
             hours = int(interval[:-1])
-            annualization_factor = np.sqrt(8760 / hours)  # 8760 = hours in a year (365*24)
+            annualization_factor = np.sqrt(
+                8760 / hours
+            )  # 8760 = hours in a year (365*24)
         elif interval.endswith("d"):
             # For day-based intervals
             days = int(interval[:-1])
@@ -293,13 +307,13 @@ class DataHandler:
     @staticmethod
     def get_periods_per_day(interval):
         """Helper function to calculate periods per day for a given interval"""
-        if interval.endswith('m'):
+        if interval.endswith("m"):
             minutes = int(interval[:-1])
             return 24 * 60 / minutes
-        elif interval.endswith('h'):
+        elif interval.endswith("h"):
             hours = int(interval[:-1])
             return 24 / hours
-        elif interval.endswith('d'):
+        elif interval.endswith("d"):
             days = int(interval[:-1])
             return 1 / days
         else:
@@ -402,6 +416,10 @@ class DataHandler:
             if value_cast:
                 for col, dtype in value_cast.items():
                     df[col] = df[col].astype(dtype)
+            interval_map = {"m": "T", "h": "H", "d": "D"}
+            freq_char = interval[-1]
+            freq_unit = interval_map.get(freq_char, freq_char)
+            resample_rule = interval[:-1] + freq_unit
             df = df.resample(resample_rule, closed="right", label="right").ffill()
             return df[cols_to_keep]
         except Exception as e:
@@ -420,6 +438,7 @@ class DataHandler:
             "limit": 1000,
             "startTime": int(start_time.timestamp() * 1000),
             "endTime": int(end_time.timestamp() * 1000),
+            "interval": interval,
         }
         funding_df = self._fetch_futures_metric(
             self.client.futures_funding_rate,
@@ -543,11 +562,11 @@ class DataHandler:
     def save_data_to_csv(self, df, file_path):
         """Save DataFrame to CSV."""
 
-        if file_path.startswith('gs://'):
+        if file_path.startswith("gs://"):
             # parse bucket and blob path
-            path_parts = file_path[5:].split('/', 1)
+            path_parts = file_path[5:].split("/", 1)
             bucket_name = path_parts[0]
-            blob_path = path_parts[1] if len(path_parts) > 1 else ''
+            blob_path = path_parts[1] if len(path_parts) > 1 else ""
 
             csv_string = df.to_csv(index=False)
 
@@ -555,7 +574,7 @@ class DataHandler:
             storage_client = storage.Client()
             bucket = storage_client.bucket(bucket_name)
             blob = bucket.blob(blob_path)
-            blob.upload_from_string(csv_string, content_type='text/csv')
+            blob.upload_from_string(csv_string, content_type="text/csv")
             logger.info(f"Data saved to GCS: {file_path}")
 
         else:
@@ -563,6 +582,7 @@ class DataHandler:
             df.reset_index(inplace=True)
             df.to_csv(file_path, index=False)
             logging.info(f"Data saved to {file_path}")
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -574,7 +594,7 @@ def parse_args():
     parser.add_argument(
         "--interval",
         type=str,
-        default="1h",
+        default="1m",
         choices=["1m", "5m", "15m", "1h", "4h", "1d"],
         help="Data interval",
     )
@@ -597,6 +617,7 @@ def parse_args():
         help="Directory to save processed data",
     )
     return parser.parse_args()
+
 
 if __name__ == "__main__":
 

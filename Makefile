@@ -13,8 +13,11 @@ gce-instance:
 load_env :
 	pipenv shell
 
-train-eth: load_env
-	python train.py --data gs://crypto_trading_models/data/ETH/ETHUSDT_1h_with_metrics.csv --symbol ETHUSDT --batch_size 512 --save_path gs://crypto_trading_models/LSTM/POSITION_GAINERS/ETH/
+train-btc: #load_env
+	python train.py --data gs://crypto_trading_models/data/BTC/BTCUSDT_1m_with_metrics.csv --symbol BTCUSDT --batch_size 512 --save_path gs://crypto_trading_models/LSTM/POSITION_GAINERS/BTC/
+
+train-eth: #load_env
+	python train.py --data gs://crypto_trading_models/data/ETH/ETHUSDT_1m_with_metrics.csv --symbol ETHUSDT --batch_size 512 --save_path gs://crypto_trading_models/LSTM/POSITION_GAINERS/ETH/
 
 train-bnb: load_env
 	python train.py --data gs://crypto_trading_models/data/BNB/BNBUSDT_1h_with_metrics.csv --symbol BNBUSDT --batch_size 512 --save_path gs://crypto_trading_models/LSTM/POSITION_GAINERS/BNB/
@@ -24,5 +27,6 @@ train-xrp: load_env
 
 trade:
 	./run_live_eth.sh
-	./run_live_xrp.sh
-	./run_bnb_live.sh
+	./run_live_btc.sh
+	# ./run_live_xrp.sh
+	# ./run_bnb_live.sh
