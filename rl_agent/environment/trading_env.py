@@ -147,7 +147,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
         # Initialize position sizer
         self.position_sizer = BinanceFuturesPositionSizer(
             max_position_pct=self.max_position,
-            position_sizer=VolatilityAdjustedPositionSizer(base_risk_pct=0.01),
+            position_sizer=VolatilityAdjustedPositionSizer(base_risk_pct=0.1),
             default_leverage=self.leverage,
             max_leverage=self.max_leverage,
             dynamic_leverage=self.dynamic_leverage,
@@ -714,7 +714,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
     def _execute_trade(self, action, scale_in=False, scale_out=False, scale_percentage=0.5):
         """
         Execute a trade on Binance Futures using the executor module.
-        
+
         Args:
             action: The action to take (0=hold, 1=buy/long, 2=sell/short)
             scale_in: Whether to scale into an existing position
@@ -764,16 +764,16 @@ class BinanceFuturesCryptoEnv(gym.Env):
             # Calculate position size/amount for scaling
             account_balance = self._get_balance_usdt()
             usdt_amount = account_balance * self.max_position * scale_percentage
-            
+
             # Execute scaling operation through executor
             result = self.executor.execute_trade(
-                action=action, 
+                action=action,
                 usdt_amount=usdt_amount,
-                scale_in=scale_in, 
+                scale_in=scale_in,
                 scale_out=scale_out,
                 scale_percentage=scale_percentage
             )
-            
+
             # Update position tracking based on scaling result
             if result["success"]:
                 if result["action"] == "scale_in":
@@ -783,7 +783,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
                     self.entry_price = result["entry_price"]
                     self.stop_loss = result.get("stop_loss", self.stop_loss)
                     self.take_profit = result.get("take_profit", self.take_profit)
-                    
+
                     # Record the scaling action
                     self.trade_history.append({
                         "timestamp": datetime.now().isoformat(),
@@ -795,7 +795,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
                         "stop_loss": result.get("stop_loss", self.stop_loss),
                         "take_profit": result.get("take_profit", self.take_profit),
                     })
-                
+
                 elif result["action"] == "scale_out":
                     # Update position size
                     position_direction = 1 if self.current_position > 0 else -1
@@ -807,7 +807,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
                     else:
                         # Position partially closed
                         self.current_position = position_direction * result["position_size"]
-                    
+
                     # Record the scaling action
                     self.trade_history.append({
                         "timestamp": datetime.now().isoformat(),
@@ -817,7 +817,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
                         "remaining_size": result["position_size"],
                         "price": result["price"],
                     })
-            
+
             return
 
         # Skip if we already have an open position (not scaling) or if action is 0
@@ -953,7 +953,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
             self.live_trading
             and self.position_status["has_open_position"]
             and action != 0
-            and not scale_in 
+            and not scale_in
             and not scale_out
         ):
             # If we have an open position and not scaling, force hold action

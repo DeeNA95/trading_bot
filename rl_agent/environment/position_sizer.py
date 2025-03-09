@@ -155,7 +155,7 @@ class KellyPositionSizer(PositionSizer):
 class VolatilityAdjustedPositionSizer(PositionSizer):
     """Position sizer that adjusts position size based on ATR volatility."""
 
-    def __init__(self, base_risk_pct: float = 0.01, volatility_scale: float = 2.0):
+    def __init__(self, base_risk_pct: float = 0.1, volatility_scale: float = 2.0):
         """
         Initialize the volatility adjusted position sizer.
 
@@ -207,13 +207,13 @@ class VolatilityAdjustedPositionSizer(PositionSizer):
 class BinanceFuturesPositionSizer:
     """
     Position sizing strategy for Binance Futures trading.
-    
+
     Handles leverage, account balance, and precision rules for the Binance Futures exchange.
     """
 
     def __init__(
         self,
-        max_position_pct: float = 1.0, 
+        max_position_pct: float = 1.0,
         position_sizer: PositionSizer = None,
         default_leverage: int = 2,
         max_leverage: int = 20,
@@ -221,7 +221,7 @@ class BinanceFuturesPositionSizer:
     ):
         """
         Initialize the Binance Futures position sizer.
-        
+
         Args:
             max_position_pct: Maximum percentage of account balance to use (1.0 = 100%)
             position_sizer: Strategy implementation for position sizing (FixedFraction by default)
@@ -234,7 +234,7 @@ class BinanceFuturesPositionSizer:
         self.default_leverage = default_leverage
         self.max_leverage = max_leverage
         self.dynamic_leverage = dynamic_leverage
-        
+
     def calculate_position_size(
         self,
         account_balance: float,
@@ -247,7 +247,7 @@ class BinanceFuturesPositionSizer:
     ) -> Dict[str, Union[float, int]]:
         """
         Calculate position size for Binance Futures trading.
-        
+
         Args:
             account_balance: Current account balance in USDT
             current_price: Current price of the asset
@@ -256,16 +256,16 @@ class BinanceFuturesPositionSizer:
             leverage: Trading leverage to use (falls back to default if None)
             qty_precision: Quantity precision for the symbol
             **kwargs: Additional parameters passed to the underlying position sizer
-            
+
         Returns:
             Dictionary containing position size in units, USD value, and leverage
         """
         # Get adaptive leverage if dynamic leverage is enabled
         used_leverage = leverage or self.default_leverage
-        
+
         if self.dynamic_leverage and leverage is None:
             used_leverage = self._calculate_adaptive_leverage(volatility)
-            
+
         # Calculate position size as percentage of account
         position_pct = self.position_sizer.calculate_position_size(
             account_balance=account_balance,
@@ -273,39 +273,39 @@ class BinanceFuturesPositionSizer:
             volatility=volatility,
             **kwargs
         )
-        
+
         # Apply maximum position percentage constraint
         position_pct = min(position_pct, self.max_position_pct)
-        
+
         # Calculate dollar value of position
         position_value = account_balance * position_pct
-        
+
         # Calculate position size in units
         position_size_units = (position_value * used_leverage) / current_price
-        
+
         # Round to appropriate precision
         position_size_units = round(position_size_units, qty_precision)
-        
+
         return {
             "size_in_usd": position_value * used_leverage,
             "size_in_units": position_size_units,
             "leverage": used_leverage,
             "position_pct": position_pct
         }
-    
+
     def _calculate_adaptive_leverage(self, volatility: float) -> int:
         """
         Calculate adaptive leverage based on market volatility.
-        
+
         Args:
             volatility: Market volatility measure (0-1 range)
-            
+
         Returns:
             Integer leverage value
         """
         # Volatility factor - higher volatility means lower leverage
         volatility_factor = 5.0
-        
+
         if volatility > 0:
             adaptive_leverage = max(1, min(
                 self.max_leverage,
@@ -313,5 +313,5 @@ class BinanceFuturesPositionSizer:
             ))
         else:
             adaptive_leverage = self.default_leverage
-        
+
         return adaptive_leverage

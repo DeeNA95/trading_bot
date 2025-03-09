@@ -10,4 +10,4 @@ nohup pipenv run python inference.py \
   --initial_balance 12 \
   --stop_loss 0.01 \
   --risk_reward 1.5 \
-  --sleep_time 60 &
+  --sleep_time 60 2>&1 &

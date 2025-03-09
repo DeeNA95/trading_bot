@@ -12,3 +12,588 @@ Traceback (most recent call last):
   File "/Users/dna/trading_bot/rl_agent/agent/ppo_agent.py", line 22, in <module>
     from google.cloud import secretmanager, storage
 ImportError: cannot import name 'storage' from 'google.cloud' (unknown location)
+Loading .env environment variables...
+Traceback (most recent call last):
+  File "/Users/dna/trading_bot/inference.py", line 19, in <module>
+    from rl_agent.environment.trading_env import BinanceFuturesCryptoEnv
+  File "/Users/dna/trading_bot/rl_agent/environment/trading_env.py", line 26, in <module>
+    from .position_sizer import BinanceFuturesPositionSizer, VolatilityAdjustedPositionSizer
+  File "/Users/dna/trading_bot/rl_agent/environment/position_sizer.py", line 155
+    VolatilityAdjustedPositionSizer(PositionSizer):
+                                                  ^
+SyntaxError: invalid syntax
+Loading .env environment variables...
+Traceback (most recent call last):
+  File "/Users/dna/trading_bot/inference.py", line 20, in <module>
+    from rl_agent.agent.ppo_agent import PPOAgent
+  File "/Users/dna/trading_bot/rl_agent/agent/ppo_agent.py", line 22, in <module>
+    from google.cloud import secretmanager, storage
+ImportError: cannot import name 'storage' from 'google.cloud' (unknown location)
+Loading .env environment variables...
+2025-03-09 12:27:00,885 - inference - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-09 12:27:00,887 - inference - INFO - Loading model from gs://crypto_trading_models/LSTM/POSITION_GAINERS/ETH/best_model.pt
+/Users/dna/.local/share/virtualenvs/trading_bot-WeYHYVhY/lib/python3.13/site-packages/google_crc32c/__init__.py:29: RuntimeWarning: As the c extension couldn't be imported, `google-crc32c` is using a pure python implementation that is significantly slower. If possible, please configure a c build environment and compile the extension
+  warnings.warn(_SLOW_CRC32C_WARNING, RuntimeWarning)
+2025-03-09 12:27:07,360 - inference - INFO - Model loaded from GCS: gs://crypto_trading_models/LSTM/POSITION_GAINERS/ETH/best_model.pt
+2025-03-09 12:27:07,360 - inference - INFO - Detected input dimension from model: 53
+2025-03-09 12:27:10,101 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-09 12:27:12,206 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-09 12:27:20,301 - data - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-09 12:27:21,980 - data - INFO - Binance Futures client initialized successfully.
+2025-03-09 12:27:28,795 - inference - INFO - Model loaded successfully with input shape (24, 53)
+2025-03-09 12:27:28,796 - inference - INFO - Starting inference on ETHUSDT with lstm model
+2025-03-09 12:27:28,796 - inference - INFO - Trading parameters: Leverage=20, Stop Loss=1.0%, Risk-Reward=1.5, Interval=15m
+2025-03-09 12:27:28,796 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-09 12:27:30,050 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-09 12:27:30,095 - root - INFO - Calculating technical indicators...
+2025-03-09 12:27:30,124 - data - INFO - Calculating risk metrics...
+2025-03-09 12:27:30,138 - root - INFO - Identifying trade setups...
+/Users/dna/trading_bot/data.py:405: FutureWarning: 'm' is deprecated and will be removed in a future version, please use 'ME' instead.
+  df = df.resample(resample_rule, closed="right", label="right").ffill()
+/Users/dna/trading_bot/data.py:405: FutureWarning: 'm' is deprecated and will be removed in a future version, please use 'ME' instead.
+  df = df.resample(resample_rule, closed="right", label="right").ffill()
+/Users/dna/trading_bot/data.py:460: FutureWarning: The default fill_method='pad' in Series.pct_change is deprecated and will be removed in a future version. Either fill in any non-leading NA values prior to calling pct_change or specify 'fill_method=None' to not fill NA values.
+  result["oi_change"] = result["sumOpenInterest"].pct_change()
+2025-03-09 12:27:31,984 - root - INFO - Adding futures-specific metrics...
+2025-03-09 12:27:31,986 - inference - INFO - Data updated successfully with 51 features
+2025-03-09 12:27:31,986 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-09 12:27:31,988 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:27:31,989 - inference - INFO - State shape: (24, 53)
+2025-03-09 12:27:31,989 - inference - INFO - Number of features in processed data: 51
+2025-03-09 12:27:31,989 - inference - INFO - Features: ['open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore', 'symbol', 'sma_20', 'sma_50', 'rsi', 'bb_middle', 'bb_upper', 'bb_lower', 'macd', 'macd_signal', 'lowest_low', 'highest_high', 'stoch_k', 'stoch_d', 'atr', 'plus_di', 'minus_di', 'adx', 'timely_return', 'volatility', 'var_95', 'cvar_95', 'max_drawdown', 'sharpe_ratio', 'sortino_ratio', 'calmar_ratio', 'signal_trend', 'signal_momentum', 'signal_volatility', 'signal_strength', 'trade_setup', 'atr_pct', 'fundingRate', 'cumulative_funding', 'sumOpenInterest', 'sumOpenInterestValue', 'oi_change', 'oi_volume_ratio', 'liquidation_value', 'origQty', 'liquidation_intensity']
+2025-03-09 12:27:34,339 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:27:34,339 - inference - INFO - Selected action: HOLD
+2025-03-09 12:27:38,855 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:27:38,856 - inference - INFO - Reward: -11.2500
+2025-03-09 12:27:38,856 - inference - INFO - Account value: 12.00 USDT
+2025-03-09 12:27:38,856 - inference - INFO - Position: 0.00000000 ETHUSDT (Direction: 0)
+2025-03-09 12:27:38,856 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:28:38,927 - inference - INFO - Action probability: 0.2499
+2025-03-09 12:28:38,928 - inference - INFO - Selected action: BUY/LONG
+2025-03-09 12:28:44,990 - BinanceFuturesExecutor - INFO - Adjusted order size to meet minimum value requirement of 20.0 USD
+2025-03-09 12:28:46,480 - BinanceFuturesExecutor - WARNING - Could not get fill price, using current price: 'UMFutures' object has no attribute 'get_order'
+2025-03-09 12:28:47,496 - BinanceFuturesExecutor - INFO - Opened BUY position: 0.01 ETHUSDT @ 2141.36 with SL @ 2119.95, TP @ 2173.48
+2025-03-09 12:28:47,505 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:28:47,507 - inference - INFO - Reward: -13.2363
+2025-03-09 12:28:47,507 - inference - INFO - Account value: 12.00 USDT
+2025-03-09 12:28:47,507 - inference - INFO - Position: 0.01000000 ETHUSDT (Direction: +)
+2025-03-09 12:28:47,507 - inference - INFO - Entry price: 2141.36 USDT
+2025-03-09 12:28:47,507 - inference - INFO - Unrealized PnL: 0.00 USDT
+2025-03-09 12:28:47,507 - inference - INFO - Liquidation price: 2009.31 USDT
+2025-03-09 12:28:47,507 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:29:47,567 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:29:47,569 - inference - INFO - Selected action: HOLD
+2025-03-09 12:29:52,183 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:29:52,185 - inference - INFO - Reward: -13.0533
+2025-03-09 12:29:52,185 - inference - INFO - Account value: 11.95 USDT
+2025-03-09 12:29:52,185 - inference - INFO - Position: 0.01000000 ETHUSDT (Direction: +)
+2025-03-09 12:29:52,185 - inference - INFO - Entry price: 2141.36 USDT
+2025-03-09 12:29:52,185 - inference - INFO - Unrealized PnL: -0.05 USDT
+2025-03-09 12:29:52,185 - inference - INFO - Liquidation price: 2009.31 USDT
+2025-03-09 12:29:52,185 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:30:52,298 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:30:52,300 - inference - INFO - Selected action: HOLD
+2025-03-09 12:30:52,300 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:30:57,931 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:30:57,934 - inference - INFO - Reward: -12.4200
+2025-03-09 12:30:57,934 - inference - INFO - Account value: 11.79 USDT
+2025-03-09 12:30:57,934 - inference - INFO - Position: 0.01000000 ETHUSDT (Direction: +)
+2025-03-09 12:30:57,934 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:30:57,934 - inference - INFO - Entry price: 2141.36 USDT
+2025-03-09 12:30:57,934 - inference - INFO - Unrealized PnL: -0.21 USDT
+2025-03-09 12:30:57,934 - inference - INFO - Liquidation price: 2009.31 USDT
+2025-03-09 12:30:57,934 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:31:58,084 - inference - INFO - Action probability: 0.2310
+2025-03-09 12:31:58,085 - inference - INFO - Selected action: SELL/SHORT
+2025-03-09 12:31:58,085 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:32:05,516 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 12:32:05 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '1ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 d32aedbfbc53db77ab1daf44d017f5ba.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': 'mEgddUekM8lhgt1ND-8lvjZY9xyN_hIjvfU--CB0qLpFQDQLdsip1g=='})
+2025-03-09 12:32:05,525 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:32:05,528 - inference - INFO - Reward: -12.7546
+2025-03-09 12:32:05,528 - inference - INFO - Account value: 11.88 USDT
+2025-03-09 12:32:05,528 - inference - INFO - Position: 0.01000000 ETHUSDT (Direction: +)
+2025-03-09 12:32:05,529 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:32:05,529 - inference - INFO - Entry price: 2141.36 USDT
+2025-03-09 12:32:05,529 - inference - INFO - Unrealized PnL: -0.12 USDT
+2025-03-09 12:32:05,529 - inference - INFO - Liquidation price: 2009.31 USDT
+2025-03-09 12:32:05,529 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:33:05,584 - inference - INFO - Action probability: 0.2310
+2025-03-09 12:33:05,586 - inference - INFO - Selected action: SELL/SHORT
+2025-03-09 12:33:05,586 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:33:11,747 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 12:33:11 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '0ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 d32aedbfbc53db77ab1daf44d017f5ba.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': '4Pl30H5rvGtichYBvNMITWBSASGtjExH3CwmLjW-fT_7i7ZzE1os9w=='})
+2025-03-09 12:33:11,755 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:33:11,756 - inference - INFO - Reward: -11.2429
+2025-03-09 12:33:11,756 - inference - INFO - Account value: 11.50 USDT
+2025-03-09 12:33:11,756 - inference - INFO - Position: 0.01000000 ETHUSDT (Direction: +)
+2025-03-09 12:33:11,756 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:33:11,757 - inference - INFO - Entry price: 2141.36 USDT
+2025-03-09 12:33:11,757 - inference - INFO - Unrealized PnL: -0.50 USDT
+2025-03-09 12:33:11,757 - inference - INFO - Liquidation price: 2009.31 USDT
+2025-03-09 12:33:11,757 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:34:11,814 - inference - INFO - Action probability: 0.2310
+2025-03-09 12:34:11,817 - inference - INFO - Selected action: SELL/SHORT
+2025-03-09 12:34:11,817 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:34:18,084 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 12:34:18 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '2ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 d32aedbfbc53db77ab1daf44d017f5ba.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': 'WnvXH9fNWnJ-NLhqacGvZLtmsHf76cmrYPofJIHLKH9IMnK6pOv1bw=='})
+2025-03-09 12:34:18,093 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:34:18,094 - inference - INFO - Reward: -12.2228
+2025-03-09 12:34:18,094 - inference - INFO - Account value: 11.74 USDT
+2025-03-09 12:34:18,094 - inference - INFO - Position: 0.01000000 ETHUSDT (Direction: +)
+2025-03-09 12:34:18,094 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:34:18,094 - inference - INFO - Entry price: 2141.36 USDT
+2025-03-09 12:34:18,094 - inference - INFO - Unrealized PnL: -0.26 USDT
+2025-03-09 12:34:18,094 - inference - INFO - Liquidation price: 2009.31 USDT
+2025-03-09 12:34:18,094 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:35:18,196 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:35:18,199 - inference - INFO - Selected action: HOLD
+2025-03-09 12:35:18,199 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:35:23,428 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:35:23,428 - inference - INFO - Reward: -12.5335
+2025-03-09 12:35:23,428 - inference - INFO - Account value: 11.82 USDT
+2025-03-09 12:35:23,428 - inference - INFO - Position: 0.01000000 ETHUSDT (Direction: +)
+2025-03-09 12:35:23,428 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:35:23,428 - inference - INFO - Entry price: 2141.36 USDT
+2025-03-09 12:35:23,428 - inference - INFO - Unrealized PnL: -0.18 USDT
+2025-03-09 12:35:23,429 - inference - INFO - Liquidation price: 2009.31 USDT
+2025-03-09 12:35:23,429 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:36:23,476 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:36:23,477 - inference - INFO - Selected action: HOLD
+2025-03-09 12:36:23,478 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:36:28,579 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:36:28,579 - inference - INFO - Reward: -10.9345
+2025-03-09 12:36:28,579 - inference - INFO - Account value: 12.24 USDT
+2025-03-09 12:36:28,579 - inference - INFO - Position: 0.01000000 ETHUSDT (Direction: +)
+2025-03-09 12:36:28,579 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:36:28,579 - inference - INFO - Entry price: 2141.36 USDT
+2025-03-09 12:36:28,579 - inference - INFO - Unrealized PnL: 0.24 USDT
+2025-03-09 12:36:28,579 - inference - INFO - Liquidation price: 2009.31 USDT
+2025-03-09 12:36:28,579 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:37:28,647 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:37:28,649 - inference - INFO - Selected action: HOLD
+2025-03-09 12:37:33,105 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:37:33,107 - inference - INFO - Reward: -9.5481
+2025-03-09 12:37:33,107 - inference - INFO - Account value: 12.38 USDT
+2025-03-09 12:37:33,107 - inference - INFO - Position: 0.01000000 ETHUSDT (Direction: +)
+2025-03-09 12:37:33,107 - inference - INFO - Entry price: 2141.36 USDT
+2025-03-09 12:37:33,107 - inference - INFO - Unrealized PnL: 0.38 USDT
+2025-03-09 12:37:33,107 - inference - INFO - Liquidation price: 2009.31 USDT
+2025-03-09 12:37:33,107 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:38:33,161 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:38:33,165 - inference - INFO - Selected action: HOLD
+2025-03-09 12:38:37,790 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:38:37,791 - inference - INFO - Reward: -8.7552
+2025-03-09 12:38:37,791 - inference - INFO - Account value: 12.46 USDT
+2025-03-09 12:38:37,791 - inference - INFO - Position: 0.01000000 ETHUSDT (Direction: +)
+2025-03-09 12:38:37,791 - inference - INFO - Entry price: 2141.36 USDT
+2025-03-09 12:38:37,791 - inference - INFO - Unrealized PnL: 0.46 USDT
+2025-03-09 12:38:37,791 - inference - INFO - Liquidation price: 2009.31 USDT
+2025-03-09 12:38:37,791 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:39:37,860 - inference - INFO - Action probability: 0.2499
+2025-03-09 12:39:37,862 - inference - INFO - Selected action: BUY/LONG
+2025-03-09 12:39:37,862 - inference - INFO - Scaling INTO winning position by 50%
+2025-03-09 12:39:44,167 - BinanceFuturesExecutor - INFO - Adjusted order size to meet minimum value requirement of 20.0 USD
+2025-03-09 12:39:44,791 - BinanceFuturesExecutor - INFO - Cancelled all orders for ETHUSDT
+2025-03-09 12:39:47,240 - BinanceFuturesExecutor - INFO - Scaled into long position: Added 0.01 ETHUSDT @ 2143.7, New size: 0.02, Avg entry: 2142.5299999999997, SL @ 2121.1, TP @ 2174.67
+2025-03-09 12:39:47,240 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-09 12:39:48,719 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-09 12:39:48,734 - root - INFO - Calculating technical indicators...
+2025-03-09 12:39:48,739 - data - INFO - Calculating risk metrics...
+2025-03-09 12:39:48,742 - root - INFO - Identifying trade setups...
+/Users/dna/trading_bot/data.py:405: FutureWarning: 'm' is deprecated and will be removed in a future version, please use 'ME' instead.
+  df = df.resample(resample_rule, closed="right", label="right").ffill()
+/Users/dna/trading_bot/data.py:405: FutureWarning: 'm' is deprecated and will be removed in a future version, please use 'ME' instead.
+  df = df.resample(resample_rule, closed="right", label="right").ffill()
+/Users/dna/trading_bot/data.py:460: FutureWarning: The default fill_method='pad' in Series.pct_change is deprecated and will be removed in a future version. Either fill in any non-leading NA values prior to calling pct_change or specify 'fill_method=None' to not fill NA values.
+  result["oi_change"] = result["sumOpenInterest"].pct_change()
+2025-03-09 12:39:50,428 - root - INFO - Adding futures-specific metrics...
+2025-03-09 12:39:50,432 - inference - INFO - Data updated successfully with 51 features
+2025-03-09 12:39:50,432 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-09 12:39:50,435 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:39:50,436 - inference - INFO - Reward: -7.1453
+2025-03-09 12:39:50,436 - inference - INFO - Account value: 12.62 USDT
+2025-03-09 12:39:50,436 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:39:50,436 - inference - INFO - Successfully scaled INTO position by 50%
+2025-03-09 12:39:50,436 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:39:50,436 - inference - INFO - Unrealized PnL: 0.62 USDT
+2025-03-09 12:39:50,436 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:39:50,436 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:40:50,583 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:40:50,585 - inference - INFO - Selected action: HOLD
+2025-03-09 12:41:29,397 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:41:29,401 - inference - INFO - Reward: -10.4559
+2025-03-09 12:41:29,401 - inference - INFO - Account value: 12.29 USDT
+2025-03-09 12:41:29,401 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:41:29,402 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:41:29,402 - inference - INFO - Unrealized PnL: 0.29 USDT
+2025-03-09 12:41:29,402 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:41:29,402 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:42:29,474 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:42:29,476 - inference - INFO - Selected action: HOLD
+2025-03-09 12:45:12,852 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:45:12,857 - inference - INFO - Reward: -11.7782
+2025-03-09 12:45:12,858 - inference - INFO - Account value: 11.63 USDT
+2025-03-09 12:45:12,858 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:45:12,858 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:45:12,858 - inference - INFO - Unrealized PnL: -0.37 USDT
+2025-03-09 12:45:12,858 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:45:12,858 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:46:13,015 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:46:13,016 - inference - INFO - Selected action: HOLD
+2025-03-09 12:46:13,016 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:46:18,293 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:46:18,294 - inference - INFO - Reward: -12.8779
+2025-03-09 12:46:18,294 - inference - INFO - Account value: 11.90 USDT
+2025-03-09 12:46:18,295 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:46:18,295 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:46:18,295 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:46:18,295 - inference - INFO - Unrealized PnL: -0.10 USDT
+2025-03-09 12:46:18,295 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:46:18,295 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:47:18,355 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:47:18,357 - inference - INFO - Selected action: HOLD
+2025-03-09 12:47:18,357 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:47:23,194 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:47:23,195 - inference - INFO - Reward: -12.8907
+2025-03-09 12:47:23,195 - inference - INFO - Account value: 12.04 USDT
+2025-03-09 12:47:23,195 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:47:23,195 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:47:23,195 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:47:23,195 - inference - INFO - Unrealized PnL: 0.04 USDT
+2025-03-09 12:47:23,195 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:47:23,195 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:48:23,273 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:48:23,275 - inference - INFO - Selected action: HOLD
+2025-03-09 12:48:27,540 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:48:27,543 - inference - INFO - Reward: -10.2789
+2025-03-09 12:48:27,543 - inference - INFO - Account value: 12.31 USDT
+2025-03-09 12:48:27,543 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:48:27,543 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:48:27,543 - inference - INFO - Unrealized PnL: 0.31 USDT
+2025-03-09 12:48:27,543 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:48:27,543 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:49:27,609 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:49:27,612 - inference - INFO - Selected action: HOLD
+2025-03-09 12:49:32,385 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:49:32,386 - inference - INFO - Reward: -10.6325
+2025-03-09 12:49:32,386 - inference - INFO - Account value: 12.27 USDT
+2025-03-09 12:49:32,386 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:49:32,386 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:49:32,386 - inference - INFO - Unrealized PnL: 0.27 USDT
+2025-03-09 12:49:32,386 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:49:32,386 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:50:32,455 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:50:32,459 - inference - INFO - Selected action: HOLD
+2025-03-09 12:50:36,695 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:50:36,696 - inference - INFO - Reward: -12.1368
+2025-03-09 12:50:36,696 - inference - INFO - Account value: 11.72 USDT
+2025-03-09 12:50:36,696 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:50:36,697 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:50:36,697 - inference - INFO - Unrealized PnL: -0.28 USDT
+2025-03-09 12:50:36,697 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:50:36,697 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:51:36,846 - inference - INFO - Action probability: 0.2499
+2025-03-09 12:51:36,850 - inference - INFO - Selected action: BUY/LONG
+2025-03-09 12:51:36,850 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:51:43,845 - BinanceFuturesExecutor - INFO - Cancelled all orders for ETHUSDT
+2025-03-09 12:51:43,846 - BinanceFuturesExecutor - ERROR - Error scaling out of position: unsupported operand type(s) for -: 'int' and 'NoneType'
+2025-03-09 12:51:43,856 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:51:43,859 - inference - INFO - Reward: -10.1288
+2025-03-09 12:51:43,859 - inference - INFO - Account value: 11.21 USDT
+2025-03-09 12:51:43,859 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:51:43,859 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:51:43,859 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:51:43,859 - inference - INFO - Unrealized PnL: -0.79 USDT
+2025-03-09 12:51:43,859 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:51:43,859 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:52:43,981 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:52:43,981 - inference - INFO - Selected action: HOLD
+2025-03-09 12:52:43,982 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:52:49,231 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-09 12:52:50,473 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-09 12:52:50,492 - root - INFO - Calculating technical indicators...
+2025-03-09 12:52:50,501 - data - INFO - Calculating risk metrics...
+2025-03-09 12:52:50,505 - root - INFO - Identifying trade setups...
+/Users/dna/trading_bot/data.py:405: FutureWarning: 'm' is deprecated and will be removed in a future version, please use 'ME' instead.
+  df = df.resample(resample_rule, closed="right", label="right").ffill()
+/Users/dna/trading_bot/data.py:405: FutureWarning: 'm' is deprecated and will be removed in a future version, please use 'ME' instead.
+  df = df.resample(resample_rule, closed="right", label="right").ffill()
+/Users/dna/trading_bot/data.py:460: FutureWarning: The default fill_method='pad' in Series.pct_change is deprecated and will be removed in a future version. Either fill in any non-leading NA values prior to calling pct_change or specify 'fill_method=None' to not fill NA values.
+  result["oi_change"] = result["sumOpenInterest"].pct_change()
+2025-03-09 12:52:52,041 - root - INFO - Adding futures-specific metrics...
+2025-03-09 12:52:52,044 - inference - INFO - Data updated successfully with 51 features
+2025-03-09 12:52:52,044 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-09 12:52:52,046 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:52:52,047 - inference - INFO - Reward: -11.0850
+2025-03-09 12:52:52,047 - inference - INFO - Account value: 11.45 USDT
+2025-03-09 12:52:52,047 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:52:52,047 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:52:52,047 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:52:52,047 - inference - INFO - Unrealized PnL: -0.55 USDT
+2025-03-09 12:52:52,047 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:52:52,047 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:53:52,191 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:53:52,192 - inference - INFO - Selected action: HOLD
+2025-03-09 12:53:52,192 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:53:57,237 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:53:57,240 - inference - INFO - Reward: -12.1129
+2025-03-09 12:53:57,240 - inference - INFO - Account value: 11.71 USDT
+2025-03-09 12:53:57,240 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:53:57,240 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:53:57,240 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:53:57,240 - inference - INFO - Unrealized PnL: -0.29 USDT
+2025-03-09 12:53:57,240 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:53:57,240 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:54:57,328 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:54:57,329 - inference - INFO - Selected action: HOLD
+2025-03-09 12:54:57,329 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:55:01,989 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:55:01,991 - inference - INFO - Reward: -10.2483
+2025-03-09 12:55:01,991 - inference - INFO - Account value: 11.24 USDT
+2025-03-09 12:55:01,991 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:55:01,991 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:55:01,991 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:55:01,991 - inference - INFO - Unrealized PnL: -0.76 USDT
+2025-03-09 12:55:01,992 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:55:01,992 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:56:02,136 - inference - INFO - Action probability: 0.2310
+2025-03-09 12:56:02,139 - inference - INFO - Selected action: SELL/SHORT
+2025-03-09 12:56:02,139 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:56:08,859 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 12:56:09 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '0ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 cd1efda2ac1c2d74fcebc6b046c9e332.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': 'rIZLQqbqdz5MQuW2wA821M4XMMFARpsNl-AaTy1lRM8m95pFe6yFSA=='})
+2025-03-09 12:56:08,872 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:56:08,874 - inference - INFO - Reward: -9.9376
+2025-03-09 12:56:08,874 - inference - INFO - Account value: 11.17 USDT
+2025-03-09 12:56:08,874 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:56:08,874 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:56:08,874 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:56:08,874 - inference - INFO - Unrealized PnL: -0.83 USDT
+2025-03-09 12:56:08,874 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:56:08,874 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:57:09,024 - inference - INFO - Action probability: 0.2499
+2025-03-09 12:57:09,028 - inference - INFO - Selected action: BUY/LONG
+2025-03-09 12:57:09,029 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:57:16,718 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 12:57:16 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '0ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 cd1efda2ac1c2d74fcebc6b046c9e332.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': '_ykjkEPoYe958rClE3TpLCF8T4JFUucWJsk1m29CCMXgLVCC-9Y7Xw=='})
+2025-03-09 12:57:16,731 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:57:16,734 - inference - INFO - Reward: -10.4515
+2025-03-09 12:57:16,735 - inference - INFO - Account value: 11.30 USDT
+2025-03-09 12:57:16,735 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:57:16,735 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:57:16,735 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:57:16,735 - inference - INFO - Unrealized PnL: -0.70 USDT
+2025-03-09 12:57:16,735 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:57:16,735 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:58:16,906 - inference - INFO - Action probability: 0.5191
+2025-03-09 12:58:16,911 - inference - INFO - Selected action: HOLD
+2025-03-09 12:58:16,911 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:58:22,449 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:58:22,452 - inference - INFO - Reward: -9.5909
+2025-03-09 12:58:22,452 - inference - INFO - Account value: 11.08 USDT
+2025-03-09 12:58:22,452 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:58:22,452 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:58:22,452 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:58:22,452 - inference - INFO - Unrealized PnL: -0.92 USDT
+2025-03-09 12:58:22,452 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:58:22,452 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 12:59:22,518 - inference - INFO - Action probability: 0.2310
+2025-03-09 12:59:22,520 - inference - INFO - Selected action: SELL/SHORT
+2025-03-09 12:59:22,520 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 12:59:28,601 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 12:59:28 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '0ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 cd1efda2ac1c2d74fcebc6b046c9e332.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': 'rVuM4TT5C6pllk9MIDC57enz702GHF8URtdOXIVRgvx_VnWkh17-Vg=='})
+2025-03-09 12:59:28,606 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 12:59:28,608 - inference - INFO - Reward: -9.7105
+2025-03-09 12:59:28,608 - inference - INFO - Account value: 11.11 USDT
+2025-03-09 12:59:28,608 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 12:59:28,608 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 12:59:28,608 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 12:59:28,608 - inference - INFO - Unrealized PnL: -0.89 USDT
+2025-03-09 12:59:28,608 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 12:59:28,608 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 13:00:28,672 - inference - INFO - Action probability: 0.2310
+2025-03-09 13:00:28,673 - inference - INFO - Selected action: SELL/SHORT
+2025-03-09 13:00:28,674 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 13:00:34,869 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 13:00:35 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '0ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 cd1efda2ac1c2d74fcebc6b046c9e332.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': 'u95y0eM6OfoFgBfjHB70bk5HShaJ8wfikvlHJ_z92JtaaIC3KWJsLA=='})
+2025-03-09 13:00:34,875 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 13:00:34,876 - inference - INFO - Reward: -9.5073
+2025-03-09 13:00:34,876 - inference - INFO - Account value: 11.06 USDT
+2025-03-09 13:00:34,877 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 13:00:34,877 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 13:00:34,877 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 13:00:34,877 - inference - INFO - Unrealized PnL: -0.94 USDT
+2025-03-09 13:00:34,877 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 13:00:34,877 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 13:01:35,031 - inference - INFO - Action probability: 0.5191
+2025-03-09 13:01:35,033 - inference - INFO - Selected action: HOLD
+2025-03-09 13:01:35,033 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 13:01:40,285 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 13:01:40,288 - inference - INFO - Reward: -9.2085
+2025-03-09 13:01:40,288 - inference - INFO - Account value: 10.98 USDT
+2025-03-09 13:01:40,288 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 13:01:40,288 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 13:01:40,288 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 13:01:40,288 - inference - INFO - Unrealized PnL: -1.02 USDT
+2025-03-09 13:01:40,288 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 13:01:40,288 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 13:02:40,434 - inference - INFO - Action probability: 0.2310
+2025-03-09 13:02:40,437 - inference - INFO - Selected action: SELL/SHORT
+2025-03-09 13:02:40,437 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 13:02:46,517 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 13:02:46 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '0ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 cd1efda2ac1c2d74fcebc6b046c9e332.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': 'uUKhR1w6ncUR-eINEiLOA32n6Mnj0ya92084gQXlf6_-gVj3xYTshQ=='})
+2025-03-09 13:02:46,534 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 13:02:46,538 - inference - INFO - Reward: -9.4714
+2025-03-09 13:02:46,538 - inference - INFO - Account value: 11.05 USDT
+2025-03-09 13:02:46,538 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 13:02:46,538 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 13:02:46,538 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 13:02:46,538 - inference - INFO - Unrealized PnL: -0.95 USDT
+2025-03-09 13:02:46,538 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 13:02:46,538 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 13:03:46,596 - inference - INFO - Action probability: 0.2499
+2025-03-09 13:03:46,597 - inference - INFO - Selected action: BUY/LONG
+2025-03-09 13:03:46,597 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 13:03:52,680 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 13:03:52 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '0ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 cd1efda2ac1c2d74fcebc6b046c9e332.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': 'A1AQhX_9vtDrbMyQY68Uidiuqq2eqvTwayayLRhf9UeHRmlrBVvPCg=='})
+2025-03-09 13:03:52,687 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 13:03:52,688 - inference - INFO - Reward: -12.6149
+2025-03-09 13:03:52,688 - inference - INFO - Account value: 11.84 USDT
+2025-03-09 13:03:52,688 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 13:03:52,688 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 13:03:52,688 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 13:03:52,688 - inference - INFO - Unrealized PnL: -0.16 USDT
+2025-03-09 13:03:52,689 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 13:03:52,689 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 13:04:52,866 - inference - INFO - Action probability: 0.5191
+2025-03-09 13:04:52,869 - inference - INFO - Selected action: HOLD
+2025-03-09 13:04:52,869 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 13:04:58,235 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-09 13:04:59,688 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-09 13:04:59,709 - root - INFO - Calculating technical indicators...
+2025-03-09 13:04:59,718 - data - INFO - Calculating risk metrics...
+2025-03-09 13:04:59,722 - root - INFO - Identifying trade setups...
+/Users/dna/trading_bot/data.py:405: FutureWarning: 'm' is deprecated and will be removed in a future version, please use 'ME' instead.
+  df = df.resample(resample_rule, closed="right", label="right").ffill()
+/Users/dna/trading_bot/data.py:405: FutureWarning: 'm' is deprecated and will be removed in a future version, please use 'ME' instead.
+  df = df.resample(resample_rule, closed="right", label="right").ffill()
+/Users/dna/trading_bot/data.py:460: FutureWarning: The default fill_method='pad' in Series.pct_change is deprecated and will be removed in a future version. Either fill in any non-leading NA values prior to calling pct_change or specify 'fill_method=None' to not fill NA values.
+  result["oi_change"] = result["sumOpenInterest"].pct_change()
+2025-03-09 13:05:01,562 - root - INFO - Adding futures-specific metrics...
+2025-03-09 13:05:01,566 - inference - INFO - Data updated successfully with 51 features
+2025-03-09 13:05:01,567 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-09 13:05:01,575 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 13:05:01,576 - inference - INFO - Reward: -11.5631
+2025-03-09 13:05:01,576 - inference - INFO - Account value: 11.57 USDT
+2025-03-09 13:05:01,576 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 13:05:01,576 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 13:05:01,576 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 13:05:01,576 - inference - INFO - Unrealized PnL: -0.43 USDT
+2025-03-09 13:05:01,576 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 13:05:01,576 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 13:06:01,838 - inference - INFO - Action probability: 0.2310
+2025-03-09 13:06:01,846 - inference - INFO - Selected action: SELL/SHORT
+2025-03-09 13:06:01,846 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 13:06:07,768 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 13:06:07 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '0ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 cd1efda2ac1c2d74fcebc6b046c9e332.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': 'xRMFpSHi3LfHs4v7CP0rYNXwVmViw6CyM5W-bzNgOtrOcumaw6-rwQ=='})
+2025-03-09 13:06:07,782 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 13:06:07,786 - inference - INFO - Reward: -10.9894
+2025-03-09 13:06:07,786 - inference - INFO - Account value: 11.43 USDT
+2025-03-09 13:06:07,786 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 13:06:07,786 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 13:06:07,786 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 13:06:07,786 - inference - INFO - Unrealized PnL: -0.57 USDT
+2025-03-09 13:06:07,786 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 13:06:07,786 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 13:07:07,853 - inference - INFO - Action probability: 0.2310
+2025-03-09 13:07:07,855 - inference - INFO - Selected action: SELL/SHORT
+2025-03-09 13:07:07,855 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 13:07:13,513 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 13:07:13 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '1ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 cd1efda2ac1c2d74fcebc6b046c9e332.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': 'v7HZyaa8bT4a-m4TTtwmaNLLq8iOAM2ycrB71yV-HMmIUXUxQyWPWA=='})
+2025-03-09 13:07:13,520 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 13:07:13,521 - inference - INFO - Reward: -11.4436
+2025-03-09 13:07:13,521 - inference - INFO - Account value: 11.54 USDT
+2025-03-09 13:07:13,521 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 13:07:13,521 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 13:07:13,521 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 13:07:13,521 - inference - INFO - Unrealized PnL: -0.46 USDT
+2025-03-09 13:07:13,521 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 13:07:13,521 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 13:08:13,594 - inference - INFO - Action probability: 0.2499
+2025-03-09 13:08:13,595 - inference - INFO - Selected action: BUY/LONG
+2025-03-09 13:08:13,595 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 13:08:19,616 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 13:08:19 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '2ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 cd1efda2ac1c2d74fcebc6b046c9e332.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': 'qzfF8UfFIGweEPgXdtS5XdLl2tRM9mSbSGN13JrWC1ImJ6AV500EhQ=='})
+2025-03-09 13:08:19,625 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 13:08:19,625 - inference - INFO - Reward: -7.6546
+2025-03-09 13:08:19,625 - inference - INFO - Account value: 10.59 USDT
+2025-03-09 13:08:19,625 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 13:08:19,626 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 13:08:19,626 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 13:08:19,626 - inference - INFO - Unrealized PnL: -1.41 USDT
+2025-03-09 13:08:19,626 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 13:08:19,626 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 13:09:19,672 - inference - INFO - Action probability: 0.2310
+2025-03-09 13:09:19,674 - inference - INFO - Selected action: SELL/SHORT
+2025-03-09 13:09:19,674 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 13:09:25,634 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 13:09:25 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '2ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 cd1efda2ac1c2d74fcebc6b046c9e332.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': 'pEvdCnBQGBpuKJgn5eOPsp_an2VkWvHmbqzmhsePyu1AZb3RsBbTMA=='})
+2025-03-09 13:09:25,636 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 13:09:25,637 - inference - INFO - Reward: -7.7024
+2025-03-09 13:09:25,637 - inference - INFO - Account value: 10.61 USDT
+2025-03-09 13:09:25,637 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 13:09:25,637 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 13:09:25,637 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 13:09:25,637 - inference - INFO - Unrealized PnL: -1.39 USDT
+2025-03-09 13:09:25,637 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 13:09:25,637 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 13:10:25,772 - inference - INFO - Action probability: 0.2310
+2025-03-09 13:10:25,773 - inference - INFO - Selected action: SELL/SHORT
+2025-03-09 13:10:25,773 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 13:10:31,827 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 13:10:31 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '0ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 cd1efda2ac1c2d74fcebc6b046c9e332.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': '5ub-e1AGxQpdTusKw3oni3FFAjHjnzQVQEepHgm3MBStScTt787Thw=='})
+2025-03-09 13:10:31,840 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 13:10:31,844 - inference - INFO - Reward: -8.9694
+2025-03-09 13:10:31,844 - inference - INFO - Account value: 10.92 USDT
+2025-03-09 13:10:31,844 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 13:10:31,844 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 13:10:31,844 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 13:10:31,844 - inference - INFO - Unrealized PnL: -1.08 USDT
+2025-03-09 13:10:31,844 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 13:10:31,844 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 13:11:31,975 - inference - INFO - Action probability: 0.2499
+2025-03-09 13:11:31,976 - inference - INFO - Selected action: BUY/LONG
+2025-03-09 13:11:31,976 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 13:11:37,821 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 13:11:37 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '0ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 cd1efda2ac1c2d74fcebc6b046c9e332.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': 'gItqXyjiMEvByipUytG_mho42EMRDTXxI5i1varnOkOH2bLv0gdS_g=='})
+2025-03-09 13:11:37,835 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 13:11:37,839 - inference - INFO - Reward: -9.4953
+2025-03-09 13:11:37,839 - inference - INFO - Account value: 11.06 USDT
+2025-03-09 13:11:37,839 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 13:11:37,839 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 13:11:37,839 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 13:11:37,839 - inference - INFO - Unrealized PnL: -0.94 USDT
+2025-03-09 13:11:37,839 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 13:11:37,839 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 13:12:37,904 - inference - INFO - Action probability: 0.5191
+2025-03-09 13:12:37,906 - inference - INFO - Selected action: HOLD
+2025-03-09 13:12:37,906 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 13:12:42,580 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 13:12:42,583 - inference - INFO - Reward: -8.1327
+2025-03-09 13:12:42,583 - inference - INFO - Account value: 10.71 USDT
+2025-03-09 13:12:42,583 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 13:12:42,583 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 13:12:42,583 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 13:12:42,583 - inference - INFO - Unrealized PnL: -1.29 USDT
+2025-03-09 13:12:42,583 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 13:12:42,583 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 13:13:42,638 - inference - INFO - Action probability: 0.2499
+2025-03-09 13:13:42,641 - inference - INFO - Selected action: BUY/LONG
+2025-03-09 13:13:42,641 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 13:13:48,430 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 13:13:48 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '0ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 cd1efda2ac1c2d74fcebc6b046c9e332.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': 'kdls-e0PGJV6vj7Wgz3U4IS9mjGvlGkjT-SusMjjSkb_PMA_9jWlLw=='})
+2025-03-09 13:13:48,435 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 13:13:48,436 - inference - INFO - Reward: -8.0132
+2025-03-09 13:13:48,436 - inference - INFO - Account value: 10.68 USDT
+2025-03-09 13:13:48,436 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 13:13:48,436 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 13:13:48,436 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 13:13:48,436 - inference - INFO - Unrealized PnL: -1.32 USDT
+2025-03-09 13:13:48,436 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 13:13:48,436 - inference - INFO - Sleeping for 60 seconds...
+2025-03-09 13:14:48,478 - inference - INFO - Action probability: 0.2310
+2025-03-09 13:14:48,479 - inference - INFO - Selected action: SELL/SHORT
+2025-03-09 13:14:48,479 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-09 13:14:56,335 - BinanceFuturesExecutor - ERROR - Error scaling out of position: (400, -4164, "Order's notional must be no smaller than 20 (unless you choose reduce only).", {'Content-Type': 'application/json', 'Content-Length': '99', 'Connection': 'keep-alive', 'Date': 'Sun, 09 Mar 2025 13:14:56 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '0ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 cd1efda2ac1c2d74fcebc6b046c9e332.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'VIE50-P3', 'X-Amz-Cf-Id': 'eIuDgRc5gLntK-VQHgCw5SA6sJp4i-li9y6XHsd_l-UYIUaF2VtLSg=='})
+2025-03-09 13:14:56,341 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-09 13:14:56,342 - inference - INFO - Reward: -7.6307
+2025-03-09 13:14:56,342 - inference - INFO - Account value: 10.59 USDT
+2025-03-09 13:14:56,343 - inference - INFO - Position: 0.02000000 ETHUSDT (Direction: +)
+2025-03-09 13:14:56,343 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-09 13:14:56,343 - inference - INFO - Entry price: 2142.53 USDT
+2025-03-09 13:14:56,343 - inference - INFO - Unrealized PnL: -1.41 USDT
+2025-03-09 13:14:56,343 - inference - INFO - Liquidation price: 2010.41 USDT
+2025-03-09 13:14:56,343 - inference - INFO - Sleeping for 60 seconds...
