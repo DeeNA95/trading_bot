@@ -96,7 +96,7 @@ def check_api_keys():
     """
     binance_key = None
     binance_secret = None
-    
+
     try:
         gcloud_client = secretmanager.SecretManagerServiceClient()
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "seraphic-bliss-451413-c8")
@@ -128,7 +128,7 @@ def check_api_keys():
             "Binance API credentials not found in environment variables. "
             "Ensure that API credentials are set in your .env file or Google Secret Manager."
         )
-        
+
     # Set these in environment variables for other components to use
     os.environ["binance_api"] = binance_key
     os.environ["binance_secret"] = binance_secret
@@ -136,7 +136,7 @@ def check_api_keys():
     os.environ["binance_future_secret"] = binance_secret
     os.environ["binance_api2"] = binance_key
     os.environ["binance_secret2"] = binance_secret
-    
+
     return binance_key, binance_secret
 
 
@@ -725,17 +725,17 @@ def run_inference(agent, env, args):
             # Initialize info if it's the first loop iteration
             if 'info' not in locals():
                 info = {'position_direction': 0, 'unrealized_pnl': 0}
-            
+
             # Determine if we should scale in/out based on position and action
             scale_in = False
             scale_out = False
             scale_percentage = 0.5  # Default to 50%
-            
+
             # Get current position info
             has_position = info["position_direction"] != 0 if "position_direction" in info else False
             position_direction = info["position_direction"] if "position_direction" in info else 0
             unrealized_pnl = info["unrealized_pnl"] if "unrealized_pnl" in info else 0
-            
+
             # Determine scaling based on PnL and action consistency
             if has_position:
                 # For scaling into winning positions (matching direction and positive PnL)
@@ -743,13 +743,13 @@ def run_inference(agent, env, args):
                    (action == 2 and position_direction < 0 and unrealized_pnl > 0):
                     scale_in = True
                     logger.info(f"Scaling INTO winning position by {scale_percentage*100:.0f}%")
-                
+
                 # For scaling out of losing positions (PnL negative)
                 elif unrealized_pnl < 0:
                     scale_out = True
                     logger.info(f"Scaling OUT OF losing position by {scale_percentage*100:.0f}%")
-            
-            # Take the action in the environment with scaling parameters
+
+            #Take the action in the environment with scaling parameters
             next_state, reward, done, _, info = env.step(action, scale_in=scale_in, scale_out=scale_out, scale_percentage=scale_percentage)
 
             # Log the result
@@ -759,7 +759,7 @@ def run_inference(agent, env, args):
                 f"Position: {info['position']:.8f} {args.symbol} "
                 f"(Direction: {'+' if info['position_direction'] > 0 else '-' if info['position_direction'] < 0 else '0'})"
             )
-            
+
             # Log scaling actions if they occurred
             if "scale_in" in info and info["scale_in"]:
                 logger.info(f"Successfully scaled INTO position by {info['scale_percentage']*100:.0f}%")
@@ -801,7 +801,7 @@ def main():
 
     # Check if API keys are set and get them
     api_key, api_secret = check_api_keys()
-    
+
     # Set these in environment variables for other components to use
     os.environ["binance_api"] = api_key
     os.environ["binance_secret"] = api_secret

@@ -1,0 +1,796 @@
+2025-03-14 12:45:02,320 - inference - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 12:45:02,321 - inference - INFO - Loading model from gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 12:45:05,136 - inference - INFO - Model loaded from GCS: gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 12:45:05,136 - inference - INFO - Detected input dimension from model: 53
+2025-03-14 12:45:05,450 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 12:45:05,752 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 12:45:06,302 - data - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 12:45:06,422 - data - INFO - Binance Futures client initialized successfully.
+2025-03-14 12:45:10,889 - inference - INFO - Model loaded successfully with input shape (24, 53)
+2025-03-14 12:45:10,889 - inference - INFO - Starting inference on ETHUSDT with lstm model
+2025-03-14 12:45:10,890 - inference - INFO - Trading parameters: Leverage=20, Stop Loss=1.0%, Risk-Reward=1.5, Interval=15m
+2025-03-14 12:45:10,890 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 12:45:10,994 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 12:45:11,009 - root - INFO - Calculating technical indicators...
+2025-03-14 12:45:11,014 - data - INFO - Calculating risk metrics...
+2025-03-14 12:45:11,023 - root - INFO - Identifying trade setups...
+2025-03-14 12:45:11,100 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 12:45:11,176 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 12:45:11,255 - root - INFO - Adding futures-specific metrics...
+2025-03-14 12:45:11,257 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 12:45:11,257 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 12:45:11,259 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 12:45:11,260 - inference - INFO - State shape: (24, 53)
+2025-03-14 12:45:11,260 - inference - INFO - Number of features in processed data: 51
+2025-03-14 12:45:11,260 - inference - INFO - Features: ['open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore', 'symbol', 'sma_20', 'sma_50', 'rsi', 'bb_middle', 'bb_upper', 'bb_lower', 'macd', 'macd_signal', 'lowest_low', 'highest_high', 'stoch_k', 'stoch_d', 'atr', 'plus_di', 'minus_di', 'adx', 'timely_return', 'volatility', 'var_95', 'cvar_95', 'max_drawdown', 'sharpe_ratio', 'sortino_ratio', 'calmar_ratio', 'signal_trend', 'signal_momentum', 'signal_volatility', 'signal_strength', 'trade_setup', 'atr_pct', 'fundingRate', 'cumulative_funding', 'sumOpenInterest', 'sumOpenInterestValue', 'oi_change', 'oi_volume_ratio', 'liquidation_value', 'origQty', 'liquidation_intensity']
+2025-03-14 12:45:11,488 - inference - INFO - Action probability: 0.3241
+2025-03-14 12:45:11,488 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 12:45:12,130 - BinanceFuturesExecutor - INFO - Adjusted order size to meet minimum value requirement of 20.0 USD
+2025-03-14 12:45:13,206 - BinanceFuturesExecutor - WARNING - Could not get fill price, using current price: 'UMFutures' object has no attribute 'get_order'
+2025-03-14 12:45:13,361 - BinanceFuturesExecutor - INFO - Opened BUY position: 0.011 ETHUSDT @ 1899.14 with SL @ 1880.15, TP @ 1927.63
+2025-03-14 12:45:13,364 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 12:45:13,365 - inference - INFO - Reward: -13.2505
+2025-03-14 12:45:13,365 - inference - INFO - Account value: 1.54 USDT
+2025-03-14 12:45:13,365 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 12:45:13,365 - inference - INFO - Entry price: 1899.14 USDT
+2025-03-14 12:45:13,365 - inference - INFO - Unrealized PnL: 0.00 USDT
+2025-03-14 12:45:13,365 - inference - INFO - Liquidation price: 1782.03 USDT
+2025-03-14 12:45:13,365 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 12:50:13,407 - inference - INFO - Action probability: 0.3495
+2025-03-14 12:50:13,408 - inference - INFO - Selected action: HOLD
+2025-03-14 12:50:13,900 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 12:50:13,901 - inference - INFO - Reward: -11.7052
+2025-03-14 12:50:13,901 - inference - INFO - Account value: 1.14 USDT
+2025-03-14 12:50:13,901 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 12:50:13,901 - inference - INFO - Entry price: 1899.14 USDT
+2025-03-14 12:50:13,901 - inference - INFO - Unrealized PnL: -0.40 USDT
+2025-03-14 12:50:13,901 - inference - INFO - Liquidation price: 1782.03 USDT
+2025-03-14 12:50:13,901 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 12:55:13,970 - inference - INFO - Action probability: 0.3264
+2025-03-14 12:55:13,970 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 12:55:13,970 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-14 12:55:14,616 - BinanceFuturesExecutor - INFO - Adjusted scaling quantity to meet minimum order value of 20.0 USDT
+2025-03-14 12:55:14,760 - BinanceFuturesExecutor - INFO - Cancelled all orders for ETHUSDT
+2025-03-14 12:55:14,761 - BinanceFuturesExecutor - INFO - Scaled out of long position: 0.011 ETHUSDT @ 1898.57 (50%)
+2025-03-14 12:55:14,763 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 12:55:14,764 - inference - INFO - Reward: -11.2505
+2025-03-14 12:55:14,764 - inference - INFO - Account value: 1.54 USDT
+2025-03-14 12:55:14,764 - inference - INFO - Position: 0.00000000 ETHUSDT (Direction: 0)
+2025-03-14 12:55:14,764 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-14 12:55:14,764 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 13:00:14,856 - inference - INFO - Action probability: 0.3264
+2025-03-14 13:00:14,857 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 13:00:15,388 - BinanceFuturesExecutor - INFO - Adjusted order size to meet minimum value requirement of 20.0 USD
+2025-03-14 13:00:16,441 - BinanceFuturesExecutor - WARNING - Could not get fill price, using current price: 'UMFutures' object has no attribute 'get_order'
+2025-03-14 13:00:16,540 - BinanceFuturesExecutor - INFO - Opened SELL position: 0.011 ETHUSDT @ 1901.95 with SL @ 1920.97, TP @ 1873.42
+2025-03-14 13:00:16,541 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 13:00:16,670 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 13:00:16,683 - root - INFO - Calculating technical indicators...
+2025-03-14 13:00:16,689 - data - INFO - Calculating risk metrics...
+2025-03-14 13:00:16,697 - root - INFO - Identifying trade setups...
+2025-03-14 13:00:16,749 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 13:00:16,800 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 13:00:16,849 - root - INFO - Adding futures-specific metrics...
+2025-03-14 13:00:16,851 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 13:00:16,851 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 13:00:16,853 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 13:00:16,854 - inference - INFO - Reward: -13.2505
+2025-03-14 13:00:16,854 - inference - INFO - Account value: 1.54 USDT
+2025-03-14 13:00:16,854 - inference - INFO - Position: -0.01100000 ETHUSDT (Direction: -)
+2025-03-14 13:00:16,854 - inference - INFO - Entry price: 1901.95 USDT
+2025-03-14 13:00:16,855 - inference - INFO - Unrealized PnL: -0.00 USDT
+2025-03-14 13:00:16,855 - inference - INFO - Liquidation price: 2019.24 USDT
+2025-03-14 13:00:16,855 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 13:00:52,065 - inference - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 13:00:52,065 - inference - INFO - Loading model from gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 13:00:54,864 - inference - INFO - Model loaded from GCS: gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 13:00:54,864 - inference - INFO - Detected input dimension from model: 53
+2025-03-14 13:00:55,185 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 13:00:55,228 - BinanceFuturesExecutor - INFO - Found existing ETHUSDT position: Short 0.011 at 1901.94
+2025-03-14 13:00:55,448 - data - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 13:00:55,554 - data - INFO - Binance Futures client initialized successfully.
+2025-03-14 13:01:00,072 - inference - INFO - Model loaded successfully with input shape (24, 53)
+2025-03-14 13:01:00,073 - inference - INFO - Starting inference on ETHUSDT with lstm model
+2025-03-14 13:01:00,073 - inference - INFO - Trading parameters: Leverage=20, Stop Loss=1.0%, Risk-Reward=1.5, Interval=15m
+2025-03-14 13:01:00,118 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 13:01:00,248 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 13:01:00,263 - root - INFO - Calculating technical indicators...
+2025-03-14 13:01:00,269 - data - INFO - Calculating risk metrics...
+2025-03-14 13:01:00,278 - root - INFO - Identifying trade setups...
+2025-03-14 13:01:00,324 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 13:01:00,375 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 13:01:00,428 - root - INFO - Adding futures-specific metrics...
+2025-03-14 13:01:00,431 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 13:01:00,431 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 13:01:00,435 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 13:01:00,436 - inference - INFO - State shape: (24, 53)
+2025-03-14 13:01:00,436 - inference - INFO - Number of features in processed data: 51
+2025-03-14 13:01:00,436 - inference - INFO - Features: ['open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore', 'symbol', 'sma_20', 'sma_50', 'rsi', 'bb_middle', 'bb_upper', 'bb_lower', 'macd', 'macd_signal', 'lowest_low', 'highest_high', 'stoch_k', 'stoch_d', 'atr', 'plus_di', 'minus_di', 'adx', 'timely_return', 'volatility', 'var_95', 'cvar_95', 'max_drawdown', 'sharpe_ratio', 'sortino_ratio', 'calmar_ratio', 'signal_trend', 'signal_momentum', 'signal_volatility', 'signal_strength', 'trade_setup', 'atr_pct', 'fundingRate', 'cumulative_funding', 'sumOpenInterest', 'sumOpenInterestValue', 'oi_change', 'oi_volume_ratio', 'liquidation_value', 'origQty', 'liquidation_intensity']
+2025-03-14 13:01:00,685 - inference - INFO - Action probability: 0.3241
+2025-03-14 13:01:00,686 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 13:01:00,686 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 13:06:00,789 - inference - INFO - Action probability: 0.3495
+2025-03-14 13:06:00,789 - inference - INFO - Selected action: HOLD
+2025-03-14 13:06:00,789 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 13:11:00,868 - inference - INFO - Action probability: 0.3264
+2025-03-14 13:11:00,868 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 13:11:00,868 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 13:16:00,969 - inference - INFO - Action probability: 0.3241
+2025-03-14 13:16:00,969 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 13:16:00,969 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 13:21:01,073 - inference - INFO - Action probability: 0.3495
+2025-03-14 13:21:01,074 - inference - INFO - Selected action: HOLD
+2025-03-14 13:21:01,074 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 13:26:01,177 - inference - INFO - Action probability: 0.3265
+2025-03-14 13:26:01,177 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 13:26:01,178 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 13:31:01,269 - inference - INFO - Action probability: 0.3495
+2025-03-14 13:31:01,269 - inference - INFO - Selected action: HOLD
+2025-03-14 13:31:01,270 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 13:36:01,328 - inference - INFO - Action probability: 0.3494
+2025-03-14 13:36:01,328 - inference - INFO - Selected action: HOLD
+2025-03-14 13:36:01,328 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 13:41:01,431 - inference - INFO - Action probability: 0.3495
+2025-03-14 13:41:01,431 - inference - INFO - Selected action: HOLD
+2025-03-14 13:41:01,431 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 13:46:01,457 - inference - INFO - Action probability: 0.3494
+2025-03-14 13:46:01,457 - inference - INFO - Selected action: HOLD
+2025-03-14 13:46:01,457 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 13:51:01,561 - inference - INFO - Action probability: 0.3495
+2025-03-14 13:51:01,561 - inference - INFO - Selected action: HOLD
+2025-03-14 13:51:01,561 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 13:56:01,665 - inference - INFO - Action probability: 0.3241
+2025-03-14 13:56:01,665 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 13:56:01,665 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 14:01:01,769 - inference - INFO - Action probability: 0.3495
+2025-03-14 14:01:01,770 - inference - INFO - Selected action: HOLD
+2025-03-14 14:01:01,770 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 14:06:01,874 - inference - INFO - Action probability: 0.3264
+2025-03-14 14:06:01,874 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 14:06:01,875 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 14:11:01,977 - inference - INFO - Action probability: 0.3495
+2025-03-14 14:11:01,978 - inference - INFO - Selected action: HOLD
+2025-03-14 14:11:01,978 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 14:16:02,076 - inference - INFO - Action probability: 0.3264
+2025-03-14 14:16:02,076 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 14:16:02,076 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 14:21:02,177 - inference - INFO - Action probability: 0.3265
+2025-03-14 14:21:02,177 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 14:21:02,177 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 14:26:02,281 - inference - INFO - Action probability: 0.3495
+2025-03-14 14:26:02,281 - inference - INFO - Selected action: HOLD
+2025-03-14 14:26:02,281 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 14:31:02,367 - inference - INFO - Action probability: 0.3241
+2025-03-14 14:31:02,367 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 14:31:02,367 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 14:33:56,522 - inference - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 14:33:56,523 - inference - INFO - Loading model from gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 14:33:59,364 - inference - INFO - Model loaded from GCS: gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 14:33:59,364 - inference - INFO - Detected input dimension from model: 53
+2025-03-14 14:33:59,637 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 14:33:59,935 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 14:34:00,587 - data - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 14:34:00,727 - data - INFO - Binance Futures client initialized successfully.
+2025-03-14 14:34:05,256 - inference - INFO - Model loaded successfully with input shape (24, 53)
+2025-03-14 14:34:05,257 - inference - INFO - Starting inference on ETHUSDT with lstm model
+2025-03-14 14:34:05,257 - inference - INFO - Trading parameters: Leverage=20, Stop Loss=1.0%, Risk-Reward=1.5, Interval=15m
+2025-03-14 14:34:05,257 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 14:34:05,361 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 14:34:05,376 - root - INFO - Calculating technical indicators...
+2025-03-14 14:34:05,381 - data - INFO - Calculating risk metrics...
+2025-03-14 14:34:05,390 - root - INFO - Identifying trade setups...
+2025-03-14 14:34:05,462 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 14:34:05,538 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 14:34:05,617 - root - INFO - Adding futures-specific metrics...
+2025-03-14 14:34:05,619 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 14:34:05,619 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 14:34:05,622 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 14:34:05,623 - inference - INFO - State shape: (24, 53)
+2025-03-14 14:34:05,623 - inference - INFO - Number of features in processed data: 51
+2025-03-14 14:34:05,623 - inference - INFO - Features: ['open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore', 'symbol', 'sma_20', 'sma_50', 'rsi', 'bb_middle', 'bb_upper', 'bb_lower', 'macd', 'macd_signal', 'lowest_low', 'highest_high', 'stoch_k', 'stoch_d', 'atr', 'plus_di', 'minus_di', 'adx', 'timely_return', 'volatility', 'var_95', 'cvar_95', 'max_drawdown', 'sharpe_ratio', 'sortino_ratio', 'calmar_ratio', 'signal_trend', 'signal_momentum', 'signal_volatility', 'signal_strength', 'trade_setup', 'atr_pct', 'fundingRate', 'cumulative_funding', 'sumOpenInterest', 'sumOpenInterestValue', 'oi_change', 'oi_volume_ratio', 'liquidation_value', 'origQty', 'liquidation_intensity']
+2025-03-14 14:34:05,857 - inference - INFO - Action probability: 0.3264
+2025-03-14 14:34:05,857 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 14:34:05,857 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 14:39:05,961 - inference - INFO - Action probability: 0.3495
+2025-03-14 14:39:05,962 - inference - INFO - Selected action: HOLD
+2025-03-14 14:39:05,962 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 14:44:06,020 - inference - INFO - Action probability: 0.3264
+2025-03-14 14:44:06,021 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 14:44:06,021 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 14:47:52,762 - inference - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 14:47:52,762 - inference - INFO - Loading model from gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 14:47:55,532 - inference - INFO - Model loaded from GCS: gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 14:47:55,532 - inference - INFO - Detected input dimension from model: 53
+2025-03-14 14:47:55,881 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 14:47:56,169 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 14:47:56,685 - data - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 14:47:56,804 - data - INFO - Binance Futures client initialized successfully.
+2025-03-14 14:48:01,234 - inference - INFO - Model loaded successfully with input shape (24, 53)
+2025-03-14 14:48:01,235 - inference - INFO - Starting inference on ETHUSDT with lstm model
+2025-03-14 14:48:01,235 - inference - INFO - Trading parameters: Leverage=20, Stop Loss=1.0%, Risk-Reward=1.5, Interval=15m
+2025-03-14 14:48:01,236 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 14:48:01,339 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 14:48:01,354 - root - INFO - Calculating technical indicators...
+2025-03-14 14:48:01,360 - data - INFO - Calculating risk metrics...
+2025-03-14 14:48:01,369 - root - INFO - Identifying trade setups...
+2025-03-14 14:48:01,441 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 14:48:01,517 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 14:48:01,597 - root - INFO - Adding futures-specific metrics...
+2025-03-14 14:48:01,599 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 14:48:01,599 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 14:48:01,602 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 14:48:01,602 - inference - INFO - State shape: (24, 53)
+2025-03-14 14:48:01,602 - inference - INFO - Number of features in processed data: 51
+2025-03-14 14:48:01,603 - inference - INFO - Features: ['open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore', 'symbol', 'sma_20', 'sma_50', 'rsi', 'bb_middle', 'bb_upper', 'bb_lower', 'macd', 'macd_signal', 'lowest_low', 'highest_high', 'stoch_k', 'stoch_d', 'atr', 'plus_di', 'minus_di', 'adx', 'timely_return', 'volatility', 'var_95', 'cvar_95', 'max_drawdown', 'sharpe_ratio', 'sortino_ratio', 'calmar_ratio', 'signal_trend', 'signal_momentum', 'signal_volatility', 'signal_strength', 'trade_setup', 'atr_pct', 'fundingRate', 'cumulative_funding', 'sumOpenInterest', 'sumOpenInterestValue', 'oi_change', 'oi_volume_ratio', 'liquidation_value', 'origQty', 'liquidation_intensity']
+2025-03-14 14:48:01,846 - inference - INFO - Action probability: 0.3264
+2025-03-14 14:48:01,846 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 14:48:01,846 - inference - ERROR - Error during inference: name 'reward' is not defined
+Traceback (most recent call last):
+  File "/home/derek/trading_bot/inference.py", line 756, in run_inference
+    logger.info(f"Reward: {reward:.4f}")
+NameError: name 'reward' is not defined
+2025-03-14 14:48:01,847 - inference - INFO - Inference ended
+Account initialized - Balance: 1.7190994 USDT, Leverage: 15x
+Model loaded from GCS: gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 14:49:23,184 - inference - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 14:49:23,184 - inference - INFO - Loading model from gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 14:49:25,934 - inference - INFO - Model loaded from GCS: gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 14:49:25,934 - inference - INFO - Detected input dimension from model: 53
+2025-03-14 14:49:26,277 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 14:49:26,564 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 14:49:27,094 - data - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 14:49:27,229 - data - INFO - Binance Futures client initialized successfully.
+2025-03-14 14:49:31,686 - inference - INFO - Model loaded successfully with input shape (24, 53)
+2025-03-14 14:49:31,686 - inference - INFO - Starting inference on ETHUSDT with lstm model
+2025-03-14 14:49:31,687 - inference - INFO - Trading parameters: Leverage=20, Stop Loss=1.0%, Risk-Reward=1.5, Interval=15m
+2025-03-14 14:49:31,687 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 14:49:31,791 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 14:49:31,806 - root - INFO - Calculating technical indicators...
+2025-03-14 14:49:31,811 - data - INFO - Calculating risk metrics...
+2025-03-14 14:49:31,820 - root - INFO - Identifying trade setups...
+2025-03-14 14:49:31,892 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 14:49:31,969 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 14:49:32,045 - root - INFO - Adding futures-specific metrics...
+2025-03-14 14:49:32,047 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 14:49:32,047 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 14:49:32,049 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 14:49:32,050 - inference - INFO - State shape: (24, 53)
+2025-03-14 14:49:32,050 - inference - INFO - Number of features in processed data: 51
+2025-03-14 14:49:32,050 - inference - INFO - Features: ['open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore', 'symbol', 'sma_20', 'sma_50', 'rsi', 'bb_middle', 'bb_upper', 'bb_lower', 'macd', 'macd_signal', 'lowest_low', 'highest_high', 'stoch_k', 'stoch_d', 'atr', 'plus_di', 'minus_di', 'adx', 'timely_return', 'volatility', 'var_95', 'cvar_95', 'max_drawdown', 'sharpe_ratio', 'sortino_ratio', 'calmar_ratio', 'signal_trend', 'signal_momentum', 'signal_volatility', 'signal_strength', 'trade_setup', 'atr_pct', 'fundingRate', 'cumulative_funding', 'sumOpenInterest', 'sumOpenInterestValue', 'oi_change', 'oi_volume_ratio', 'liquidation_value', 'origQty', 'liquidation_intensity']
+2025-03-14 14:49:32,281 - inference - INFO - Action probability: 0.3495
+2025-03-14 14:49:32,281 - inference - INFO - Selected action: HOLD
+2025-03-14 14:49:32,281 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 14:54:32,308 - inference - INFO - Action probability: 0.3495
+2025-03-14 14:54:32,308 - inference - INFO - Selected action: HOLD
+2025-03-14 14:54:32,308 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 14:59:32,400 - inference - INFO - Action probability: 0.3264
+2025-03-14 14:59:32,401 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 14:59:32,401 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 15:04:32,429 - inference - INFO - Action probability: 0.3241
+2025-03-14 15:04:32,429 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 15:04:32,429 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 15:09:32,533 - inference - INFO - Action probability: 0.3241
+2025-03-14 15:09:32,533 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 15:09:32,533 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 15:14:32,637 - inference - INFO - Action probability: 0.3265
+2025-03-14 15:14:32,637 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 15:14:32,637 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 15:17:20,629 - inference - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 15:17:20,629 - inference - INFO - Loading model from gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 15:17:23,377 - inference - INFO - Model loaded from GCS: gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 15:17:23,377 - inference - INFO - Detected input dimension from model: 53
+2025-03-14 15:17:23,881 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 15:17:24,241 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 15:17:24,795 - data - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 15:17:24,918 - data - INFO - Binance Futures client initialized successfully.
+2025-03-14 15:17:29,694 - inference - INFO - Model loaded successfully with input shape (24, 53)
+2025-03-14 15:17:29,695 - inference - INFO - Starting inference on ETHUSDT with lstm model
+2025-03-14 15:17:29,695 - inference - INFO - Trading parameters: Leverage=20, Stop Loss=1.0%, Risk-Reward=1.5, Interval=15m
+2025-03-14 15:17:29,696 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 15:17:29,801 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 15:17:29,817 - root - INFO - Calculating technical indicators...
+2025-03-14 15:17:29,822 - data - INFO - Calculating risk metrics...
+2025-03-14 15:17:29,831 - root - INFO - Identifying trade setups...
+2025-03-14 15:17:29,904 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 15:17:29,982 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 15:17:30,060 - root - INFO - Adding futures-specific metrics...
+2025-03-14 15:17:30,062 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 15:17:30,062 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 15:17:30,064 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 15:17:30,065 - inference - INFO - State shape: (24, 53)
+2025-03-14 15:17:30,065 - inference - INFO - Number of features in processed data: 51
+2025-03-14 15:17:30,065 - inference - INFO - Features: ['open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore', 'symbol', 'sma_20', 'sma_50', 'rsi', 'bb_middle', 'bb_upper', 'bb_lower', 'macd', 'macd_signal', 'lowest_low', 'highest_high', 'stoch_k', 'stoch_d', 'atr', 'plus_di', 'minus_di', 'adx', 'timely_return', 'volatility', 'var_95', 'cvar_95', 'max_drawdown', 'sharpe_ratio', 'sortino_ratio', 'calmar_ratio', 'signal_trend', 'signal_momentum', 'signal_volatility', 'signal_strength', 'trade_setup', 'atr_pct', 'fundingRate', 'cumulative_funding', 'sumOpenInterest', 'sumOpenInterestValue', 'oi_change', 'oi_volume_ratio', 'liquidation_value', 'origQty', 'liquidation_intensity']
+2025-03-14 15:17:30,294 - inference - INFO - Action probability: 0.3495
+2025-03-14 15:17:30,294 - inference - INFO - Selected action: HOLD
+2025-03-14 15:17:30,754 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 15:17:30,754 - inference - INFO - Reward: -11.2500
+2025-03-14 15:17:30,754 - inference - INFO - Account value: 1.54 USDT
+2025-03-14 15:17:30,755 - inference - INFO - Position: 0.00000000 ETHUSDT (Direction: 0)
+2025-03-14 15:17:30,755 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 15:22:30,859 - inference - INFO - Action probability: 0.3241
+2025-03-14 15:22:30,859 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 15:22:31,832 - BinanceFuturesExecutor - INFO - Adjusted order size to meet minimum value requirement of 20.0 USD
+2025-03-14 15:22:32,906 - BinanceFuturesExecutor - WARNING - Could not get fill price, using current price: 'UMFutures' object has no attribute 'get_order'
+2025-03-14 15:22:33,053 - BinanceFuturesExecutor - INFO - Opened BUY position: 0.011 ETHUSDT @ 1936.66 with SL @ 1917.29, TP @ 1965.71
+2025-03-14 15:22:33,056 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 15:22:33,056 - inference - INFO - Reward: -12.1242
+2025-03-14 15:22:33,056 - inference - INFO - Account value: 1.61 USDT
+2025-03-14 15:22:33,056 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 15:22:33,056 - inference - INFO - Entry price: 1936.66 USDT
+2025-03-14 15:22:33,056 - inference - INFO - Unrealized PnL: 0.07 USDT
+2025-03-14 15:22:33,056 - inference - INFO - Liquidation price: 1817.23 USDT
+2025-03-14 15:22:33,057 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 15:27:33,157 - inference - INFO - Action probability: 0.3264
+2025-03-14 15:27:33,157 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 15:27:33,692 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 15:27:33,693 - inference - INFO - Reward: -12.2936
+2025-03-14 15:27:33,694 - inference - INFO - Account value: 1.29 USDT
+2025-03-14 15:27:33,694 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 15:27:33,694 - inference - INFO - Entry price: 1936.66 USDT
+2025-03-14 15:27:33,694 - inference - INFO - Unrealized PnL: -0.25 USDT
+2025-03-14 15:27:33,694 - inference - INFO - Liquidation price: 1817.23 USDT
+2025-03-14 15:27:33,694 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 15:32:33,787 - inference - INFO - Action probability: 0.3495
+2025-03-14 15:32:33,788 - inference - INFO - Selected action: HOLD
+2025-03-14 15:32:33,788 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-14 15:32:34,283 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 15:32:34,412 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 15:32:34,425 - root - INFO - Calculating technical indicators...
+2025-03-14 15:32:34,431 - data - INFO - Calculating risk metrics...
+2025-03-14 15:32:34,439 - root - INFO - Identifying trade setups...
+2025-03-14 15:32:34,488 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 15:32:34,538 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 15:32:34,588 - root - INFO - Adding futures-specific metrics...
+2025-03-14 15:32:34,590 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 15:32:34,590 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 15:32:34,592 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 15:32:34,592 - inference - INFO - Reward: -12.5303
+2025-03-14 15:32:34,593 - inference - INFO - Account value: 1.35 USDT
+2025-03-14 15:32:34,593 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 15:32:34,593 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-14 15:32:34,593 - inference - INFO - Entry price: 1936.66 USDT
+2025-03-14 15:32:34,593 - inference - INFO - Unrealized PnL: -0.19 USDT
+2025-03-14 15:32:34,593 - inference - INFO - Liquidation price: 1817.23 USDT
+2025-03-14 15:32:34,593 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 15:37:34,697 - inference - INFO - Action probability: 0.3495
+2025-03-14 15:37:34,697 - inference - INFO - Selected action: HOLD
+2025-03-14 15:37:34,697 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-14 15:37:35,290 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 15:37:35,291 - inference - INFO - Reward: -11.1745
+2025-03-14 15:37:35,291 - inference - INFO - Account value: 1.00 USDT
+2025-03-14 15:37:35,291 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 15:37:35,291 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-14 15:37:35,291 - inference - INFO - Entry price: 1936.66 USDT
+2025-03-14 15:37:35,291 - inference - INFO - Unrealized PnL: -0.54 USDT
+2025-03-14 15:37:35,291 - inference - INFO - Liquidation price: 1817.23 USDT
+2025-03-14 15:37:35,291 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 15:42:35,379 - inference - INFO - Action probability: 0.3241
+2025-03-14 15:42:35,379 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 15:42:35,379 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-14 15:42:35,903 - BinanceFuturesExecutor - INFO - Adjusted scaling quantity to meet minimum order value of 20.0 USDT
+2025-03-14 15:42:35,992 - BinanceFuturesExecutor - INFO - Cancelled all orders for ETHUSDT
+2025-03-14 15:42:35,992 - BinanceFuturesExecutor - INFO - Scaled out of long position: 0.011 ETHUSDT @ 1933.99 (50%)
+2025-03-14 15:42:35,995 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 15:42:35,996 - inference - INFO - Reward: -11.2593
+2025-03-14 15:42:35,996 - inference - INFO - Account value: 1.54 USDT
+2025-03-14 15:42:35,996 - inference - INFO - Position: 0.00000000 ETHUSDT (Direction: 0)
+2025-03-14 15:42:35,996 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-14 15:42:35,996 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 15:47:36,097 - inference - INFO - Action probability: 0.3264
+2025-03-14 15:47:36,098 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 15:47:36,729 - BinanceFuturesExecutor - INFO - Adjusted order size to meet minimum value requirement of 20.0 USD
+2025-03-14 15:47:37,801 - BinanceFuturesExecutor - WARNING - Could not get fill price, using current price: 'UMFutures' object has no attribute 'get_order'
+2025-03-14 15:47:37,945 - BinanceFuturesExecutor - INFO - Opened SELL position: 0.011 ETHUSDT @ 1925.92 with SL @ 1945.18, TP @ 1897.03
+2025-03-14 15:47:37,945 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 15:47:38,048 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 15:47:38,061 - root - INFO - Calculating technical indicators...
+2025-03-14 15:47:38,066 - data - INFO - Calculating risk metrics...
+2025-03-14 15:47:38,075 - root - INFO - Identifying trade setups...
+2025-03-14 15:47:38,147 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 15:47:38,224 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 15:47:38,300 - root - INFO - Adding futures-specific metrics...
+2025-03-14 15:47:38,302 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 15:47:38,302 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 15:47:38,304 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 15:47:38,305 - inference - INFO - Reward: -13.2593
+2025-03-14 15:47:38,305 - inference - INFO - Account value: 1.54 USDT
+2025-03-14 15:47:38,305 - inference - INFO - Position: -0.01100000 ETHUSDT (Direction: -)
+2025-03-14 15:47:38,305 - inference - INFO - Entry price: 1925.92 USDT
+2025-03-14 15:47:38,305 - inference - INFO - Unrealized PnL: -0.00 USDT
+2025-03-14 15:47:38,305 - inference - INFO - Liquidation price: 2044.69 USDT
+2025-03-14 15:47:38,305 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 15:52:38,356 - inference - INFO - Action probability: 0.3264
+2025-03-14 15:52:38,356 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 15:52:38,804 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 15:52:38,805 - inference - INFO - Reward: -13.1378
+2025-03-14 15:52:38,805 - inference - INFO - Account value: 1.51 USDT
+2025-03-14 15:52:38,805 - inference - INFO - Position: -0.01100000 ETHUSDT (Direction: -)
+2025-03-14 15:52:38,806 - inference - INFO - Entry price: 1925.92 USDT
+2025-03-14 15:52:38,806 - inference - INFO - Unrealized PnL: -0.03 USDT
+2025-03-14 15:52:38,806 - inference - INFO - Liquidation price: 2044.69 USDT
+2025-03-14 15:52:38,806 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 15:57:38,909 - inference - INFO - Action probability: 0.3241
+2025-03-14 15:57:38,909 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 15:57:38,909 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-14 15:57:39,550 - BinanceFuturesExecutor - INFO - Adjusted scaling quantity to meet minimum order value of 20.0 USDT
+2025-03-14 15:57:39,696 - BinanceFuturesExecutor - INFO - Cancelled all orders for ETHUSDT
+2025-03-14 15:57:39,696 - BinanceFuturesExecutor - INFO - Scaled out of short position: 0.011 ETHUSDT @ 1921.39 (50%)
+2025-03-14 15:57:39,698 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 15:57:39,699 - inference - INFO - Reward: -11.2593
+2025-03-14 15:57:39,700 - inference - INFO - Account value: 1.54 USDT
+2025-03-14 15:57:39,700 - inference - INFO - Position: 0.00000000 ETHUSDT (Direction: 0)
+2025-03-14 15:57:39,700 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-14 15:57:39,700 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 16:02:39,803 - inference - INFO - Action probability: 0.3495
+2025-03-14 16:02:39,803 - inference - INFO - Selected action: HOLD
+2025-03-14 16:02:40,223 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 16:02:40,323 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 16:02:40,336 - root - INFO - Calculating technical indicators...
+2025-03-14 16:02:40,341 - data - INFO - Calculating risk metrics...
+2025-03-14 16:02:40,350 - root - INFO - Identifying trade setups...
+2025-03-14 16:02:40,425 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 16:02:40,502 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 16:02:40,576 - root - INFO - Adding futures-specific metrics...
+2025-03-14 16:02:40,578 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 16:02:40,578 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 16:02:40,580 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 16:02:40,581 - inference - INFO - Reward: -11.2588
+2025-03-14 16:02:40,581 - inference - INFO - Account value: 1.54 USDT
+2025-03-14 16:02:40,581 - inference - INFO - Position: 0.00000000 ETHUSDT (Direction: 0)
+2025-03-14 16:02:40,581 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 16:07:40,681 - inference - INFO - Action probability: 0.3495
+2025-03-14 16:07:40,681 - inference - INFO - Selected action: HOLD
+2025-03-14 16:07:41,089 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 16:07:41,090 - inference - INFO - Reward: -11.2588
+2025-03-14 16:07:41,090 - inference - INFO - Account value: 1.54 USDT
+2025-03-14 16:07:41,090 - inference - INFO - Position: 0.00000000 ETHUSDT (Direction: 0)
+2025-03-14 16:07:41,090 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 16:12:41,180 - inference - INFO - Action probability: 0.3241
+2025-03-14 16:12:41,180 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 16:12:41,815 - BinanceFuturesExecutor - INFO - Adjusted order size to meet minimum value requirement of 20.0 USD
+2025-03-14 16:12:42,897 - BinanceFuturesExecutor - WARNING - Could not get fill price, using current price: 'UMFutures' object has no attribute 'get_order'
+2025-03-14 16:12:43,052 - BinanceFuturesExecutor - INFO - Opened BUY position: 0.011 ETHUSDT @ 1918.29 with SL @ 1899.11, TP @ 1947.06
+2025-03-14 16:12:43,055 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 16:12:43,056 - inference - INFO - Reward: -13.2593
+2025-03-14 16:12:43,056 - inference - INFO - Account value: 1.54 USDT
+2025-03-14 16:12:43,056 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 16:12:43,056 - inference - INFO - Entry price: 1918.29 USDT
+2025-03-14 16:12:43,056 - inference - INFO - Unrealized PnL: 0.00 USDT
+2025-03-14 16:12:43,056 - inference - INFO - Liquidation price: 1800.00 USDT
+2025-03-14 16:12:43,056 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 16:17:43,137 - inference - INFO - Action probability: 0.3264
+2025-03-14 16:17:43,137 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 16:17:43,633 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 16:17:43,752 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 16:17:43,765 - root - INFO - Calculating technical indicators...
+2025-03-14 16:17:43,770 - data - INFO - Calculating risk metrics...
+2025-03-14 16:17:43,779 - root - INFO - Identifying trade setups...
+2025-03-14 16:17:43,850 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 16:17:43,924 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 16:17:44,005 - root - INFO - Adding futures-specific metrics...
+2025-03-14 16:17:44,007 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 16:17:44,007 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 16:17:44,009 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 16:17:44,009 - inference - INFO - Reward: 5.9713
+2025-03-14 16:17:44,009 - inference - INFO - Account value: 2.57 USDT
+2025-03-14 16:17:44,009 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 16:17:44,009 - inference - INFO - Entry price: 1918.29 USDT
+2025-03-14 16:17:44,010 - inference - INFO - Unrealized PnL: 1.03 USDT
+2025-03-14 16:17:44,010 - inference - INFO - Liquidation price: 1800.00 USDT
+2025-03-14 16:17:44,010 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 16:22:44,113 - inference - INFO - Action probability: 0.3495
+2025-03-14 16:22:44,113 - inference - INFO - Selected action: HOLD
+2025-03-14 16:22:44,635 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 16:22:44,636 - inference - INFO - Reward: 8.2080
+2025-03-14 16:22:44,636 - inference - INFO - Account value: 2.67 USDT
+2025-03-14 16:22:44,636 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 16:22:44,636 - inference - INFO - Entry price: 1918.29 USDT
+2025-03-14 16:22:44,636 - inference - INFO - Unrealized PnL: 1.13 USDT
+2025-03-14 16:22:44,636 - inference - INFO - Liquidation price: 1800.00 USDT
+2025-03-14 16:22:44,636 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 16:27:44,727 - inference - INFO - Action probability: 0.3264
+2025-03-14 16:27:44,727 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 16:27:45,227 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 16:27:45,228 - inference - INFO - Reward: -3.5673
+2025-03-14 16:27:45,228 - inference - INFO - Account value: 2.11 USDT
+2025-03-14 16:27:45,228 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 16:27:45,228 - inference - INFO - Entry price: 1918.29 USDT
+2025-03-14 16:27:45,228 - inference - INFO - Unrealized PnL: 0.57 USDT
+2025-03-14 16:27:45,228 - inference - INFO - Liquidation price: 1800.00 USDT
+2025-03-14 16:27:45,228 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 16:32:45,329 - inference - INFO - Action probability: 0.3264
+2025-03-14 16:32:45,329 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 16:32:45,821 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 16:32:45,922 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 16:32:45,935 - root - INFO - Calculating technical indicators...
+2025-03-14 16:32:45,940 - data - INFO - Calculating risk metrics...
+2025-03-14 16:32:45,949 - root - INFO - Identifying trade setups...
+2025-03-14 16:32:46,022 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 16:32:46,096 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 16:32:46,171 - root - INFO - Adding futures-specific metrics...
+2025-03-14 16:32:46,173 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 16:32:46,173 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 16:32:46,175 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 16:32:46,175 - inference - INFO - Reward: 2.2845
+2025-03-14 16:32:46,176 - inference - INFO - Account value: 2.41 USDT
+2025-03-14 16:32:46,176 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 16:32:46,176 - inference - INFO - Entry price: 1918.29 USDT
+2025-03-14 16:32:46,176 - inference - INFO - Unrealized PnL: 0.87 USDT
+2025-03-14 16:32:46,176 - inference - INFO - Liquidation price: 1800.00 USDT
+2025-03-14 16:32:46,176 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 16:37:46,249 - inference - INFO - Action probability: 0.3241
+2025-03-14 16:37:46,249 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 16:37:46,249 - inference - INFO - Scaling INTO winning position by 50%
+2025-03-14 16:37:46,958 - BinanceFuturesExecutor - INFO - Adjusted order size to meet minimum value requirement of 20.0 USD
+2025-03-14 16:37:47,025 - BinanceFuturesExecutor - INFO - Cancelled all orders for ETHUSDT
+2025-03-14 16:37:47,101 - BinanceFuturesExecutor - ERROR - Error scaling into position: (400, -2019, 'Margin is insufficient.', {'Content-Type': 'application/json', 'Content-Length': '46', 'Connection': 'keep-alive', 'Date': 'Fri, 14 Mar 2025 16:37:47 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '9ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 bd8ae3d4552fdb926825058086fde702.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'HKG54-P2', 'X-Amz-Cf-Id': 'KqrqiVjO-_xBqoIZuDw1b8nhnYSMct-DUEQHmtKYIJZVoyKj1YmIQQ=='})
+2025-03-14 16:37:47,104 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 16:37:47,105 - inference - INFO - Reward: 9.0252
+2025-03-14 16:37:47,105 - inference - INFO - Account value: 2.71 USDT
+2025-03-14 16:37:47,105 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 16:37:47,105 - inference - INFO - Successfully scaled INTO position by 50%
+2025-03-14 16:37:47,105 - inference - INFO - Entry price: 1918.29 USDT
+2025-03-14 16:37:47,105 - inference - INFO - Unrealized PnL: 1.17 USDT
+2025-03-14 16:37:47,105 - inference - INFO - Liquidation price: 1800.00 USDT
+2025-03-14 16:37:47,105 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 16:42:47,197 - inference - INFO - Action probability: 0.3495
+2025-03-14 16:42:47,197 - inference - INFO - Selected action: HOLD
+2025-03-14 16:42:47,688 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 16:42:47,688 - inference - INFO - Reward: 24.5796
+2025-03-14 16:42:47,688 - inference - INFO - Account value: 3.29 USDT
+2025-03-14 16:42:47,688 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 16:42:47,689 - inference - INFO - Entry price: 1918.29 USDT
+2025-03-14 16:42:47,689 - inference - INFO - Unrealized PnL: 1.75 USDT
+2025-03-14 16:42:47,689 - inference - INFO - Liquidation price: 1800.00 USDT
+2025-03-14 16:42:47,689 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 16:47:47,785 - inference - INFO - Action probability: 0.3265
+2025-03-14 16:47:47,785 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 16:47:48,272 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 16:47:48,375 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 16:47:48,388 - root - INFO - Calculating technical indicators...
+2025-03-14 16:47:48,393 - data - INFO - Calculating risk metrics...
+2025-03-14 16:47:48,401 - root - INFO - Identifying trade setups...
+2025-03-14 16:47:48,473 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 16:47:48,547 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 16:47:48,622 - root - INFO - Adding futures-specific metrics...
+2025-03-14 16:47:48,623 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 16:47:48,623 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 16:47:48,625 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 16:47:48,626 - inference - INFO - Reward: 20.2166
+2025-03-14 16:47:48,626 - inference - INFO - Account value: 3.14 USDT
+2025-03-14 16:47:48,626 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 16:47:48,626 - inference - INFO - Entry price: 1918.29 USDT
+2025-03-14 16:47:48,626 - inference - INFO - Unrealized PnL: 1.60 USDT
+2025-03-14 16:47:48,626 - inference - INFO - Liquidation price: 1800.00 USDT
+2025-03-14 16:47:48,626 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 16:52:48,728 - inference - INFO - Action probability: 0.3241
+2025-03-14 16:52:48,728 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 16:52:48,728 - inference - INFO - Scaling INTO winning position by 50%
+2025-03-14 16:52:49,410 - BinanceFuturesExecutor - INFO - Adjusted order size to meet minimum value requirement of 20.0 USD
+2025-03-14 16:52:49,479 - BinanceFuturesExecutor - INFO - Cancelled all orders for ETHUSDT
+2025-03-14 16:52:49,557 - BinanceFuturesExecutor - ERROR - Error scaling into position: (400, -2019, 'Margin is insufficient.', {'Content-Type': 'application/json', 'Content-Length': '46', 'Connection': 'keep-alive', 'Date': 'Fri, 14 Mar 2025 16:52:49 GMT', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '12ms', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 9fffb4454d1b745261c69785b74b8a80.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'HKG54-P2', 'X-Amz-Cf-Id': '7NL3yatlstqyU5nR4tk2iacilKuxFABY_bbRrlELEt2s2rpHOqaSDA=='})
+2025-03-14 16:52:49,559 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 16:52:49,560 - inference - INFO - Reward: 55.8512
+2025-03-14 16:52:49,560 - inference - INFO - Account value: 4.21 USDT
+2025-03-14 16:52:49,560 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 16:52:49,560 - inference - INFO - Successfully scaled INTO position by 50%
+2025-03-14 16:52:49,560 - inference - INFO - Entry price: 1918.29 USDT
+2025-03-14 16:52:49,560 - inference - INFO - Unrealized PnL: 2.67 USDT
+2025-03-14 16:52:49,560 - inference - INFO - Liquidation price: 1800.00 USDT
+2025-03-14 16:52:49,561 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 16:57:49,647 - inference - INFO - Action probability: 0.3264
+2025-03-14 16:57:49,648 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 16:57:50,138 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 16:57:50,139 - inference - INFO - Reward: 54.2523
+2025-03-14 16:57:50,139 - inference - INFO - Account value: 4.17 USDT
+2025-03-14 16:57:50,139 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 16:57:50,139 - inference - INFO - Entry price: 1918.29 USDT
+2025-03-14 16:57:50,139 - inference - INFO - Unrealized PnL: 2.63 USDT
+2025-03-14 16:57:50,139 - inference - INFO - Liquidation price: 1800.00 USDT
+2025-03-14 16:57:50,139 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 17:02:50,240 - inference - INFO - Action probability: 0.3241
+2025-03-14 17:02:50,241 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 17:02:50,241 - inference - INFO - Scaling INTO winning position by 50%
+2025-03-14 17:02:50,950 - BinanceFuturesExecutor - INFO - Adjusted order size to meet minimum value requirement of 20.0 USD
+2025-03-14 17:02:51,016 - BinanceFuturesExecutor - INFO - Cancelled all orders for ETHUSDT
+2025-03-14 17:02:51,103 - BinanceFuturesExecutor - ERROR - Error scaling into position: (400, -2019, 'Margin is insufficient.', {'Content-Type': 'application/json', 'Content-Length': '46', 'Connection': 'keep-alive', 'Date': 'Fri, 14 Mar 2025 17:02:51 GMT', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '9ms', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 ae5469138301e8d865a948ccb42090f4.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'HKG54-P2', 'X-Amz-Cf-Id': 'SBeAG2flIJ15ayOggFOCl3FYia7dkS_ZTfpFzoSRXTLxwXL0a00CCA=='})
+2025-03-14 17:02:51,104 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 17:02:51,203 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 17:02:51,217 - root - INFO - Calculating technical indicators...
+2025-03-14 17:02:51,222 - data - INFO - Calculating risk metrics...
+2025-03-14 17:02:51,231 - root - INFO - Identifying trade setups...
+2025-03-14 17:02:51,302 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 17:02:51,378 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 17:02:51,455 - root - INFO - Adding futures-specific metrics...
+2025-03-14 17:02:51,456 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 17:02:51,456 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 17:02:51,458 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 17:02:51,459 - inference - INFO - Reward: 80.4787
+2025-03-14 17:02:51,459 - inference - INFO - Account value: 4.79 USDT
+2025-03-14 17:02:51,459 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 17:02:51,459 - inference - INFO - Successfully scaled INTO position by 50%
+2025-03-14 17:02:51,459 - inference - INFO - Entry price: 1918.29 USDT
+2025-03-14 17:02:51,459 - inference - INFO - Unrealized PnL: 3.25 USDT
+2025-03-14 17:02:51,459 - inference - INFO - Liquidation price: 1800.00 USDT
+2025-03-14 17:02:51,459 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 17:07:51,561 - inference - INFO - Action probability: 0.3264
+2025-03-14 17:07:51,561 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 17:07:52,040 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 17:07:52,041 - inference - INFO - Reward: 51.3959
+2025-03-14 17:07:52,041 - inference - INFO - Account value: 4.09 USDT
+2025-03-14 17:07:52,041 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 17:07:52,041 - inference - INFO - Entry price: 1918.29 USDT
+2025-03-14 17:07:52,042 - inference - INFO - Unrealized PnL: 2.55 USDT
+2025-03-14 17:07:52,042 - inference - INFO - Liquidation price: 1800.00 USDT
+2025-03-14 17:07:52,042 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 17:12:52,139 - inference - INFO - Action probability: 0.3495
+2025-03-14 17:12:52,139 - inference - INFO - Selected action: HOLD
+2025-03-14 17:12:52,651 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 17:12:52,652 - inference - INFO - Reward: 36.4383
+2025-03-14 17:12:52,652 - inference - INFO - Account value: 3.67 USDT
+2025-03-14 17:12:52,652 - inference - INFO - Position: 0.01100000 ETHUSDT (Direction: +)
+2025-03-14 17:12:52,652 - inference - INFO - Entry price: 1918.29 USDT
+2025-03-14 17:12:52,652 - inference - INFO - Unrealized PnL: 2.13 USDT
+2025-03-14 17:12:52,652 - inference - INFO - Liquidation price: 1800.00 USDT
+2025-03-14 17:12:52,653 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 17:17:10,414 - inference - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 17:17:10,414 - inference - INFO - Loading model from gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 17:17:13,207 - inference - INFO - Model loaded from GCS: gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 17:17:13,207 - inference - INFO - Detected input dimension from model: 53
+2025-03-14 17:17:13,518 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 17:17:13,586 - BinanceFuturesExecutor - INFO - Found existing ETHUSDT position: Long 0.011 at 1918.29
+2025-03-14 17:17:13,811 - data - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 17:17:13,921 - data - INFO - Binance Futures client initialized successfully.
+2025-03-14 17:17:18,385 - inference - INFO - Model loaded successfully with input shape (24, 53)
+2025-03-14 17:17:18,386 - inference - INFO - Starting inference on ETHUSDT with lstm model
+2025-03-14 17:17:18,386 - inference - INFO - Trading parameters: Leverage=20, Stop Loss=1.0%, Risk-Reward=1.5, Interval=15m
+2025-03-14 17:17:18,455 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 17:17:18,560 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 17:17:18,575 - root - INFO - Calculating technical indicators...
+2025-03-14 17:17:18,580 - data - INFO - Calculating risk metrics...
+2025-03-14 17:17:18,589 - root - INFO - Identifying trade setups...
+2025-03-14 17:17:18,661 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 17:17:18,737 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 17:17:18,812 - root - INFO - Adding futures-specific metrics...
+2025-03-14 17:17:18,814 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 17:17:18,814 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 17:17:18,817 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 17:17:18,817 - inference - INFO - State shape: (24, 53)
+2025-03-14 17:17:18,817 - inference - INFO - Number of features in processed data: 51
+2025-03-14 17:17:18,817 - inference - INFO - Features: ['open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore', 'symbol', 'sma_20', 'sma_50', 'rsi', 'bb_middle', 'bb_upper', 'bb_lower', 'macd', 'macd_signal', 'lowest_low', 'highest_high', 'stoch_k', 'stoch_d', 'atr', 'plus_di', 'minus_di', 'adx', 'timely_return', 'volatility', 'var_95', 'cvar_95', 'max_drawdown', 'sharpe_ratio', 'sortino_ratio', 'calmar_ratio', 'signal_trend', 'signal_momentum', 'signal_volatility', 'signal_strength', 'trade_setup', 'atr_pct', 'fundingRate', 'cumulative_funding', 'sumOpenInterest', 'sumOpenInterestValue', 'oi_change', 'oi_volume_ratio', 'liquidation_value', 'origQty', 'liquidation_intensity']
+2025-03-14 17:17:19,050 - inference - INFO - Action probability: 0.3495
+2025-03-14 17:17:19,051 - inference - INFO - Selected action: HOLD
+2025-03-14 17:17:19,051 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 17:22:19,148 - inference - INFO - Action probability: 0.3264
+2025-03-14 17:22:19,148 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 17:22:19,148 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 17:27:19,218 - inference - INFO - Action probability: 0.3241
+2025-03-14 17:27:19,218 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 17:27:19,219 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 17:32:19,321 - inference - INFO - Action probability: 0.3241
+2025-03-14 17:32:19,321 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 17:32:19,322 - inference - INFO - Sleeping for 300 seconds...
+2025-03-14 17:37:19,327 - inference - INFO - Action probability: 0.3241
+2025-03-14 17:37:19,328 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 17:37:19,328 - inference - INFO - Sleeping for 300 seconds...
+  File "/home/derek/trading_bot/inference.py", line 752
+    Take the action in the environment with scaling parameters
+         ^
+SyntaxError: invalid syntax
+2025-03-14 17:42:16,957 - inference - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 17:42:16,958 - inference - INFO - Loading model from gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 17:42:19,804 - inference - INFO - Model loaded from GCS: gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 17:42:19,805 - inference - INFO - Detected input dimension from model: 53
+2025-03-14 17:42:20,108 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 17:42:20,401 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 17:42:20,940 - data - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 17:42:21,058 - data - INFO - Binance Futures client initialized successfully.
+2025-03-14 17:42:25,721 - inference - INFO - Model loaded successfully with input shape (24, 53)
+2025-03-14 17:42:25,721 - inference - INFO - Starting inference on ETHUSDT with lstm model
+2025-03-14 17:42:25,721 - inference - INFO - Trading parameters: Leverage=20, Stop Loss=1.0%, Risk-Reward=1.5, Interval=15m
+2025-03-14 17:42:25,722 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 17:42:25,823 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 17:42:25,838 - root - INFO - Calculating technical indicators...
+2025-03-14 17:42:25,843 - data - INFO - Calculating risk metrics...
+2025-03-14 17:42:25,852 - root - INFO - Identifying trade setups...
+2025-03-14 17:42:25,925 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 17:42:25,996 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 17:42:26,076 - root - INFO - Adding futures-specific metrics...
+2025-03-14 17:42:26,077 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 17:42:26,078 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 17:42:26,080 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 17:42:26,080 - inference - INFO - State shape: (24, 53)
+2025-03-14 17:42:26,080 - inference - INFO - Number of features in processed data: 51
+2025-03-14 17:42:26,080 - inference - INFO - Features: ['open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore', 'symbol', 'sma_20', 'sma_50', 'rsi', 'bb_middle', 'bb_upper', 'bb_lower', 'macd', 'macd_signal', 'lowest_low', 'highest_high', 'stoch_k', 'stoch_d', 'atr', 'plus_di', 'minus_di', 'adx', 'timely_return', 'volatility', 'var_95', 'cvar_95', 'max_drawdown', 'sharpe_ratio', 'sortino_ratio', 'calmar_ratio', 'signal_trend', 'signal_momentum', 'signal_volatility', 'signal_strength', 'trade_setup', 'atr_pct', 'fundingRate', 'cumulative_funding', 'sumOpenInterest', 'sumOpenInterestValue', 'oi_change', 'oi_volume_ratio', 'liquidation_value', 'origQty', 'liquidation_intensity']
+2025-03-14 17:42:26,301 - inference - INFO - Action probability: 0.3264
+2025-03-14 17:42:26,301 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 17:42:26,941 - BinanceFuturesExecutor - INFO - Adjusted order size to meet minimum value requirement of 20.0 USD
+2025-03-14 17:42:28,019 - BinanceFuturesExecutor - WARNING - Could not get fill price, using current price: 'UMFutures' object has no attribute 'get_order'
+2025-03-14 17:42:28,173 - BinanceFuturesExecutor - INFO - Opened SELL position: 0.011 ETHUSDT @ 1931.11 with SL @ 1950.42, TP @ 1902.14
+2025-03-14 17:42:28,175 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 17:42:28,176 - inference - INFO - Reward: -13.2244
+2025-03-14 17:42:28,176 - inference - INFO - Account value: 1.54 USDT
+2025-03-14 17:42:28,176 - inference - INFO - Position: -0.01100000 ETHUSDT (Direction: -)
+2025-03-14 17:42:28,176 - inference - INFO - Entry price: 1931.11 USDT
+2025-03-14 17:42:28,176 - inference - INFO - Unrealized PnL: 0.00 USDT
+2025-03-14 17:42:28,176 - inference - INFO - Liquidation price: 2050.20 USDT
+2025-03-14 17:42:28,176 - inference - INFO - Sleeping for 600 seconds...
+2025-03-14 17:52:28,280 - inference - INFO - Action probability: 0.3495
+2025-03-14 17:52:28,280 - inference - INFO - Selected action: HOLD
+2025-03-14 17:52:28,775 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 17:52:28,776 - inference - INFO - Reward: -9.7979
+2025-03-14 17:52:28,776 - inference - INFO - Account value: 1.75 USDT
+2025-03-14 17:52:28,776 - inference - INFO - Position: -0.01100000 ETHUSDT (Direction: -)
+2025-03-14 17:52:28,776 - inference - INFO - Entry price: 1931.11 USDT
+2025-03-14 17:52:28,776 - inference - INFO - Unrealized PnL: 0.21 USDT
+2025-03-14 17:52:28,776 - inference - INFO - Liquidation price: 2050.20 USDT
+2025-03-14 17:52:28,776 - inference - INFO - Sleeping for 600 seconds...
+2025-03-14 18:02:28,868 - inference - INFO - Action probability: 0.3264
+2025-03-14 18:02:28,868 - inference - INFO - Selected action: SELL/SHORT
+2025-03-14 18:02:28,868 - inference - INFO - Scaling INTO winning position by 50%
+2025-03-14 18:02:29,557 - BinanceFuturesExecutor - INFO - Adjusted order size to meet minimum value requirement of 20.0 USD
+2025-03-14 18:02:29,626 - BinanceFuturesExecutor - INFO - Cancelled all orders for ETHUSDT
+2025-03-14 18:02:29,698 - BinanceFuturesExecutor - ERROR - Error scaling into position: (400, -2019, 'Margin is insufficient.', {'Content-Type': 'application/json', 'Content-Length': '46', 'Connection': 'keep-alive', 'Date': 'Fri, 14 Mar 2025 18:02:29 GMT', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Server': 'Tengine', 'x-mbx-used-weight-1m': '-1', 'x-mbx-order-count-10s': '1', 'x-mbx-order-count-1m': '1', 'x-response-time': '5ms', 'Access-Control-Allow-Origin': '*', 'X-Cache': 'Error from cloudfront', 'Via': '1.1 956b9ab10dc9149c4fb5c960b2bba106.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'HKG54-P2', 'X-Amz-Cf-Id': 'Ovay6piCkwx20Xd4fEnuXac5Ubx5nIG13MkMolvJifBz_swB6cxaYw=='})
+2025-03-14 18:02:29,698 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 18:02:29,799 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 18:02:29,814 - root - INFO - Calculating technical indicators...
+2025-03-14 18:02:29,819 - data - INFO - Calculating risk metrics...
+2025-03-14 18:02:29,829 - root - INFO - Identifying trade setups...
+2025-03-14 18:02:29,900 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 18:02:29,972 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 18:02:30,046 - root - INFO - Adding futures-specific metrics...
+2025-03-14 18:02:30,048 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 18:02:30,048 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 18:02:30,050 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 18:02:30,051 - inference - INFO - Reward: -9.2803
+2025-03-14 18:02:30,051 - inference - INFO - Account value: 0.51 USDT
+2025-03-14 18:02:30,051 - inference - INFO - Position: -0.01100000 ETHUSDT (Direction: -)
+2025-03-14 18:02:30,051 - inference - INFO - Successfully scaled INTO position by 50%
+2025-03-14 18:02:30,051 - inference - INFO - Entry price: 1931.11 USDT
+2025-03-14 18:02:30,051 - inference - INFO - Unrealized PnL: -1.03 USDT
+2025-03-14 18:02:30,052 - inference - INFO - Liquidation price: 2050.20 USDT
+2025-03-14 18:02:30,052 - inference - INFO - Sleeping for 600 seconds...
+2025-03-14 18:12:30,154 - inference - INFO - Action probability: 0.3241
+2025-03-14 18:12:30,155 - inference - INFO - Selected action: BUY/LONG
+2025-03-14 18:12:30,155 - inference - INFO - Scaling OUT OF losing position by 50%
+2025-03-14 18:12:30,786 - BinanceFuturesExecutor - INFO - Adjusted scaling quantity to meet minimum order value of 20.0 USDT
+2025-03-14 18:12:30,935 - BinanceFuturesExecutor - INFO - Cancelled all orders for ETHUSDT
+2025-03-14 18:12:30,935 - BinanceFuturesExecutor - INFO - Scaled out of short position: 0.011 ETHUSDT @ 1932.22 (50%)
+2025-03-14 18:12:30,938 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 18:12:30,938 - inference - INFO - Reward: -11.2750
+2025-03-14 18:12:30,939 - inference - INFO - Account value: 1.54 USDT
+2025-03-14 18:12:30,939 - inference - INFO - Position: 0.00000000 ETHUSDT (Direction: 0)
+2025-03-14 18:12:30,939 - inference - INFO - Successfully scaled OUT OF position by 50%
+2025-03-14 18:12:30,939 - inference - INFO - Sleeping for 600 seconds...
+2025-03-14 18:16:01,364 - inference - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 18:16:01,364 - inference - INFO - Loading model from gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 18:16:04,149 - inference - INFO - Model loaded from GCS: gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt
+2025-03-14 18:16:04,150 - inference - INFO - Detected input dimension from model: 53
+2025-03-14 18:16:04,452 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 18:16:04,742 - BinanceFuturesExecutor - INFO - Margin type already set to ISOLATED
+2025-03-14 18:16:05,323 - data - INFO - Successfully retrieved Binance credentials from Google Secret Manager
+2025-03-14 18:16:05,442 - data - INFO - Binance Futures client initialized successfully.
+2025-03-14 18:16:10,262 - inference - INFO - Model loaded successfully with input shape (24, 53)
+2025-03-14 18:16:10,263 - inference - INFO - Starting inference on ETHUSDT with lstm model
+2025-03-14 18:16:10,263 - inference - INFO - Trading parameters: Leverage=20, Stop Loss=1.0%, Risk-Reward=1.5, Interval=15m
+2025-03-14 18:16:10,263 - inference - INFO - Fetching new market data for ETHUSDT...
+2025-03-14 18:16:10,366 - data - INFO - Retrieved 34 data points for ETHUSDT.
+2025-03-14 18:16:10,381 - root - INFO - Calculating technical indicators...
+2025-03-14 18:16:10,387 - data - INFO - Calculating risk metrics...
+2025-03-14 18:16:10,396 - root - INFO - Identifying trade setups...
+2025-03-14 18:16:10,467 - root - WARNING - Could not fetch metric with futures_funding_rate: name 'interval' is not defined
+2025-03-14 18:16:10,539 - root - WARNING - Could not fetch metric with futures_open_interest_hist: name 'interval' is not defined
+2025-03-14 18:16:10,611 - root - INFO - Adding futures-specific metrics...
+2025-03-14 18:16:10,613 - inference - INFO - Data updated successfully with 51 features
+2025-03-14 18:16:10,613 - inference - WARNING - Expected 57 features, but got only 51. Some metrics may be missing.
+2025-03-14 18:16:10,615 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 18:16:10,616 - inference - INFO - State shape: (24, 53)
+2025-03-14 18:16:10,616 - inference - INFO - Number of features in processed data: 51
+2025-03-14 18:16:10,616 - inference - INFO - Features: ['open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore', 'symbol', 'sma_20', 'sma_50', 'rsi', 'bb_middle', 'bb_upper', 'bb_lower', 'macd', 'macd_signal', 'lowest_low', 'highest_high', 'stoch_k', 'stoch_d', 'atr', 'plus_di', 'minus_di', 'adx', 'timely_return', 'volatility', 'var_95', 'cvar_95', 'max_drawdown', 'sharpe_ratio', 'sortino_ratio', 'calmar_ratio', 'signal_trend', 'signal_momentum', 'signal_volatility', 'signal_strength', 'trade_setup', 'atr_pct', 'fundingRate', 'cumulative_funding', 'sumOpenInterest', 'sumOpenInterestValue', 'oi_change', 'oi_volume_ratio', 'liquidation_value', 'origQty', 'liquidation_intensity']
+2025-03-14 18:16:10,852 - inference - INFO - Action probability: 0.3495
+2025-03-14 18:16:10,852 - inference - INFO - Selected action: HOLD
+2025-03-14 18:16:11,331 - inference - INFO - State successfully updated with shape (24, 53)
+2025-03-14 18:16:11,332 - inference - INFO - Reward: -12.8000
+2025-03-14 18:16:11,332 - inference - INFO - Account value: 1.54 USDT
+2025-03-14 18:16:11,332 - inference - INFO - Position: 0.00000000 ETHUSDT (Direction: 0)
+2025-03-14 18:16:11,332 - inference - INFO - Sleeping for 600 seconds...
