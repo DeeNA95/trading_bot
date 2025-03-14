@@ -83,6 +83,11 @@ def parse_args():
         default=60,
         help="Sleep time between iterations in seconds",
     )
+    parser.add_argument(
+        "--allow_scaling",
+        action="store_true",
+        help="Allow position scaling (in/out) during inference",
+    )
 
     return parser.parse_args()
 
@@ -688,6 +693,11 @@ def run_inference(agent, env, args):
 
     if args.dry_run:
         logger.info("Running in DRY RUN mode - no actual trades will be executed")
+        
+    if args.allow_scaling:
+        logger.info("Position scaling is ENABLED - will attempt to scale in/out of positions")
+    else:
+        logger.info("Position scaling is DISABLED - all trades will open/close full positions")
 
     # Reset the environment
     state, _ = env.reset()
@@ -731,25 +741,32 @@ def run_inference(agent, env, args):
             scale_out = False
             scale_percentage = 0.5  # Default to 50%
 
-            # Get current position info
-            has_position = info["position_direction"] != 0 if "position_direction" in info else False
-            position_direction = info["position_direction"] if "position_direction" in info else 0
-            unrealized_pnl = info["unrealized_pnl"] if "unrealized_pnl" in info else 0
+            # Only consider scaling if the flag is enabled
+            if args.allow_scaling:
+                # Get current position info
+                has_position = info["position_direction"] != 0 if "position_direction" in info else False
+                position_direction = info["position_direction"] if "position_direction" in info else 0
+                unrealized_pnl = info["unrealized_pnl"] if "unrealized_pnl" in info else 0
 
-            # Determine scaling based on PnL and action consistency
-            if has_position:
-                # For scaling into winning positions (matching direction and positive PnL)
-                if (action == 1 and position_direction > 0 and unrealized_pnl > 0) or \
-                   (action == 2 and position_direction < 0 and unrealized_pnl > 0):
-                    scale_in = True
-                    logger.info(f"Scaling INTO winning position by {scale_percentage*100:.0f}%")
+                # Determine scaling based on PnL and action consistency
+                if has_position:
+                    # For scaling into winning positions (matching direction and positive PnL)
+                    if (action == 1 and position_direction > 0 and unrealized_pnl > 0) or \
+                       (action == 2 and position_direction < 0 and unrealized_pnl > 0):
+                        scale_in = True
+                        logger.info(f"Scaling INTO winning position by {scale_percentage*100:.0f}%")
 
-                # For scaling out of losing positions (PnL negative)
-                elif unrealized_pnl < 0:
-                    scale_out = True
-                    logger.info(f"Scaling OUT OF losing position by {scale_percentage*100:.0f}%")
+                    # For scaling out of losing positions (PnL negative)
+                    elif unrealized_pnl < 0:
+                        scale_out = True
+                        logger.info(f"Scaling OUT OF losing position by {scale_percentage*100:.0f}%")
+            elif "info" in locals() and "position_direction" in info and info["position_direction"] != 0:
+                # If scaling is disabled but we have a position and matching action, log the decision
+                position_direction = info["position_direction"]
+                if (action == 1 and position_direction > 0) or (action == 2 and position_direction < 0):
+                    logger.info("Matching position detected but scaling is disabled - not scaling in")
 
-            #Take the action in the environment with scaling parameters
+            # Take the action in the environment with scaling parameters
             next_state, reward, done, _, info = env.step(action, scale_in=scale_in, scale_out=scale_out, scale_percentage=scale_percentage)
 
             # Log the result
