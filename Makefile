@@ -17,7 +17,7 @@ train-btc: #load_env
 	python train.py --data gs://crypto_trading_models/data/BTC/BTCUSDT_1m_with_metrics.csv --symbol BTCUSDT --batch_size 512 --save_path gs://crypto_trading_models/LSTM/POSITION_GAINERS/BTC/
 
 train-eth: #load_env
-	 nohup python train.py --train_data gs://crypto_trading_models/data/ETH/ETHUSDT_1m_train.parquet --test_data gs://crypto_trading_models/data/ETH/ETHUSDT_1m_test.parquet --symbol ETHUSDT --batch_size 1024 --save_freq 10 --eval_freq 10 --balance 10 --save_path gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ > eth.log 2>&1 &
+	nohup python train.py --train_data gs://crypto_trading_models/data/ETH/ETHUSDT_1m_with_metrics_train.csv --test_data gs://crypto_trading_models/data/ETH/ETHUSDT_1m_with_metrics_test.csv --symbol ETHUSDT --model transformer --save_path crypto_trading_models/TRANSFORMERS/ETH/ --batch_size 2048
 
 train-bnb: load_env
 	python train.py --data gs://crypto_trading_models/data/BNB/BNBUSDT_1h_with_metrics.csv --symbol BNBUSDT --batch_size 512 --save_path gs://crypto_trading_models/LSTM/POSITION_GAINERS/BNB/

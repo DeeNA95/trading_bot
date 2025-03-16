@@ -86,10 +86,13 @@ class DataHandler:
             chunk_size = timedelta(days=1)
         else:
             chunk_size = timedelta(days=7)
-
+        ctr=1
         current_start = start_time
         while current_start < end_time:
-            sleep(0.3)
+            sleep(0.1)
+
+            print(f"Fetching chunk {ctr}")
+            ctr+=1
             current_end = min(current_start + chunk_size, end_time)
             try:
                 klines = self.client.futures_klines(
