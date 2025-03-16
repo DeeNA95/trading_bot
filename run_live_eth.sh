@@ -1,8 +1,8 @@
 #! /bin/sh
 
 nohup pipenv run python inference.py \
-  --model_path gs://crypto_trading_models/LSTM/BACKTESTED/ETH/ETHUSDT_lstm_20250314_094627.pt \
-  --model_type lstm \
+  --model_path gs://crypto_trading_models/TRANSFORMERS/ETH/best_model.pt \
+  --model_type transformer \
   --symbol ETHUSDT \
   --window_size 24 \
   --leverage 20 \
@@ -10,4 +10,4 @@ nohup pipenv run python inference.py \
   --initial_balance 1.54 \
   --stop_loss 0.01 \
   --risk_reward 1.5 \
-  --sleep_time 600 2>&1 &
+  --sleep_time 60 2>&1 &

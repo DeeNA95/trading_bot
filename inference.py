@@ -11,7 +11,7 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta
-
+from torch import nn
 import numpy as np
 import pandas as pd
 import torch
@@ -170,21 +170,21 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
         """
         Comprehensive function to process market data for inference.
         This ensures all the same metrics as in training data are calculated.
-        
+
         Args:
             symbol: Trading symbol (e.g., 'BTCUSDT')
             interval: Data interval (e.g., '15m', '1h')
             window_size: Number of candles needed for observation window
             start_time: Start time for data fetch (default: calculated based on window_size)
             end_time: End time for data fetch (default: current time)
-            
+
         Returns:
             DataFrame: Processed data with all metrics
         """
         # Set default times if not provided
         if end_time is None:
             end_time = datetime.now()
-            
+
         if start_time is None:
             # Calculate start time based on interval and window size plus buffer
             interval_map = {
@@ -194,14 +194,14 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
             }
             interval_seconds = interval_map.get(interval, 900)  # Default to 15m
             buffer_candles = 10  # Extra candles as buffer
-            
+
             # Set start time to window_size + buffer candles ago
             start_time = end_time - timedelta(
                 seconds=interval_seconds * (window_size + buffer_candles)
             )
-        
+
         logger.info(f"Processing inference data for {symbol} from {start_time} to {end_time}")
-        
+
         try:
             # Fetch raw data
             raw_data = self.data_handler.get_futures_data(
@@ -210,21 +210,21 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
                 start_time=start_time,
                 end_time=end_time,
             )
-            
+
             if raw_data.empty:
                 logger.error(f"No data retrieved for {symbol}")
                 return pd.DataFrame()
-                
+
             # Process data with all available metrics
             logger.info("Calculating technical indicators...")
             processed_data = self.data_handler.calculate_technical_indicators(raw_data)
-            
+
             logger.info("Calculating risk metrics...")
             processed_data = self.data_handler.calculate_risk_metrics(processed_data, interval=interval)
-            
+
             logger.info("Identifying trade setups...")
             processed_data = self.data_handler.identify_trade_setups(processed_data)
-            
+
             # Try to add futures-specific metrics
             try:
                 logger.info("Adding futures-specific metrics...")
@@ -237,22 +237,22 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
                 )
             except Exception as e:
                 logger.warning(f"Could not add futures metrics: {e}")
-            
+
             # Normalize data
             logger.info("Normalizing OHLC and price-related data...")
             processed_data = self.data_handler.normalise_ohlc(processed_data)
-            
+
             # Fill missing values
             processed_data = processed_data.ffill().bfill()
-            
+
             # Replace any remaining NaN values with zeros
             processed_data = processed_data.fillna(0)
-            
+
             num_features = processed_data.shape[1]
             logger.info(f"Data processed successfully with {num_features} features")
-            
+
             return processed_data
-            
+
         except Exception as e:
             logger.error(f"Error processing inference data: {e}", exc_info=True)
             return pd.DataFrame()
@@ -286,7 +286,7 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
                     interval=self.data_fetch_interval,
                     window_size=self.window_size
                 )
-                
+
                 self.last_update_time = current_time
 
             # Get the last window_size rows from processed data
@@ -504,14 +504,18 @@ def load_agent(args):
             raise ValueError("Could not detect input dimension from CNN model")
     elif args.model_type.lower() == "transformer":
         # For transformer, we need to detect the PyraFormer structure
-        if "input_embedding.weight" in model_state:
+        if "feature_extractor.0.weight" in model_state:
+            # PyraFormer implementation with convolutional feature extraction
+            # This is the most reliable way to determine feature dimensions
+            conv_weights = model_state["feature_extractor.0.weight"]
+            # The in_channels of the first conv layer is the feature dimension
+            feature_dim = conv_weights.shape[1]
+            input_dim = feature_dim * args.window_size
+            logger.info(f"Detected input features from feature_extractor: {feature_dim}")
+        elif "input_embedding.weight" in model_state:
             # Original transformer implementation
             embedding_weights = model_state["input_embedding.weight"]
             input_dim = embedding_weights.shape[1] * args.window_size
-        elif "feature_extractor.0.weight" in model_state:
-            # PyraFormer implementation with convolutional feature extraction
-            conv_weights = model_state["feature_extractor.0.weight"]
-            input_dim = conv_weights.shape[1] * args.window_size
         elif any(key.startswith("pyraformer_blocks.") for key in model_state.keys()):
             # If we can detect PyraFormer blocks but no direct way to infer input shape
             # We'll use a fallback method: try to find a linear layer dimension
@@ -530,7 +534,7 @@ def load_agent(args):
                 else:
                     # If all else fails, use a reasonable default
                     logger.warning("Could not detect PyraFormer input dimensions, using default.")
-                    input_dim = 64 * args.window_size  # Reasonable default
+                    input_dim = 56 * args.window_size  # Use 56 as default to match trained model
         else:
             raise ValueError("Transformer/PyraFormer weights not found in model state")
 
@@ -612,10 +616,16 @@ def load_agent(args):
                     device=self.device,
                 )
             elif self.model_type.lower() == "transformer":
+                # For PyraFormer, always use hidden_dim=128 since the saved model uses this value
+                # This is crucial because the PyraFormer architecture uses 128 for all its internal dimensions
+                window_size, features_per_timestep = self.input_shape
+                logger.info(f"Initializing transformer with features={features_per_timestep}, window_size={window_size}")
+                logger.info(f"Using fixed hidden_dim=128 to match saved model architecture")
+
                 self.model = ActorCriticTransformer(
                     input_shape=self.input_shape,
                     action_dim=self.action_dim,
-                    hidden_dim=self.hidden_dim,
+                    hidden_dim=128,  # Force 128 to match saved model structure
                     device=self.device,
                 )
             else:
@@ -712,23 +722,23 @@ def load_agent(args):
                     logger.error(
                         f"Error reshaping for CNN: {e}. Using original padded state."
                     )
-            
+
             # Special handling for PyraFormer transformer model
             elif self.model_type.lower() == "transformer":
                 try:
                     # Check if we're using the PyraFormer by detecting the model's structure
                     is_pyraformer = hasattr(self.model, 'feature_extractor') or hasattr(self.model, 'pyraformer_blocks')
-                    
+
                     if is_pyraformer:
                         logger.info("Detected PyraFormer model, ensuring proper shape for inference")
-                        
+
                         # If we have more features than expected, truncate
                         if padded_state.shape[1] > self.expected_feature_dim:
                             padded_state = padded_state[:, : self.expected_feature_dim]
-                            
+
                         # Add batch dimension
                         batched = np.expand_dims(padded_state, axis=0)
-                        
+
                         # For PyraFormer, the shape should be [batch, seq_len, features]
                         # which is already the case for batched, so we don't need additional reshaping
                         logger.info(f"PyraFormer input shape: {batched.shape}")
@@ -743,7 +753,7 @@ def load_agent(args):
     agent = CustomPPOAgent(
         env=env,
         model_type=args.model_type,
-        hidden_dim=128,
+        hidden_dim=56,  # Use 56 for feature dimensions but PyraFormer will override internally
         save_dir=os.path.dirname(args.model_path),
         input_dim=input_dim,
     )
@@ -770,16 +780,16 @@ def load_agent(args):
             logger.info(
                 f"Updated expected_feature_dim to {agent.expected_feature_dim} based on CNN architecture"
             )
-    
+
     elif args.model_type.lower() == "transformer":
         # Check if this is a PyraFormer model
-        is_pyraformer = (hasattr(agent.model, 'feature_extractor') or 
+        is_pyraformer = (hasattr(agent.model, 'feature_extractor') or
                         hasattr(agent.model, 'pyraformer_blocks') or
                         hasattr(agent.model, 'time_embedding'))
-        
+
         if is_pyraformer:
             logger.info("Detected PyraFormer architecture")
-            
+
             # Inspect the feature extractor if available
             if hasattr(agent.model, 'feature_extractor'):
                 # Extract first conv layer details
@@ -789,7 +799,7 @@ def load_agent(args):
                         f"PyraFormer feature extractor: in_channels={first_layer.in_channels}, "
                         f"out_channels={first_layer.out_channels}, kernel_size={first_layer.kernel_size}"
                     )
-                    
+
                     # Update expected feature dim based on actual model architecture
                     features_per_timestep = first_layer.in_channels
                     agent.expected_feature_dim = features_per_timestep * agent.env.window_size
@@ -798,12 +808,12 @@ def load_agent(args):
                         f"Updated PyraFormer input shape to {agent.input_shape} with "
                         f"expected_feature_dim={agent.expected_feature_dim}"
                     )
-            
+
             # Log PyraFormer blocks if available
             if hasattr(agent.model, 'pyraformer_blocks'):
                 num_blocks = len(agent.model.pyraformer_blocks)
                 logger.info(f"PyraFormer has {num_blocks} attention blocks")
-                
+
                 # Log the number of attention heads in the first block
                 if num_blocks > 0 and hasattr(agent.model.pyraformer_blocks[0], 'attention'):
                     first_attn = agent.model.pyraformer_blocks[0].attention

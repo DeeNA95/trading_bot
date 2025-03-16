@@ -118,7 +118,7 @@ class PPOAgent:
         self,
         env: gym.Env,
         model_type: str = 'lstm',
-        hidden_dim: int = 128, #size of first hidden dim
+        hidden_dim: int = 56, #size of first hidden dim
         lr: float = 3e-4,
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
