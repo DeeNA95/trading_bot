@@ -295,14 +295,22 @@ class DataHandler:
             result["timely_return"].rolling(window=window).mean()
             / downside.rolling(window=window).std()
         ) * annualization_factor
-
+        
         result["calmar_ratio"] = (
             result["timely_return"].rolling(window=window).mean()
             * (365 * 24 / self.get_periods_per_day(interval))
         ) / result["max_drawdown"].abs()
 
+        # Calculate efficiency ratio
+        risk_free_rate = 0.01  # Example risk-free rate, can be adjusted
+        result["efficiency_ratio"] = (
+            result["timely_return"].rolling(window=window).mean()
+            / risk_free_rate
+        ) * annualization_factor
+
         logger.info("Calculating risk metrics...")
         return result
+
 
     @staticmethod
     def get_periods_per_day(interval):
@@ -399,12 +407,143 @@ class DataHandler:
         logging.info("Identifying trade setups...")
         return result
 
+    def calculate_price_density(self, df, window=20, bins=10):
+        """
+        Calculate price density using a rolling window
+        
+        Args:
+            df: DataFrame containing OHLC data
+            window: Size of the rolling window (default: 20)
+            bins: Number of price bins for density calculation (default: 10)
+            
+        Returns:
+            Series with price density values
+        """
+        def density_for_window(window_data):
+            if len(window_data) < window/2:  # Require at least half the window size
+                return np.nan
+                
+            # Create histogram of prices in the window
+            hist, _ = np.histogram(window_data, bins=bins)
+            # Calculate density as the proportion of populated bins
+            populated_bins = np.sum(hist > 0)
+            return populated_bins / bins
+            
+        # Calculate price density using rolling window of close prices
+        return df["close"].rolling(window=window).apply(density_for_window, raw=True)
+        
+    def calculate_fractal_dimension(self, df, window=20):
+        """
+        Calculate fractal dimension of price movements using box-counting method
+        
+        Args:
+            df: DataFrame containing OHLC data
+            window: Size of the rolling window (default: 20)
+            
+        Returns:
+            Series with fractal dimension values
+        """
+        def fractal_dim_for_window(window_data):
+            if len(window_data) < window/2:  # Require at least half the window size
+                return np.nan
+                
+            # Normalize the window data to [0,1] range
+            min_val = window_data.min()
+            max_val = window_data.max()
+            if max_val == min_val:
+                return 1.0  # Flat line has dimension 1
+                
+            norm_data = (window_data - min_val) / (max_val - min_val)
+            
+            # Use box-counting with multiple scales
+            scales = [2, 4, 8, 16]
+            log_counts = []
+            log_scales = []
+            
+            for scale in scales:
+                if scale >= len(norm_data):
+                    continue
+                    
+                # Count boxes at this scale
+                box_count = 0
+                for i in range(0, scale):
+                    box_min = i / scale
+                    box_max = (i + 1) / scale
+                    if any((norm_data >= box_min) & (norm_data < box_max)):
+                        box_count += 1
+                        
+                if box_count > 0:
+                    log_counts.append(np.log(box_count))
+                    log_scales.append(np.log(scale))
+            
+            # Need at least 2 valid scales to calculate slope
+            if len(log_counts) < 2:
+                return np.nan
+                
+            # Linear regression to find the fractal dimension
+            slope, _, _, _, _ = np.polyfit(log_scales, log_counts, 1, full=True)
+            return slope
+            
+        # Calculate fractal dimension using rolling window
+        return df["close"].rolling(window=window).apply(fractal_dim_for_window, raw=True)
+    
+    def normalise_ohlc(self, df, window=20):
+        """
+        Normalise price-related columns of a dataframe using a rolling window and
+        calculate additional complexity metrics
+        
+        Args:
+            df: DataFrame containing OHLC and other price-related data
+            window: Size of the rolling window for normalization (default: 20)
+        
+        Returns:
+            DataFrame with normalized price-related values and complexity metrics
+        """
+        # Calculate rolling mean and standard deviation
+        rolling_mean = df["close"].rolling(window=window).mean()
+        rolling_std = df["close"].rolling(window=window).std()
+        
+        result = df.copy()
+        
+        # Normalize OHLC values
+        result["open"] = (df["open"] - rolling_mean) / rolling_std
+        result["high"] = (df["high"] - rolling_mean) / rolling_std
+        result["low"] = (df["low"] - rolling_mean) / rolling_std
+        result["close"] = (df["close"] - rolling_mean) / rolling_std
+        
+        # Normalize moving averages and Bollinger Bands if they exist
+        price_related_cols = [
+            "sma_20", "sma_50", "bb_middle", "bb_upper", "bb_lower",
+            "lowest_low", "highest_high"
+        ]
+        
+        for col in price_related_cols:
+            if col in df.columns:
+                result[col] = (df[col] - rolling_mean) / rolling_std
+        
+        # Calculate price complexity metrics
+        result["price_density"] = self.calculate_price_density(df, window)
+        result["fractal_dimension"] = self.calculate_fractal_dimension(df, window)
+        
+        return result
+
     def _fetch_futures_metric(
         self, api_method, params, time_col, resample_rule, cols_to_keep, value_cast=None
     ):
         """
         Generic method to fetch futures-specific metrics (funding, open interest, liquidations)
         and resample to match the main dataframe.
+        
+        Args:
+            api_method: The Binance API method to call
+            params: Parameters for the API method
+            time_col: Name of the timestamp column
+            resample_rule: String representing the resampling interval
+            cols_to_keep: List of columns to keep in the result
+            value_cast: Dictionary mapping column names to data types
+            
+        Returns:
+            DataFrame containing the requested metrics
         """
         try:
             data = api_method(**params)
@@ -416,10 +555,8 @@ class DataHandler:
             if value_cast:
                 for col, dtype in value_cast.items():
                     df[col] = df[col].astype(dtype)
-            interval_map = {"m": "T", "h": "H", "d": "D"}
-            freq_char = interval[-1]
-            freq_unit = interval_map.get(freq_char, freq_char)
-            resample_rule = interval[:-1] + freq_unit
+                    
+            # Use the provided resample_rule directly instead of trying to derive it
             df = df.resample(resample_rule, closed="right", label="right").ffill()
             return df[cols_to_keep]
         except Exception as e:
@@ -429,8 +566,24 @@ class DataHandler:
     def add_futures_metrics(self, df, symbol, interval, start_time, end_time):
         """
         Add futures-specific metrics: funding rates, open interest, and liquidations.
+        
+        Args:
+            df: DataFrame containing OHLC data
+            symbol: Trading symbol (e.g., 'BTCUSDT')
+            interval: Data interval (e.g., '15m', '1h')
+            start_time: Start time for data fetch
+            end_time: End time for data fetch
+            
+        Returns:
+            DataFrame with added futures-specific metrics
         """
         result = df.copy()
+        
+        # Format resample rule for pandas
+        interval_map = {"m": "T", "h": "H", "d": "D"}
+        freq_char = interval[-1]
+        freq_unit = interval_map.get(freq_char, freq_char)
+        formatted_resample_rule = interval[:-1] + freq_unit
 
         # Funding rates: Binance provides funding rates (typically every 8h)
         funding_params = {
@@ -444,7 +597,7 @@ class DataHandler:
             self.client.futures_funding_rate,
             funding_params,
             time_col="fundingTime",
-            resample_rule=interval,
+            resample_rule=formatted_resample_rule,
             cols_to_keep=["fundingRate"],
             value_cast={"fundingRate": float},
         )
@@ -468,7 +621,7 @@ class DataHandler:
             self.client.futures_open_interest_hist,
             oi_params,
             time_col="timestamp",
-            resample_rule=interval,
+            resample_rule=formatted_resample_rule,
             cols_to_keep=["sumOpenInterest", "sumOpenInterestValue"],
             value_cast={"sumOpenInterest": float, "sumOpenInterestValue": float},
         )
@@ -497,14 +650,14 @@ class DataHandler:
             self.client.futures_liquidation_orders,
             liq_params,
             time_col="time",
-            resample_rule=interval,
+            resample_rule=formatted_resample_rule,
             cols_to_keep=["price", "origQty"],
             value_cast={"price": float, "origQty": float},
         )
         if not liq_df.empty:
             liq_df["liquidation_value"] = liq_df["price"] * liq_df["origQty"]
             liq_resampled = (
-                liq_df.resample(interval, closed="right", label="right")
+                liq_df.resample(formatted_resample_rule, closed="right", label="right")
                 .agg({"liquidation_value": "sum", "origQty": "sum"})
                 .fillna(0)
             )
@@ -522,12 +675,73 @@ class DataHandler:
         logging.info("Adding futures-specific metrics...")
         return result
 
+    def split_data_train_test(self, df, test_ratio=0.2, validation_ratio=0.0):
+        """
+        Split data into training, test, and optional validation sets.
+        
+        Args:
+            df: DataFrame containing processed data
+            test_ratio: Ratio of data to use for testing (default: 0.2)
+            validation_ratio: Ratio of data to use for validation (default: 0.0)
+            
+        Returns:
+            dict: Dictionary containing train, test, and optionally validation DataFrames
+        """
+        logger.info(f"Splitting data: test={test_ratio}, validation={validation_ratio}")
+        
+        # Sort by index to ensure temporal order is preserved
+        df = df.sort_index()
+        
+        # Calculate split points
+        total_rows = len(df)
+        test_size = int(total_rows * test_ratio)
+        validation_size = int(total_rows * validation_ratio)
+        train_size = total_rows - test_size - validation_size
+        
+        # Perform splits
+        train_df = df.iloc[:train_size]
+        
+        result = {"train": train_df}
+        
+        if test_size > 0:
+            if validation_size > 0:
+                # Three-way split: train, validation, test
+                validation_df = df.iloc[train_size:train_size+validation_size]
+                test_df = df.iloc[train_size+validation_size:]
+                result["validation"] = validation_df
+                result["test"] = test_df
+            else:
+                # Two-way split: train, test
+                test_df = df.iloc[train_size:]
+                result["test"] = test_df
+        
+        # Log split sizes
+        for key, data in result.items():
+            logger.info(f"{key.title()} set size: {len(data)} samples ({len(data)/total_rows:.1%})")
+            
+        return result
+
     def process_market_data(
-        self, symbol, interval="1h", start_time=None, end_time=None, save_path=None
+        self, symbol, interval="1h", start_time=None, end_time=None, save_path=None, 
+        split_data=False, test_ratio=0.2, validation_ratio=0.0
     ):
         """
         Comprehensive function to retrieve futures data, add all metrics (technical,
         risk, and futures-specific), and fill missing values.
+        
+        Args:
+            symbol: Trading symbol (e.g., 'BTCUSDT')
+            interval: Data interval (e.g., '15m', '1h')
+            start_time: Start time for data collection (default: depends on interval)
+            end_time: End time for data collection (default: current time)
+            save_path: Path to save processed data (optional)
+            split_data: Whether to split data into training and test sets (default: False)
+            test_ratio: Ratio of data to use for testing (default: 0.2)
+            validation_ratio: Ratio of data to use for validation (default: 0.0)
+            
+        Returns:
+            If split_data is False: DataFrame containing processed data
+            If split_data is True: Dictionary containing train, test, and optionally validation DataFrames
         """
         if end_time is None:
             end_time = datetime.now()
@@ -551,13 +765,38 @@ class DataHandler:
         df = self.add_futures_metrics(df, symbol, interval, start_time, end_time)
         df = self.calculate_risk_metrics(df, interval)
         df = self.identify_trade_setups(df)
+        df = self.normalise_ohlc(df)
         df = df.ffill().bfill()
 
         if save_path:
-            self.save_data_to_csv(df, save_path)
-            logging.info(f"Data with metrics saved to {save_path}")
-
-        return df
+            # Base filename without extension
+            base_path = save_path.rsplit('.', 1)[0] if '.' in save_path else save_path
+            
+            if split_data:
+                # Split the data
+                split_sets = self.split_data_train_test(df, test_ratio, validation_ratio)
+                
+                # Save each split
+                for split_name, split_df in split_sets.items():
+                    split_path = f"{base_path}_{split_name}.csv"
+                    self.save_data_to_csv(split_df, split_path)
+                    logging.info(f"{split_name.title()} data saved to {split_path}")
+                
+                # Return the split datasets
+                return split_sets
+            else:
+                # Save the whole dataset
+                self.save_data_to_csv(df, save_path)
+                logging.info(f"Data with metrics saved to {save_path}")
+                
+                # Return the full dataset
+                return df
+        
+        # If no save path is provided, just return based on split_data
+        if split_data:
+            return self.split_data_train_test(df, test_ratio, validation_ratio)
+        else:
+            return df
 
     def save_data_to_csv(self, df, file_path):
         """Save DataFrame to CSV."""
@@ -616,6 +855,23 @@ def parse_args():
         default="data",
         help="Directory to save processed data",
     )
+    parser.add_argument(
+        "--split",
+        action="store_true",
+        help="Split data into training and testing sets",
+    )
+    parser.add_argument(
+        "--test_ratio",
+        type=float,
+        default=0.2,
+        help="Ratio of data to use for testing (default: 0.2)",
+    )
+    parser.add_argument(
+        "--validation_ratio",
+        type=float,
+        default=0.0,
+        help="Ratio of data to use for validation (default: 0.0)",
+    )
     return parser.parse_args()
 
 
@@ -636,13 +892,41 @@ if __name__ == "__main__":
 
     data_handler = DataHandler()
 
-    # Always process data: fetch, add metrics, and fill missing values
-    processed_data = data_handler.process_market_data(
-        args.symbol, args.interval, start_date, end_date
-    )
-
-    # Save the processed data as CSV and the train/test data as parquet files
-    processed_csv = os.path.join(
-        args.output_dir, f"{args.symbol}_{args.interval}_with_metrics.csv"
-    )
-    data_handler.save_data_to_csv(processed_data, processed_csv)
+    # Ensure output directory exists
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Create output filename
+    base_filename = f"{args.symbol}_{args.interval}_with_metrics"
+    output_path = os.path.join(args.output_dir, f"{base_filename}.csv")
+    
+    # Process data with or without splitting
+    if args.split:
+        logging.info(f"Processing data with train/test split (test ratio: {args.test_ratio}, validation ratio: {args.validation_ratio})")
+        split_data = data_handler.process_market_data(
+            symbol=args.symbol,
+            interval=args.interval,
+            start_time=start_date,
+            end_time=end_date,
+            save_path=output_path,
+            split_data=True,
+            test_ratio=args.test_ratio,
+            validation_ratio=args.validation_ratio
+        )
+        
+        # Log split info
+        for split_name, df in split_data.items():
+            logging.info(f"{split_name.title()} set: {len(df)} rows")
+        
+        logging.info(f"Data processing and splitting complete.")
+    else:
+        # Process without splitting
+        processed_data = data_handler.process_market_data(
+            symbol=args.symbol,
+            interval=args.interval,
+            start_time=start_date,
+            end_time=end_date,
+            save_path=output_path
+        )
+        
+        logging.info(f"Processed data: {len(processed_data)} rows")
+        logging.info(f"Data saved to {output_path}")

@@ -166,10 +166,100 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
         # Store processed data frames
         self.processed_df = None
 
+    def process_inference_data(self, symbol, interval, window_size, start_time=None, end_time=None):
+        """
+        Comprehensive function to process market data for inference.
+        This ensures all the same metrics as in training data are calculated.
+        
+        Args:
+            symbol: Trading symbol (e.g., 'BTCUSDT')
+            interval: Data interval (e.g., '15m', '1h')
+            window_size: Number of candles needed for observation window
+            start_time: Start time for data fetch (default: calculated based on window_size)
+            end_time: End time for data fetch (default: current time)
+            
+        Returns:
+            DataFrame: Processed data with all metrics
+        """
+        # Set default times if not provided
+        if end_time is None:
+            end_time = datetime.now()
+            
+        if start_time is None:
+            # Calculate start time based on interval and window size plus buffer
+            interval_map = {
+                "1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800,
+                "1h": 3600, "2h": 7200, "4h": 14400, "6h": 21600,
+                "8h": 28800, "12h": 43200, "1d": 86400,
+            }
+            interval_seconds = interval_map.get(interval, 900)  # Default to 15m
+            buffer_candles = 10  # Extra candles as buffer
+            
+            # Set start time to window_size + buffer candles ago
+            start_time = end_time - timedelta(
+                seconds=interval_seconds * (window_size + buffer_candles)
+            )
+        
+        logger.info(f"Processing inference data for {symbol} from {start_time} to {end_time}")
+        
+        try:
+            # Fetch raw data
+            raw_data = self.data_handler.get_futures_data(
+                symbol=symbol,
+                interval=interval,
+                start_time=start_time,
+                end_time=end_time,
+            )
+            
+            if raw_data.empty:
+                logger.error(f"No data retrieved for {symbol}")
+                return pd.DataFrame()
+                
+            # Process data with all available metrics
+            logger.info("Calculating technical indicators...")
+            processed_data = self.data_handler.calculate_technical_indicators(raw_data)
+            
+            logger.info("Calculating risk metrics...")
+            processed_data = self.data_handler.calculate_risk_metrics(processed_data, interval=interval)
+            
+            logger.info("Identifying trade setups...")
+            processed_data = self.data_handler.identify_trade_setups(processed_data)
+            
+            # Try to add futures-specific metrics
+            try:
+                logger.info("Adding futures-specific metrics...")
+                processed_data = self.data_handler.add_futures_metrics(
+                    processed_data,
+                    symbol,
+                    interval,
+                    start_time,
+                    end_time,
+                )
+            except Exception as e:
+                logger.warning(f"Could not add futures metrics: {e}")
+            
+            # Normalize data
+            logger.info("Normalizing OHLC and price-related data...")
+            processed_data = self.data_handler.normalise_ohlc(processed_data)
+            
+            # Fill missing values
+            processed_data = processed_data.ffill().bfill()
+            
+            # Replace any remaining NaN values with zeros
+            processed_data = processed_data.fillna(0)
+            
+            num_features = processed_data.shape[1]
+            logger.info(f"Data processed successfully with {num_features} features")
+            
+            return processed_data
+            
+        except Exception as e:
+            logger.error(f"Error processing inference data: {e}", exc_info=True)
+            return pd.DataFrame()
+
     def _update_live_state(self):
         """
-        Override the _update_live_state method to use DataHandler for processing.
-        This ensures all the same metrics as in training data are calculated.
+        Override the _update_live_state method to use the process_inference_data function.
         """
         try:
             # Only fetch new data if enough time has passed (avoid API rate limits)
@@ -178,18 +268,9 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
 
             # Determine fetch interval in seconds
             interval_map = {
-                "1m": 60,
-                "3m": 180,
-                "5m": 300,
-                "15m": 900,
-                "30m": 1800,
-                "1h": 3600,
-                "2h": 7200,
-                "4h": 14400,
-                "6h": 21600,
-                "8h": 28800,
-                "12h": 43200,
-                "1d": 86400,
+                "1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800,
+                "1h": 3600, "2h": 7200, "4h": 14400, "6h": 21600,
+                "8h": 28800, "12h": 43200, "1d": 86400,
             }
             interval_seconds = interval_map.get(
                 self.data_fetch_interval, 900
@@ -199,60 +280,18 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
             if time_diff >= interval_seconds * 0.8 or self.processed_df is None:
                 logger.info(f"Fetching new market data for {self.symbol}...")
 
-                # Set time range for data fetch (window_size + buffer candles)
-                end_time = current_time
-                start_time = end_time - timedelta(
-                    minutes=int(interval_seconds / 60) * (self.window_size + 10)
-                )
-
-                # Use DataHandler to get and process data with all metrics
-                raw_data = self.data_handler.get_futures_data(
+                # Process market data using the consolidated function
+                self.processed_df = self.process_inference_data(
                     symbol=self.symbol,
                     interval=self.data_fetch_interval,
-                    start_time=start_time,
-                    end_time=end_time,
+                    window_size=self.window_size
                 )
-
-                # Apply all the same transformations as in data.py
-                processed_data = self.data_handler.calculate_technical_indicators(
-                    raw_data
-                )
-                processed_data = self.data_handler.calculate_risk_metrics(
-                    processed_data
-                )
-                processed_data = self.data_handler.identify_trade_setups(processed_data)
-
-                # Try to add futures-specific metrics if possible
-                try:
-                    processed_data = self.data_handler.add_futures_metrics(
-                        processed_data,
-                        self.symbol,
-                        self.data_fetch_interval,
-                        start_time,
-                        end_time,
-                    )
-                except Exception as e:
-                    logger.warning(f"Could not add futures metrics: {e}")
-
-                # Fill missing values
-                processed_data = processed_data.ffill().bfill()
-
-                # Replace any remaining NaN values with zeros
-                processed_data = processed_data.fillna(0)
-
-                # Store the processed dataframe
-                self.processed_df = processed_data
+                
                 self.last_update_time = current_time
 
-                num_features = processed_data.shape[1]
-                logger.info(f"Data updated successfully with {num_features} features")
-                if num_features < 57:
-                    logger.warning(
-                        f"Expected 57 features, but got only {num_features}. Some metrics may be missing."
-                    )
             # Get the last window_size rows from processed data
             if len(self.processed_df) >= self.window_size:
-                data = self.processed_df.iloc[-self.window_size :].copy()
+                data = self.processed_df.iloc[-self.window_size:].copy()
             else:
                 # If we don't have enough data, pad with the first row
                 missing_rows = self.window_size - len(self.processed_df)
@@ -364,6 +403,10 @@ class CustomBinanceFuturesCryptoEnv(BinanceFuturesCryptoEnv):
                     self.current_open_interest = data.iloc[-1]["sumOpenInterest"]
                 if "oi_change" in data.columns:
                     self.open_interest_change = data.iloc[-1]["oi_change"]
+                if "price_density" in data.columns:
+                    self.price_density = data.iloc[-1]["price_density"]
+                if "fractal_dimension" in data.columns:
+                    self.fractal_dimension = data.iloc[-1]["fractal_dimension"]
 
         except Exception as e:
             logger.error(f"Error updating live state: {e}", exc_info=True)
