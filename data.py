@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta
+from time import sleep
 
 import numpy as np
 import pandas as pd
@@ -90,6 +91,7 @@ class DataHandler:
 
         current_start = start_time
         while current_start < end_time:
+            sleep(1)
             current_end = min(current_start + chunk_size, end_time)
             try:
                 klines = self.client.futures_klines(
