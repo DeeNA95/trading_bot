@@ -2,7 +2,6 @@
 import argparse
 import logging
 import os
-import time
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -11,7 +10,6 @@ from binance.client import Client
 from binance.exceptions import BinanceAPIException
 from dotenv import load_dotenv
 from google.cloud import secretmanager, storage
-
 
 logger = logging.getLogger(__name__)
 

@@ -1,14 +1,19 @@
-#! /usr/bin/env python3
+#!/usr/bin/env python3
 from email.policy import strict
 from binance.um_futures import UMFutures
 from dotenv import load_dotenv
 import os
-from logging import getLogger
+import logging
 import pandas as pd
 import ta
 import time
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)  # Set the logging level
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 load_dotenv()
 BINANCE_API_KEY = os.getenv("binance_future_testnet_api")
@@ -18,11 +23,12 @@ BINANCE_TESTNET_URL = os.getenv("testnest_url")
 client = UMFutures(
     key=BINANCE_API_KEY, secret=BINANCE_SECRET, base_url=BINANCE_TESTNET_URL
 )
-tp = 0.01
-sl = 0.01
-volume = 50
-leverage = 2
-margin_type = 'ISOLATED'
+
+tp = float(os.getenv("take_profit", 0.01))
+sl = float(os.getenv("stop_loss", 0.01))
+volume = float(os.getenv("volume", 50))
+leverage = int(os.getenv("leverage", 2))
+margin_type = os.getenv("margin_type", 'ISOLATED')
 
 def get_balance_usdt():
     try:
@@ -31,7 +37,7 @@ def get_balance_usdt():
             if elem["asset"] == "USDT":
                 return float(elem["balance"])
     except Exception as e:
-        print(e)
+        logger.error(f"Error getting balance: {e}")
 
 
 def get_ticker_usdt():
@@ -57,7 +63,7 @@ def klines(symbol):
 
         return response
     except Exception as e:
-        print(e)
+        logger.error(f"Error getting klines for {symbol}: {e}")
 
 
 def set_leverage(symbol, level):
@@ -67,7 +73,7 @@ def set_leverage(symbol, level):
         )
         print(response)
     except Exception as e:
-        print(e)
+        logger.error(f"Error setting leverage for {symbol}: {e}")
 
 
 def set_mode(symbol, margin_type):
@@ -77,7 +83,7 @@ def set_mode(symbol, margin_type):
         )
         print(response)
     except Exception as e:
-        print(e)
+        logger.error(f"Error setting margin type for {symbol}: {e}")
 
 
 def get_price_precision(symbol):
@@ -87,7 +93,7 @@ def get_price_precision(symbol):
             if elem["symbol"] == symbol:
                 return elem["pricePrecision"]
     except Exception as e:
-        print(e)
+        logger.error(f"Error getting price precision for {symbol}: {e}")
 
 
 def get_qty_precision(symbol):
@@ -97,7 +103,7 @@ def get_qty_precision(symbol):
             if elem["symbol"] == symbol:
                 return elem["quantityPrecision"]
     except Exception as e:
-        print(e)
+        logger.error(f"Error getting quantity precision for {symbol}: {e}")
 
 
 def open_order(symbol, side):
@@ -142,7 +148,7 @@ def open_order(symbol, side):
             )
             print(resp3)
         except Exception as e:
-            print(e)
+            logger.error(f"Error opening buy order for {symbol}: {e}")
 
     if side == "sell":
         try:
@@ -179,7 +185,7 @@ def open_order(symbol, side):
             )
             print(resp3)
         except Exception as e:
-            print(e)
+            logger.error(f"Error opening sell order for {symbol}: {e}")
 
 
 def check_positions():
@@ -191,7 +197,7 @@ def check_positions():
                 positions += 1
         return positions
     except Exception as e:
-        print(e)
+        logger.error(f"Error checking positions: {e}")
 
 
 def close_open_positions(symbol):
@@ -199,7 +205,7 @@ def close_open_positions(symbol):
         response = client.cancel_open_orders(symbol=symbol, recvWindow=6000)
         print(response)
     except Exception as e:
-        print(e)
+        logger.error(f"Error closing open positions for {symbol}: {e}")
 
 
 def check_macd_ema(symbol):

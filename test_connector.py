@@ -1,4 +1,4 @@
-#! /usr/bin/env python3
+#!/usr/bin/env python3
 from binance.um_futures import UMFutures
 from dotenv import load_dotenv
 import os

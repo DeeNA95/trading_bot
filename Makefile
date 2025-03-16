@@ -27,6 +27,6 @@ train-xrp: load_env
 
 trade:
 	./run_live_eth.sh
-	./run_live_btc.sh
+	#./run_live_btc.sh
 	# ./run_live_xrp.sh
 	# ./run_bnb_live.sh
