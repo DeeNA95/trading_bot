@@ -503,12 +503,36 @@ def load_agent(args):
         if input_dim is None:
             raise ValueError("Could not detect input dimension from CNN model")
     elif args.model_type.lower() == "transformer":
-        # For transformer, look at input embedding layer
+        # For transformer, we need to detect the PyraFormer structure
         if "input_embedding.weight" in model_state:
+            # Original transformer implementation
             embedding_weights = model_state["input_embedding.weight"]
             input_dim = embedding_weights.shape[1] * args.window_size
+        elif "feature_extractor.0.weight" in model_state:
+            # PyraFormer implementation with convolutional feature extraction
+            conv_weights = model_state["feature_extractor.0.weight"]
+            input_dim = conv_weights.shape[1] * args.window_size
+        elif any(key.startswith("pyraformer_blocks.") for key in model_state.keys()):
+            # If we can detect PyraFormer blocks but no direct way to infer input shape
+            # We'll use a fallback method: try to find a linear layer dimension
+            linear_keys = [k for k in model_state.keys() if "linear" in k.lower() and "weight" in k]
+            if linear_keys:
+                # Find the input dimension from the first linear layer
+                linear_weights = model_state[linear_keys[0]]
+                # Estimate the input dimension
+                input_dim = linear_weights.shape[1] * args.window_size
+            else:
+                # Last resort: try to infer from actor layer
+                actor_keys = [k for k in model_state.keys() if "actor.0.weight" in k]
+                if actor_keys:
+                    actor_weights = model_state[actor_keys[0]]
+                    input_dim = actor_weights.shape[1] * args.window_size
+                else:
+                    # If all else fails, use a reasonable default
+                    logger.warning("Could not detect PyraFormer input dimensions, using default.")
+                    input_dim = 64 * args.window_size  # Reasonable default
         else:
-            raise ValueError("Transformer input embedding weights not found")
+            raise ValueError("Transformer/PyraFormer weights not found in model state")
 
     if input_dim is None:
         raise ValueError(
@@ -688,6 +712,30 @@ def load_agent(args):
                     logger.error(
                         f"Error reshaping for CNN: {e}. Using original padded state."
                     )
+            
+            # Special handling for PyraFormer transformer model
+            elif self.model_type.lower() == "transformer":
+                try:
+                    # Check if we're using the PyraFormer by detecting the model's structure
+                    is_pyraformer = hasattr(self.model, 'feature_extractor') or hasattr(self.model, 'pyraformer_blocks')
+                    
+                    if is_pyraformer:
+                        logger.info("Detected PyraFormer model, ensuring proper shape for inference")
+                        
+                        # If we have more features than expected, truncate
+                        if padded_state.shape[1] > self.expected_feature_dim:
+                            padded_state = padded_state[:, : self.expected_feature_dim]
+                            
+                        # Add batch dimension
+                        batched = np.expand_dims(padded_state, axis=0)
+                        
+                        # For PyraFormer, the shape should be [batch, seq_len, features]
+                        # which is already the case for batched, so we don't need additional reshaping
+                        logger.info(f"PyraFormer input shape: {batched.shape}")
+                        return batched
+                except Exception as e:
+                    logger.error(f"Error in PyraFormer reshaping: {e}. Using standard padding.")
+                    # If there's an error, continue with standard padding
 
             return padded_state
 
@@ -704,7 +752,7 @@ def load_agent(args):
     agent.load(args.model_path)
     logger.info(f"Model loaded successfully with input shape {agent.input_shape}")
 
-    # For CNN models, let's add extra debugging to verify the expected shape
+    # Add extra debugging based on model type
     if args.model_type.lower() == "cnn":
         # Inspect the first convolutional layer to confirm input shape expectations
         if hasattr(agent.model, "cnn_layers") and len(agent.model.cnn_layers) > 0:
@@ -722,6 +770,47 @@ def load_agent(args):
             logger.info(
                 f"Updated expected_feature_dim to {agent.expected_feature_dim} based on CNN architecture"
             )
+    
+    elif args.model_type.lower() == "transformer":
+        # Check if this is a PyraFormer model
+        is_pyraformer = (hasattr(agent.model, 'feature_extractor') or 
+                        hasattr(agent.model, 'pyraformer_blocks') or
+                        hasattr(agent.model, 'time_embedding'))
+        
+        if is_pyraformer:
+            logger.info("Detected PyraFormer architecture")
+            
+            # Inspect the feature extractor if available
+            if hasattr(agent.model, 'feature_extractor'):
+                # Extract first conv layer details
+                first_layer = agent.model.feature_extractor[0]
+                if isinstance(first_layer, nn.Conv1d):
+                    logger.info(
+                        f"PyraFormer feature extractor: in_channels={first_layer.in_channels}, "
+                        f"out_channels={first_layer.out_channels}, kernel_size={first_layer.kernel_size}"
+                    )
+                    
+                    # Update expected feature dim based on actual model architecture
+                    features_per_timestep = first_layer.in_channels
+                    agent.expected_feature_dim = features_per_timestep * agent.env.window_size
+                    agent.input_shape = (agent.env.window_size, features_per_timestep)
+                    logger.info(
+                        f"Updated PyraFormer input shape to {agent.input_shape} with "
+                        f"expected_feature_dim={agent.expected_feature_dim}"
+                    )
+            
+            # Log PyraFormer blocks if available
+            if hasattr(agent.model, 'pyraformer_blocks'):
+                num_blocks = len(agent.model.pyraformer_blocks)
+                logger.info(f"PyraFormer has {num_blocks} attention blocks")
+                
+                # Log the number of attention heads in the first block
+                if num_blocks > 0 and hasattr(agent.model.pyraformer_blocks[0], 'attention'):
+                    first_attn = agent.model.pyraformer_blocks[0].attention
+                    if hasattr(first_attn, 'n_heads'):
+                        logger.info(f"PyraFormer uses {first_attn.n_heads} attention heads")
+        else:
+            logger.info("Using standard Transformer architecture")
 
     return agent, env
 
