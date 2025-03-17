@@ -23,8 +23,8 @@ from binance.um_futures import UMFutures
 from dotenv import load_dotenv
 from gymnasium import spaces
 
-from .position_sizer import BinanceFuturesPositionSizer, VolatilityAdjustedPositionSizer
-
+from .position_sizer import (BinanceFuturesPositionSizer,
+                             VolatilityAdjustedPositionSizer)
 # Import local modules
 from .reward import FuturesRiskAdjustedReward
 
@@ -60,7 +60,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
         indicators: List[str] = None,
         symbol: str = "BTCUSDT",
         mode: str = "train",
-        base_url: str = 'https://fapi.binance.com',
+        base_url: str = "https://fapi.binance.com",
         margin_type: str = "ISOLATED",
         risk_reward_ratio: float = 1.5,
         stop_loss_percent: float = 0.01,
@@ -78,35 +78,36 @@ class BinanceFuturesCryptoEnv(gym.Env):
         render_mode: str = None,
     ):
         """
-        Initialize the Binance Futures crypto trading environment.
+                Initialize the Binance Futures crypto trading environment.
 
-        Args:
-            df: DataFrame containing OHLCV data (required for train mode)
-            window_size: The number of steps to include in the observation
-            max_position: Maximum allowed position size (1 = 100% of balance)
-            leverage: Trading leverage (1-125)
-            max_leverage: Maximum allowed leverage
-            trade_fee_percent: Trading fee percentage
-            initial_balance: Initial account balance in USDT
-            indicators: Technical indicators to use
-            symbol: Trading pair symbol (default: BTCUSDT)
-            mode: Running mode ('train' for backtesting, 'trade' for live trading)
-            base_url: Binance API URL (None for mainnet, or testnet URL)
-            margin_type: Margin type ('ISOLATED' or 'CROSSED')
-            risk_reward_ratio: Ratio of take profit to stop loss
-            stop_loss_percent: Stop loss percentage from entry
-            dynamic_leverage: Whether to adjust leverage based on volatility
-            use_risk_adjusted_rewards: Whether to use the FuturesRiskAdjustedReward system
-            funding_rate_weight: Weight for funding rate in reward calculation
-            liquidation_penalty_weight: Weight for liquidation risk in reward calculation
-            open_interest_weight: Weight for open interest changes in reward calculation
-            volatility_lookback: Hours to look back for volatility calculation
-            data_fetch_interval: Interval for fetching market data
-            include_funding_rate: Whether to include funding rate data
-            include_open_interest: Whether to include open interest data
-            include_liquidation_data: Whether to include liquidation data
-            dry_run: When True, don't execute actual trades
-            render_mode: Rendering mode for gym env
+        > #file:`rl_agent/agent/ppo_agent.py`
+                Args:
+                    df: DataFrame containing OHLCV data (required for train mode)
+                    window_size: The number of steps to include in the observation
+                    max_position: Maximum allowed position size (1 = 100% of balance)
+                    leverage: Trading leverage (1-125)
+                    max_leverage: Maximum allowed leverage
+                    trade_fee_percent: Trading fee percentage
+                    initial_balance: Initial account balance in USDT
+                    indicators: Technical indicators to use
+                    symbol: Trading pair symbol (default: BTCUSDT)
+                    mode: Running mode ('train' for backtesting, 'trade' for live trading)
+                    base_url: Binance API URL (None for mainnet, or testnet URL)
+                    margin_type: Margin type ('ISOLATED' or 'CROSSED')
+                    risk_reward_ratio: Ratio of take profit to stop loss
+                    stop_loss_percent: Stop loss percentage from entry
+                    dynamic_leverage: Whether to adjust leverage based on volatility
+                    use_risk_adjusted_rewards: Whether to use the FuturesRiskAdjustedReward system
+                    funding_rate_weight: Weight for funding rate in reward calculation
+                    liquidation_penalty_weight: Weight for liquidation risk in reward calculation
+                    open_interest_weight: Weight for open interest changes in reward calculation
+                    volatility_lookback: Hours to look back for volatility calculation
+                    data_fetch_interval: Interval for fetching market data
+                    include_funding_rate: Whether to include funding rate data
+                    include_open_interest: Whether to include open interest data
+                    include_liquidation_data: Whether to include liquidation data
+                    dry_run: When True, don't execute actual trades
+                    render_mode: Rendering mode for gym env
         """
         super().__init__()
 
@@ -185,9 +186,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
                 "binance_future_testnet_api" if use_testnet else "binance_api2"
             )
             self.api_secret = os.getenv(
-                "binance_future_testnet_secret"
-                if use_testnet
-                else "binance_secret2"
+                "binance_future_testnet_secret" if use_testnet else "binance_secret2"
             )
 
             self.client = UMFutures(
@@ -711,7 +710,9 @@ class BinanceFuturesCryptoEnv(gym.Env):
         else:
             return self.df.iloc[self.current_step]["close"]
 
-    def _execute_trade(self, action, scale_in=False, scale_out=False, scale_percentage=0.5):
+    def _execute_trade(
+        self, action, scale_in=False, scale_out=False, scale_percentage=0.5
+    ):
         """
         Execute a trade on Binance Futures using the executor module.
 
@@ -771,7 +772,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
                 usdt_amount=usdt_amount,
                 scale_in=scale_in,
                 scale_out=scale_out,
-                scale_percentage=scale_percentage
+                scale_percentage=scale_percentage,
             )
 
             # Update position tracking based on scaling result
@@ -785,16 +786,18 @@ class BinanceFuturesCryptoEnv(gym.Env):
                     self.take_profit = result.get("take_profit", self.take_profit)
 
                     # Record the scaling action
-                    self.trade_history.append({
-                        "timestamp": datetime.now().isoformat(),
-                        "action": "scale_in",
-                        "position_direction": position_direction,
-                        "added_size": result["quantity"],
-                        "total_size": result["position_size"],
-                        "avg_entry_price": result["entry_price"],
-                        "stop_loss": result.get("stop_loss", self.stop_loss),
-                        "take_profit": result.get("take_profit", self.take_profit),
-                    })
+                    self.trade_history.append(
+                        {
+                            "timestamp": datetime.now().isoformat(),
+                            "action": "scale_in",
+                            "position_direction": position_direction,
+                            "added_size": result["quantity"],
+                            "total_size": result["position_size"],
+                            "avg_entry_price": result["entry_price"],
+                            "stop_loss": result.get("stop_loss", self.stop_loss),
+                            "take_profit": result.get("take_profit", self.take_profit),
+                        }
+                    )
 
                 elif result["action"] == "scale_out":
                     # Update position size
@@ -806,17 +809,21 @@ class BinanceFuturesCryptoEnv(gym.Env):
                         self.position_status["has_open_position"] = False
                     else:
                         # Position partially closed
-                        self.current_position = position_direction * result["position_size"]
+                        self.current_position = (
+                            position_direction * result["position_size"]
+                        )
 
                     # Record the scaling action
-                    self.trade_history.append({
-                        "timestamp": datetime.now().isoformat(),
-                        "action": "scale_out",
-                        "position_direction": position_direction,
-                        "removed_size": result["quantity"],
-                        "remaining_size": result["position_size"],
-                        "price": result["price"],
-                    })
+                    self.trade_history.append(
+                        {
+                            "timestamp": datetime.now().isoformat(),
+                            "action": "scale_out",
+                            "position_direction": position_direction,
+                            "removed_size": result["quantity"],
+                            "remaining_size": result["position_size"],
+                            "price": result["price"],
+                        }
+                    )
 
             return
 

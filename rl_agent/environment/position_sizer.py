@@ -155,7 +155,7 @@ class KellyPositionSizer(PositionSizer):
 class VolatilityAdjustedPositionSizer(PositionSizer):
     """Position sizer that adjusts position size based on ATR volatility."""
 
-    def __init__(self, base_risk_pct: float = 0.1, volatility_scale: float = 2.0):
+    def __init__(self, base_risk_pct: float = 0.2, volatility_scale: float = 2.0):
         """
         Initialize the volatility adjusted position sizer.
 
@@ -217,7 +217,7 @@ class BinanceFuturesPositionSizer:
         position_sizer: PositionSizer = None,
         default_leverage: int = 2,
         max_leverage: int = 20,
-        dynamic_leverage: bool = True
+        dynamic_leverage: bool = True,
     ):
         """
         Initialize the Binance Futures position sizer.
@@ -271,7 +271,7 @@ class BinanceFuturesPositionSizer:
             account_balance=account_balance,
             signal_strength=signal_strength,
             volatility=volatility,
-            **kwargs
+            **kwargs,
         )
 
         # Apply maximum position percentage constraint
@@ -290,7 +290,7 @@ class BinanceFuturesPositionSizer:
             "size_in_usd": position_value * used_leverage,
             "size_in_units": position_size_units,
             "leverage": used_leverage,
-            "position_pct": position_pct
+            "position_pct": position_pct,
         }
 
     def _calculate_adaptive_leverage(self, volatility: float) -> int:
@@ -307,10 +307,13 @@ class BinanceFuturesPositionSizer:
         volatility_factor = 5.0
 
         if volatility > 0:
-            adaptive_leverage = max(1, min(
-                self.max_leverage,
-                int(self.max_leverage * (1 / (1 + volatility * volatility_factor)))
-            ))
+            adaptive_leverage = max(
+                1,
+                min(
+                    self.max_leverage,
+                    int(self.max_leverage * (1 / (1 + volatility * volatility_factor))),
+                ),
+            )
         else:
             adaptive_leverage = self.default_leverage
 

@@ -5,21 +5,21 @@ This module implements a PPO agent that can be used to train a trading policy
 using various neural network architectures (CNN, LSTM, Transformer).
 """
 
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.distributions import Categorical
-import time
 import logging
 import os
-from typing import Dict, List, Tuple, Optional, Union, Any
-from collections import deque
+import time
+from typing import Dict, List, Tuple
+
 import gymnasium as gym
+import numpy as np
+import torch
+import torch.optim as optim
+from torch.distributions import Categorical
 from tqdm import tqdm
 
+from rl_agent.environment.trading_env import BinanceFuturesCryptoEnv
+
 from .models import ActorCriticCNN, ActorCriticLSTM, ActorCriticTransformer
-from google.cloud import secretmanager, storage
 
 
 class PPOMemory:
@@ -27,10 +27,7 @@ class PPOMemory:
     Memory buffer for PPO algorithm to store experiences during training.
     """
 
-    def __init__(
-        self,
-        batch_size: int
-    ):
+    def __init__(self, batch_size: int):
         """
         Initialize PPO memory buffer.
 
@@ -53,7 +50,7 @@ class PPOMemory:
         probs: float,
         vals: float,
         reward: float,
-        done: bool
+        done: bool,
     ) -> None:
         """
         Store a transition in the buffer.
@@ -93,7 +90,7 @@ class PPOMemory:
         batch_start = np.arange(0, n_states, self.batch_size)
         indices = np.arange(n_states, dtype=np.int64)
         np.random.shuffle(indices)
-        batches = [indices[i:i+self.batch_size] for i in batch_start]
+        batches = [indices[i : i + self.batch_size] for i in batch_start]
 
         return (
             np.array(self.states),
@@ -102,7 +99,7 @@ class PPOMemory:
             np.array(self.vals),
             np.array(self.rewards),
             np.array(self.dones),
-            batches
+            batches,
         )
 
 
@@ -116,29 +113,29 @@ class PPOAgent:
 
     def __init__(
         self,
-        env: gym.Env,
-        model_type: str = 'lstm',
-        hidden_dim: int = 56, #size of first hidden dim
+        env: BinanceFuturesCryptoEnv,
+        model_type: str = "transformer",
+        hidden_dim: int = 128,  # size of first hidden dim
         lr: float = 3e-4,
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
         policy_clip: float = 0.2,
-        batch_size: int = 64,
-        n_epochs: int = 10,
+        batch_size: int = 2048,
+        n_epochs: int = 500,
         entropy_coef: float = 0.01,
         value_coef: float = 0.5,
         max_grad_norm: float = 0.5,
-        device: str = 'auto',
-        save_dir: str = 'models',
+        device: str = "auto",
+        save_dir: str = "models",
         use_gae: bool = True,
         normalize_advantage: bool = True,
-        weight_decay: float = 0.01
+        weight_decay: float = 0.01,
     ):
         """
         Initialize the PPO agent.
 
         Args:
-            env: Gymnasium environment to train on
+            env: custom environment to train on
             model_type: Type of model to use ('cnn', 'lstm', 'transformer')
             hidden_dim: Number of hidden units in the actor and critic networks
             lr: Learning rate
@@ -158,7 +155,10 @@ class PPOAgent:
         """
         # Environment info
         self.env = env
-        self.input_shape = (env.window_size, env.observation_space.shape[1])
+        self.input_shape = (
+            env.window_size,
+            env.observation_space.shape[1],
+        )  # df shape (nrow,ncol)
         self.action_dim = env.action_space.n
 
         # Agent parameters
@@ -180,43 +180,45 @@ class PPOAgent:
         os.makedirs(save_dir, exist_ok=True)
 
         # Determine device
-        if device == 'auto':
+        if device == "auto":
             if torch.cuda.is_available():
-                self.device = torch.device('cuda')
-            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                self.device = torch.device('mps')
+                self.device = torch.device("cuda")
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                self.device = torch.device("mps")
             else:
-                self.device = torch.device('cpu')
+                self.device = torch.device("cpu")
         else:
             self.device = torch.device(device)
 
         # Initialize actor-critic model
-        if model_type.lower() == 'cnn':
+        if model_type.lower() == "cnn":
             self.model = ActorCriticCNN(
                 input_shape=self.input_shape,
                 action_dim=self.action_dim,
                 hidden_dim=hidden_dim,
-                device=self.device
+                device=self.device,
             )
-        elif model_type.lower() == 'lstm':
+        elif model_type.lower() == "lstm":
             self.model = ActorCriticLSTM(
                 input_shape=self.input_shape,
                 action_dim=self.action_dim,
                 hidden_dim=hidden_dim,
-                device=self.device
+                device=self.device,
             )
-        elif model_type.lower() == 'transformer':
+        elif model_type.lower() == "transformer":
             self.model = ActorCriticTransformer(
                 input_shape=self.input_shape,
                 action_dim=self.action_dim,
                 hidden_dim=hidden_dim,
-                device=self.device
+                device=self.device,
             )
         else:
             raise ValueError(f"Unknown model type: {model_type}")
 
         # Optimizer with L2 regularization
-        self.optimizer = optim.Adam(self.model.parameters(), lr=lr, weight_decay=self.weight_decay)
+        self.optimizer = optim.Adam(
+            self.model.parameters(), lr=lr, weight_decay=self.weight_decay
+        )
 
         # Memory buffer
         self.memory = PPOMemory(batch_size)
@@ -228,11 +230,11 @@ class PPOAgent:
         self.reward_history = []
 
         # Logger
-        self.logger = logging.getLogger('PPOAgent')
+        self.logger = logging.getLogger("PPOAgent")
         self.logger.setLevel(logging.INFO)
 
         # Best model tracking
-        self.best_reward = -float('inf')
+        self.best_reward = -float("inf")
 
     def choose_action(self, state: np.ndarray) -> Tuple[int, np.ndarray, float]:
         """
@@ -295,9 +297,7 @@ class PPOAgent:
         return action, action_prob, value
 
     def evaluate_actions(
-        self,
-        states: torch.Tensor,
-        actions: torch.Tensor
+        self, states: torch.Tensor, actions: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Evaluate the log probabilities, values, and entropy of actions.
@@ -372,7 +372,9 @@ class PPOAgent:
             Dictionary of training metrics
         """
         # Generate batches of experiences
-        states, actions, old_probs, values, rewards, dones, batches = self.memory.generate_batches()
+        states, actions, old_probs, values, rewards, dones, batches = (
+            self.memory.generate_batches()
+        )
 
         # Convert to tensors
         states = torch.FloatTensor(states).to(self.device)
@@ -392,8 +394,12 @@ class PPOAgent:
                 else:
                     next_value = values[t + 1]
 
-                delta = rewards[t] + self.gamma * next_value * (1 - dones[t]) - values[t]
-                last_gae = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * last_gae
+                delta = (
+                    rewards[t] + self.gamma * next_value * (1 - dones[t]) - values[t]
+                )
+                last_gae = (
+                    delta + self.gamma * self.gae_lambda * (1 - dones[t]) * last_gae
+                )
                 advantages[t] = last_gae
         else:
             # Simple advantage calculation
@@ -433,8 +439,7 @@ class PPOAgent:
             for batch in batch_pbar:
                 # Evaluate actions
                 new_log_probs, new_values, entropy = self.evaluate_actions(
-                    states[batch],
-                    actions[batch]
+                    states[batch], actions[batch]
                 )
 
                 # Calculate ratio of new and old probabilities
@@ -443,9 +448,7 @@ class PPOAgent:
                 # Clipped surrogate objective
                 weighted_probs = advantages[batch] * prob_ratio
                 weighted_clipped_probs = advantages[batch] * torch.clamp(
-                    prob_ratio,
-                    1.0 - self.policy_clip,
-                    1.0 + self.policy_clip
+                    prob_ratio, 1.0 - self.policy_clip, 1.0 + self.policy_clip
                 )
 
                 # Policy loss (negative because we want to maximize rewards)
@@ -462,7 +465,8 @@ class PPOAgent:
                 loss = (
                     policy_loss
                     + self.value_coef * value_loss
-                    - self.entropy_coef * entropy_loss  # Minus because we want to maximize entropy
+                    - self.entropy_coef
+                    * entropy_loss  # Minus because we want to maximize entropy
                 )
 
                 # Optimize
@@ -470,7 +474,9 @@ class PPOAgent:
                 loss.backward()
 
                 # Clip gradients
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), self.max_grad_norm
+                )
 
                 self.optimizer.step()
 
@@ -480,10 +486,12 @@ class PPOAgent:
                 batch_entropy += entropy_loss.item()
 
                 # Update batch progress bar
-                batch_pbar.set_postfix({
-                    'policy_loss': f"{policy_loss.item():.4f}",
-                    'value_loss': f"{value_loss.item():.4f}"
-                })
+                batch_pbar.set_postfix(
+                    {
+                        "policy_loss": f"{policy_loss.item():.4f}",
+                        "value_loss": f"{value_loss.item():.4f}",
+                    }
+                )
 
             # Update total metrics
             total_policy_loss += batch_policy_loss
@@ -493,10 +501,12 @@ class PPOAgent:
             # Update epoch progress bar
             avg_policy_loss_epoch = batch_policy_loss / len(batches)
             avg_value_loss_epoch = batch_value_loss / len(batches)
-            epoch_pbar.set_postfix({
-                'policy_loss': f"{avg_policy_loss_epoch:.4f}",
-                'value_loss': f"{avg_value_loss_epoch:.4f}"
-            })
+            epoch_pbar.set_postfix(
+                {
+                    "policy_loss": f"{avg_policy_loss_epoch:.4f}",
+                    "value_loss": f"{avg_value_loss_epoch:.4f}",
+                }
+            )
 
         # Clear memory
         self.memory.clear()
@@ -512,9 +522,9 @@ class PPOAgent:
         self.entropy_history.append(avg_entropy)
 
         return {
-            'policy_loss': avg_policy_loss,
-            'value_loss': avg_value_loss,
-            'entropy': avg_entropy
+            "policy_loss": avg_policy_loss,
+            "value_loss": avg_value_loss,
+            "entropy": avg_entropy,
         }
 
     def train(
@@ -525,7 +535,7 @@ class PPOAgent:
         log_freq: int = 10,
         save_freq: int = 100,
         eval_freq: int = 50,
-        num_eval_episodes: int = 3
+        num_eval_episodes: int = 3,
     ) -> Dict[str, List[float]]:
         """
         Train the agent.
@@ -546,7 +556,7 @@ class PPOAgent:
 
         # Training metrics
         total_steps = 0
-        best_eval_reward = -float('inf')
+        best_eval_reward = -float("inf")
         episode_rewards = []
 
         self.logger.info(f"Starting training for {num_episodes} episodes...")
@@ -588,10 +598,9 @@ class PPOAgent:
 
                 # Update episode progress bar
                 episode_pbar.update(1)
-                episode_pbar.set_postfix({
-                    'reward': f"{episode_reward:.2f}",
-                    'action': action
-                })
+                episode_pbar.set_postfix(
+                    {"reward": f"{episode_reward:.2f}", "action": action}
+                )
 
                 # Update policy if memory is full
                 if total_steps % update_freq == 0:
@@ -603,11 +612,13 @@ class PPOAgent:
                         f"entropy={update_metrics['entropy']:.4f}"
                     )
                     # Update main progress bar postfix with update metrics
-                    pbar.set_postfix({
-                        'policy_loss': f"{update_metrics['policy_loss']:.4f}",
-                        'value_loss': f"{update_metrics['value_loss']:.4f}",
-                        'entropy': f"{update_metrics['entropy']:.4f}"
-                    })
+                    pbar.set_postfix(
+                        {
+                            "policy_loss": f"{update_metrics['policy_loss']:.4f}",
+                            "value_loss": f"{update_metrics['value_loss']:.4f}",
+                            "entropy": f"{update_metrics['entropy']:.4f}",
+                        }
+                    )
 
             # Close episode progress bar
             episode_pbar.close()
@@ -627,10 +638,9 @@ class PPOAgent:
                     f"Time: {elapsed_time:.2f}s"
                 )
                 # Update main progress bar with reward info
-                pbar.set_postfix({
-                    'avg_reward': f"{avg_reward:.2f}",
-                    'steps': total_steps
-                })
+                pbar.set_postfix(
+                    {"avg_reward": f"{avg_reward:.2f}", "steps": total_steps}
+                )
 
             # Evaluate model
             if episode % eval_freq == 0:
@@ -640,24 +650,20 @@ class PPOAgent:
                     f"Mean reward: {eval_reward:.2f}"
                 )
                 # Update main progress bar with eval info
-                pbar.set_postfix({
-                    'eval_reward': f"{eval_reward:.2f}"
-                })
+                pbar.set_postfix({"eval_reward": f"{eval_reward:.2f}"})
 
                 # Save best model
                 if eval_reward > best_eval_reward:
                     best_eval_reward = eval_reward
-                    self.save(os.path.join(self.save_dir, 'best_model.pt'))
+                    self.save(os.path.join(self.save_dir, "best_model.pt"))
                     self.logger.info(
                         f"New best model with evaluation reward: {best_eval_reward:.2f}"
                     )
-                    pbar.set_postfix({
-                        'best_reward': f"{best_eval_reward:.2f}"
-                    })
+                    pbar.set_postfix({"best_reward": f"{best_eval_reward:.2f}"})
 
             # Save checkpoint
             if episode % save_freq == 0:
-                self.save(os.path.join(self.save_dir, f'model_ep{episode}.pt'))
+                self.save(os.path.join(self.save_dir, f"model_ep{episode}.pt"))
 
             # Update main progress bar
             pbar.update(1)
@@ -666,14 +672,14 @@ class PPOAgent:
         pbar.close()
 
         # Save final model
-        self.save(os.path.join(self.save_dir, 'final_model.pt'))
+        self.save(os.path.join(self.save_dir, "final_model.pt"))
 
         # Return training history
         return {
-            'rewards': self.reward_history,
-            'policy_loss': self.policy_loss_history,
-            'value_loss': self.value_loss_history,
-            'entropy': self.entropy_history
+            "rewards": self.reward_history,
+            "policy_loss": self.policy_loss_history,
+            "value_loss": self.value_loss_history,
+            "entropy": self.entropy_history,
         }
 
     def evaluate(self, num_episodes: int = 10) -> float:
@@ -721,20 +727,16 @@ class PPOAgent:
                 step += 1
 
                 # Update progress bar
-                eval_pbar.set_postfix({
-                    'ep': i+1,
-                    'reward': f"{episode_reward:.2f}",
-                    'steps': step
-                })
+                eval_pbar.set_postfix(
+                    {"ep": i + 1, "reward": f"{episode_reward:.2f}", "steps": step}
+                )
 
             total_rewards.append(episode_reward)
 
             # Update progress bar with final episode reward
-            eval_pbar.set_postfix({
-                'ep': i+1,
-                'reward': f"{episode_reward:.2f}",
-                'steps': step
-            })
+            eval_pbar.set_postfix(
+                {"ep": i + 1, "reward": f"{episode_reward:.2f}", "steps": step}
+            )
 
         mean_reward = np.mean(total_rewards)
         return mean_reward
@@ -748,24 +750,27 @@ class PPOAgent:
         """
         # Prepare model data
         model_data = {
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'model_type': self.model.__class__.__name__,
-            'architecture': self.model.__class__.__name__,
-            'timestamp': time.strftime("%Y%m%d-%H%M%S"),
-            'reward_history': self.reward_history,
-            'policy_loss_history': self.policy_loss_history,
-            'value_loss_history': self.value_loss_history,
-            'entropy_history': self.entropy_history,
+            "model_state_dict": self.model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "model_type": self.model.__class__.__name__,
+            "architecture": self.model.__class__.__name__,
+            "timestamp": time.strftime("%Y%m%d-%H%M%S"),
+            "reward_history": self.reward_history,
+            "policy_loss_history": self.policy_loss_history,
+            "value_loss_history": self.value_loss_history,
+            "entropy_history": self.entropy_history,
         }
 
         if path.startswith("gs://"):
             # Import Google Cloud Storage if needed
             try:
-                from google.cloud import storage
                 import io
+
+                from google.cloud import storage
             except ImportError:
-                raise ImportError("google-cloud-storage is required to save to GCS. Install with pip install google-cloud-storage")
+                raise ImportError(
+                    "google-cloud-storage is required to save to GCS. Install with pip install google-cloud-storage"
+                )
 
             # Parse bucket and blob path
             path_parts = path[5:].split("/", 1)
@@ -782,7 +787,7 @@ class PPOAgent:
                 storage_client = storage.Client()
                 bucket = storage_client.bucket(bucket_name)
                 blob = bucket.blob(blob_path)
-                blob.upload_from_file(buffer, content_type='application/octet-stream')
+                blob.upload_from_file(buffer, content_type="application/octet-stream")
                 print(f"Model saved to GCS: {path}")
             except Exception as e:
                 print(f"Error saving model to GCS: {e}")
@@ -806,10 +811,13 @@ class PPOAgent:
         if path.startswith("gs://"):
             # Import Google Cloud Storage if needed
             try:
-                from google.cloud import storage
                 import io
+
+                from google.cloud import storage
             except ImportError:
-                raise ImportError("google-cloud-storage is required to load from GCS. Install with pip install google-cloud-storage")
+                raise ImportError(
+                    "google-cloud-storage is required to load from GCS. Install with pip install google-cloud-storage"
+                )
 
             # Parse bucket and blob path
             path_parts = path[5:].split("/", 1)
@@ -821,21 +829,27 @@ class PPOAgent:
                 storage_client = storage.Client()
                 bucket = storage_client.bucket(bucket_name)
                 blob = bucket.blob(blob_path)
-                
+
                 buffer = io.BytesIO()
                 blob.download_to_file(buffer)
                 buffer.seek(0)
-                
+
                 # Load checkpoint from buffer
                 try:
                     # First try with weights_only=False
-                    checkpoint = torch.load(buffer, map_location=self.device, weights_only=False)
+                    checkpoint = torch.load(
+                        buffer, map_location=self.device, weights_only=False
+                    )
                 except Exception as e:
-                    print(f"Warning: Could not load with weights_only=False, trying with weights_only=True: {e}")
+                    print(
+                        f"Warning: Could not load with weights_only=False, trying with weights_only=True: {e}"
+                    )
                     # Reset buffer and try again with weights_only=True
                     buffer.seek(0)
-                    checkpoint = torch.load(buffer, map_location=self.device, weights_only=True)
-                
+                    checkpoint = torch.load(
+                        buffer, map_location=self.device, weights_only=True
+                    )
+
                 print(f"Model loaded from GCS: {path}")
             except Exception as e:
                 raise RuntimeError(f"Error loading model from GCS: {e}")
@@ -843,30 +857,36 @@ class PPOAgent:
             # Load from local file
             try:
                 # First try with weights_only=False (for backward compatibility)
-                checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+                checkpoint = torch.load(
+                    path, map_location=self.device, weights_only=False
+                )
             except Exception as e:
-                print(f"Warning: Could not load with weights_only=False, trying with weights_only=True: {e}")
+                print(
+                    f"Warning: Could not load with weights_only=False, trying with weights_only=True: {e}"
+                )
                 # If that fails, try with weights_only=True
-                checkpoint = torch.load(path, map_location=self.device, weights_only=True)
-            
+                checkpoint = torch.load(
+                    path, map_location=self.device, weights_only=True
+                )
+
             print(f"Model loaded from local file: {path}")
 
         # Load model
-        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.model.load_state_dict(checkpoint["model_state_dict"])
 
         # Load optimizer if available
-        if 'optimizer_state_dict' in checkpoint:
+        if "optimizer_state_dict" in checkpoint:
             try:
-                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
             except Exception as e:
                 print(f"Warning: Could not load optimizer state: {e}")
-                
+
         # Load training history if available
-        if 'reward_history' in checkpoint:
-            self.reward_history = checkpoint['reward_history']
-        if 'policy_loss_history' in checkpoint:
-            self.policy_loss_history = checkpoint['policy_loss_history']
-        if 'value_loss_history' in checkpoint:
-            self.value_loss_history = checkpoint['value_loss_history']
-        if 'entropy_history' in checkpoint:
-            self.entropy_history = checkpoint['entropy_history']
+        if "reward_history" in checkpoint:
+            self.reward_history = checkpoint["reward_history"]
+        if "policy_loss_history" in checkpoint:
+            self.policy_loss_history = checkpoint["policy_loss_history"]
+        if "value_loss_history" in checkpoint:
+            self.value_loss_history = checkpoint["value_loss_history"]
+        if "entropy_history" in checkpoint:
+            self.entropy_history = checkpoint["entropy_history"]
