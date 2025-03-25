@@ -251,7 +251,7 @@ class PPOAgent:
             state = np.nan_to_num(state, nan=0.0)
 
         # Clip extreme values to prevent NaN issues
-        state = np.clip(state, -10.0, 10.0)
+        # state = np.clip(state, -10.0, 10.0)
 
         # Convert state to tensor
         state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
@@ -354,6 +354,7 @@ class PPOAgent:
             action_log_probs = torch.nan_to_num(action_log_probs, nan=0.0)
             values = torch.nan_to_num(values, nan=0.0)
             entropy = torch.nan_to_num(entropy, nan=0.0)
+
 
         except Exception as e:
             print(f"Error in evaluate_actions: {e}")

@@ -4,6 +4,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 from time import sleep
+import random
 
 import numpy as np
 import pandas as pd
@@ -210,17 +211,33 @@ class DataHandler:
         low_close = np.abs(result["low"] - close.shift())
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         result["atr"] = true_range.rolling(14).mean()
+        result["atr"] = result["atr"].bfill()
+        # print('how many nas in atr',result["atr"].isna().sum())
 
         # ADX and Directional Indicators
+        # Calculate the Positive Directional Movement (+DM)
         plus_dm = result["high"].diff()
+        # Calculate the Negative Directional Movement (-DM)
         minus_dm = -result["low"].diff()
+
+        # Apply conditions to determine +DM and -DM
         plus_dm = np.where((plus_dm > minus_dm) & (plus_dm > 0), plus_dm, 0)
         minus_dm = np.where((minus_dm > plus_dm) & (minus_dm > 0), minus_dm, 0)
+        # Convert to pandas Series to handle NaN values
+        plus_dm = pd.Series(plus_dm, index=result.index)
+        minus_dm = pd.Series(minus_dm, index=result.index)
+
+        # Fill NaN values in +DM and -DM
+        plus_dm.fillna(0, inplace=True)
+        minus_dm.fillna(0, inplace=True)
+        # Calculate the Positive Directional Indicator (+DI)
         plus_di = (
             100
             * pd.Series(plus_dm).ewm(alpha=1 / 14, adjust=False).mean()
             / result["atr"]
         )
+        # print(plus_di)
+        # Calculate the Negative Directional Indicator (-DI)
         minus_di = (
             100
             * pd.Series(minus_dm).ewm(alpha=1 / 14, adjust=False).mean()
@@ -234,14 +251,17 @@ class DataHandler:
         logging.info("Calculating technical indicators...")
         return result
 
-    def calculate_risk_metrics(self, df, interval="1h"):
+    def calculate_risk_metrics(self, df, interval="1h", window_size=60):
         """
         Calculate risk-related metrics: volatility, VaR, CVaR, max drawdown,
         Sharpe, Sortino, and Calmar ratios.
         """
         # Determine window size based on interval
         periods_per_day = self.get_periods_per_day(interval)
-        window = int(24 * periods_per_day)  # 24 hours worth of data points
+
+
+        window = min(window_size, int(24 * periods_per_day))  # 24 hours worth of data points
+
 
         result = df.copy()
         result["timely_return"] = result["close"].pct_change()
@@ -479,7 +499,7 @@ class DataHandler:
             window_data = close_values[i-window:i]
 
             # Skip if there's not enough data
-            if len(window_data) < window/2:
+            if len(window_data) < window / 2:
                 result.iloc[i] = np.nan
                 continue
 
@@ -565,7 +585,7 @@ class DataHandler:
 
         # Calculate price complexity metrics
         result["price_density"] = self.calculate_price_density(df, window)
-        result["fractal_dimension"] = self.calculate_fractal_dimension(df, window)
+        result["fractal_dimension"] = self.calculate_fractal_dimension(df, window).fillna(random.random())
 
         return result
 
@@ -794,21 +814,48 @@ class DataHandler:
                 else end_time - timedelta(days=60)
             )
 
-        logging.info(
-            f"Processing {symbol} data from {start_time} to {end_time} with interval {interval}."
-        )
 
-        df = self.get_futures_data(symbol, interval, start_time, end_time)
+
+
+
+        # Fetch raw data
+        df = self.get_futures_data(symbol, interval, start_time, end_time)  # Pass start_time and end_time correctly
         if df.empty:
             logging.warning(f"No data retrieved for {symbol}.")
             raise ValueError(f"No data retrieved for {symbol}.")
 
+        # Log raw data
+        logging.debug(f"Raw data:\n{df.head()}")
+
+        # Calculate technical indicators
         df = self.calculate_technical_indicators(df)
-        df = self.add_futures_metrics(df, symbol, interval, start_time, end_time)
+        logging.debug(f"Data after calculating technical indicators:\n{df.head()}")
+
+        # Add futures-specific metrics
+        df = self.add_futures_metrics(df, symbol, interval, start_time, end_time)  # Pass end_time correctly
+        logging.debug(f"Data after adding futures-specific metrics:\n{df.head()}")
+
+        # Calculate risk metrics
         df = self.calculate_risk_metrics(df, interval)
+        logging.debug(f"Data after calculating risk metrics:\n{df.head()}")
+
+        # Identify trade setups
         df = self.identify_trade_setups(df)
+        logging.debug(f"Data after identifying trade setups:\n{df.head()}")
+
+        # Normalize OHLC data
         df = self.normalise_ohlc(df)
+        logging.debug(f"Data after normalizing OHLC:\n{df.head()}")
+
+        # Fill missing values
         df = df.ffill().bfill()
+        logging.debug(f"Data after filling missing values:\n{df.head()}")
+
+        # Check for NaN values
+        if df.isnull().values.any():
+            logging.warning(f"NaN values found in data:\n{df.isnull().sum()}")
+
+
 
         if save_path:
             # Base filename without extension
@@ -834,7 +881,7 @@ class DataHandler:
                 # Return the full dataset
                 return df
 
-        # If no save path is provided, just return based on split_data
+        # If no save path is provided, just return the model data
         if split_data:
             return self.split_data_train_test(df, test_ratio, validation_ratio)
         else:
@@ -938,7 +985,7 @@ if __name__ == "__main__":
     os.makedirs(args.output_dir, exist_ok=True)
 
     # Create output filename
-    base_filename = f"{args.symbol}_{args.interval}_with_metrics"
+    base_filename = f"{args.symbol}_{args.interval}_with_metrics_3m"
     output_path = os.path.join(args.output_dir, f"{base_filename}.csv")
 
     # Process data with or without splitting

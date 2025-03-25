@@ -108,7 +108,7 @@ def train_agent(
     train_data_path,
     test_data_path=None,
     symbol="BTCUSDT",
-    window_size=24,
+    window_size=60,
     mode="train",
     model_type="lstm",
     leverage=20,
@@ -212,11 +212,95 @@ def train_agent(
         original_env = agent.env
         agent.env = test_env
 
-        # Evaluate on test data
-        test_reward = agent.evaluate(num_episodes=20)
-        logger.info(
-            f"Final model evaluation on test data: Mean reward={test_reward:.2f}"
-        )
+        # Comprehensive test evaluation
+        print("\nStarting comprehensive test evaluation...")
+        test_metrics = {
+            'rewards': [],
+            'trades': [],
+            'win_rates': [],
+            'drawdowns': [],
+            'sharpe_ratios': [],
+            'max_drawdowns': [],
+            'final_balances': []
+        }
+
+        # Run multiple test episodes
+        num_test_episodes = 50  # Increased from 20 for better statistical significance
+        for episode in range(num_test_episodes):
+            state, _ = test_env.reset()
+            done = False
+            episode_rewards = []
+            episode_trades = []
+            episode_balances = []
+
+            while not done:
+                action = agent.choose_action(state)  # Use deterministic actions for testing
+                state, reward, done, truncated, info = test_env.step(action)
+                episode_rewards.append(reward)
+                episode_balances.append(info['account_value'])
+
+                if info.get('is_trade', False):
+                    episode_trades.append({
+                        'action': action,
+                        'reward': reward,
+                        'balance': info['account_value'],
+                        'position': info['position'],
+                        'drawdown': info['drawdown']
+                    })
+
+            # Calculate episode metrics
+            test_metrics['rewards'].append(sum(episode_rewards))
+            test_metrics['trades'].append(len(episode_trades))
+            test_metrics['final_balances'].append(episode_balances[-1])
+            test_metrics['max_drawdowns'].append(max(info['drawdown'] for info in episode_trades) if episode_trades else 0)
+
+            # Calculate win rate for this episode
+            winning_trades = sum(1 for trade in episode_trades if trade['reward'] > 0)
+            test_metrics['win_rates'].append(winning_trades / len(episode_trades) if episode_trades else 0)
+
+            # Calculate Sharpe ratio for this episode
+            if len(episode_rewards) > 1:
+                returns = np.diff(episode_balances) / episode_balances[:-1]
+                sharpe = np.mean(returns) / (np.std(returns) + 1e-8)
+                test_metrics['sharpe_ratios'].append(sharpe)
+            else:
+                test_metrics['sharpe_ratios'].append(0)
+
+            if (episode + 1) % 10 == 0:
+                print(f"Completed test episode {episode + 1}/{num_test_episodes}")
+
+        # Calculate aggregate metrics
+        avg_reward = np.mean(test_metrics['rewards'])
+        avg_trades = np.mean(test_metrics['trades'])
+        avg_win_rate = np.mean(test_metrics['win_rates'])
+        avg_drawdown = np.mean(test_metrics['max_drawdowns'])
+        avg_sharpe = np.mean(test_metrics['sharpe_ratios'])
+        avg_final_balance = np.mean(test_metrics['final_balances'])
+
+        # Calculate standard deviations
+        std_reward = np.std(test_metrics['rewards'])
+        std_trades = np.std(test_metrics['trades'])
+        std_win_rate = np.std(test_metrics['win_rates'])
+        std_drawdown = np.std(test_metrics['max_drawdowns'])
+        std_sharpe = np.std(test_metrics['sharpe_ratios'])
+        std_final_balance = np.std(test_metrics['final_balances'])
+
+        # Print comprehensive test results
+        print("\n=== Comprehensive Test Results ===")
+        print(f"Number of test episodes: {num_test_episodes}")
+        print(f"Average Reward: {avg_reward:.2f} ± {std_reward:.2f}")
+        print(f"Average Number of Trades: {avg_trades:.2f} ± {std_trades:.2f}")
+        print(f"Average Win Rate: {avg_win_rate:.2%} ± {std_win_rate:.2%}")
+        print(f"Average Max Drawdown: {avg_drawdown:.2%} ± {std_drawdown:.2%}")
+        print(f"Average Sharpe Ratio: {avg_sharpe:.2f} ± {std_sharpe:.2f}")
+        print(f"Average Final Balance: {avg_final_balance:.2f} ± {std_final_balance:.2f}")
+        print(f"Return on Initial Investment: {((avg_final_balance - initial_balance) / initial_balance):.2%}")
+
+        # Compare with training performance
+        print("\n=== Training vs Test Comparison ===")
+        print(f"Training Reward: {train_reward:.2f}")
+        print(f"Test Reward: {avg_reward:.2f}")
+        print(f"Performance Difference: {((avg_reward - train_reward) / abs(train_reward)):.2%}")
 
         # Restore original environment
         agent.env = original_env
@@ -239,49 +323,49 @@ if __name__ == "__main__":
         help="Path to test data file for evaluation (CSV or Parquet)",
     )
     parser.add_argument(
-        "--symbol", type=str, default="BTCUSDT", help="Trading pair symbol"
+        "--symbol", type=str, default="ETHUSDT", help="Trading pair symbol"
     )
     parser.add_argument(
-        "--window", type=int, default=24, help="Observation window size"
+        "--window", type=int, default=60, help="Observation window size"
     )
     parser.add_argument(
         "--model",
         type=str,
-        default="lstm",
+        default="transformer",
         choices=["cnn", "lstm", "transformer"],
         help="Model architecture",
     )
     parser.add_argument("--leverage", type=int, default=20, help="Trading leverage")
     parser.add_argument(
-        "--episodes", type=int, default=500, help="Number of training episodes"
+        "--episodes", type=int, default=2000, help="Number of training episodes"
     )
     parser.add_argument(
-        "--batch_size", type=int, default=256, help="Batch size for training"
+        "--batch_size", type=int, default=8192, help="Batch size for training"
     )
     parser.add_argument(
-        "--update_freq", type=int, default=2048, help="Steps between policy updates"
+        "--update_freq", type=int, default=512, help="Steps between policy updates"
     )
     parser.add_argument(
-        "--log_freq", type=int, default=50, help="Episodes between log updates"
+        "--log_freq", type=int, default=20, help="Episodes between log updates"
     )
     parser.add_argument(
-        "--save_freq", type=int, default=50, help="Episodes between model saves"
+        "--save_freq", type=int, default=20, help="Episodes between model saves"
     )
     parser.add_argument(
-        "--eval_freq", type=int, default=50, help="Episodes between evaluations"
+        "--eval_freq", type=int, default=20, help="Episodes between evaluations"
     )
     parser.add_argument(
         "--max_position",
         type=float,
-        default=0.5,
+        default=1.0,
         help="Maximum position size as fraction of balance",
     )
-    parser.add_argument("--balance", type=float, default=10000, help="Initial balance")
+    parser.add_argument("--balance", type=float, default=5, help="Initial balance")
     parser.add_argument(
         "--risk_reward", type=float, default=1.5, help="Risk-reward ratio"
     )
     parser.add_argument(
-        "--stop_loss", type=float, default=0.01, help="Stop loss percentage"
+        "--stop_loss", type=float, default=0.005, help="Stop loss percentage"
     )
     parser.add_argument(
         "--static_leverage",

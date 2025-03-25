@@ -332,7 +332,7 @@ class ActorCriticLSTM(nn.Module):
         action_logits = self.actor(last_output)
 
         # Clip action logits to prevent extreme values
-        action_logits = torch.clamp(action_logits, min=-20.0, max=20.0)
+        action_logits = torch.clamp(action_logits, min=-50.0, max=50.0)
 
         # Critic output (state value)
         values = self.critic(last_output)
@@ -753,12 +753,12 @@ class ActorCriticTransformer(nn.Module):
         action_logits = self.actor(last_output)
 
         # Clip action logits to prevent extreme values
-        action_logits = torch.clamp(action_logits, min=-20.0, max=20.0)
+        # action_logits = torch.clamp(action_logits, min=-50.0, max=50.0)
 
         # Critic output (state value)
         values = self.critic(last_output)
 
         # Clip value outputs to prevent extreme values
-        values = torch.clamp(values, min=-100.0, max=100.0)
+        # values = torch.clamp(values, min=-100.0, max=100.0)
 
         return action_logits, values

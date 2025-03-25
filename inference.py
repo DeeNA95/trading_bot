@@ -383,9 +383,9 @@ class InferenceAgent:
                 symbol=self.symbol,
                 interval=self.interval,
                 start_time=start_time,
-                end_time=end_time
+                end_time=end_time  # Ensure end_time is passed correctly
             )
-
+            print(self.processed_df.head())
             if self.processed_df.empty:
                 logger.error(f'No data retrieved for {self.symbol}')
                 return False
@@ -460,16 +460,16 @@ class InferenceAgent:
                     data[col] = pd.to_numeric(data[col], errors='coerce').fillna(0)
 
             # Normalize data using the same method as in training
-            for col in data.columns:
-                if col not in ['open_time', 'date', 'timestamp']:
-                    # Use robust normalization to handle outliers
-                    median = data[col].median()
-                    iqr = data[col].quantile(0.75) - data[col].quantile(0.25)
-                    if iqr > 0:
-                        data[col] = (data[col] - median) / (iqr + 1e-8)
-                    else:
-                        # If IQR is 0, just center the data
-                        data[col] = data[col] - median
+            # for col in data.columns:
+            #     if col not in ['open_time', 'date', 'timestamp']:
+            #         # Use robust normalization to handle outliers
+            #         median = data[col].median()
+            #         iqr = data[col].quantile(0.75) - data[col].quantile(0.25)
+            #         if iqr > 0:
+            #             data[col] = (data[col] - median) / (iqr + 1e-8)
+            #         else:
+            #             # If IQR is 0, just center the data
+            #             data[col] = data[col] - median
 
             # Convert to numpy array and handle any remaining NaN values
             state = data.values.astype(np.float32)
