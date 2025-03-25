@@ -338,16 +338,16 @@ class BinanceFuturesExecutor:
                 "entry_price": self.entry_price,
                 "success": True,
             }
-            
+
         # Handle scaling logic when a position is already open
         if self.position_open:
             # Check if we're trying to scale in/out
             if scale_in or scale_out:
                 return self._handle_position_scaling(
-                    action, 
-                    quantity, 
-                    usdt_amount, 
-                    custom_sl_percent, 
+                    action,
+                    quantity,
+                    usdt_amount,
+                    custom_sl_percent,
                     custom_tp_ratio,
                     scale_in,
                     scale_out,
@@ -459,7 +459,7 @@ class BinanceFuturesExecutor:
             execution_price = None
             try:
                 # Get fill price from order info
-                order_info = self.client.get_order(
+                order_info = self.client.query_order(  # Changed from get_order to query_order
                     symbol=self.symbol,
                     orderId=entry_order["orderId"],
                     recvWindow=self.recv_window,
@@ -568,7 +568,7 @@ class BinanceFuturesExecutor:
     ) -> Dict[str, Any]:
         """
         Handle scaling into or out of existing positions.
-        
+
         Args:
             action: Trading action (1: buy/long, 2: sell/short)
             quantity: Quantity to trade (override calculated quantity)
@@ -578,7 +578,7 @@ class BinanceFuturesExecutor:
             scale_in: Whether to scale into an existing position
             scale_out: Whether to scale out of an existing position
             scale_percentage: Percentage to scale in/out
-            
+
         Returns:
             Dictionary with trade information
         """
@@ -590,11 +590,11 @@ class BinanceFuturesExecutor:
                 "message": "Could not get current price for scaling",
                 "success": False,
             }
-            
+
         # Check if the action matches the current position direction
         position_is_long = self.position_direction > 0
         action_is_long = action == 1
-        
+
         # For scaling in, the action must match the position direction
         if scale_in and position_is_long != action_is_long:
             return {
@@ -602,25 +602,25 @@ class BinanceFuturesExecutor:
                 "message": f"Cannot scale into {'long' if position_is_long else 'short'} position with {'long' if action_is_long else 'short'} action",
                 "success": False,
             }
-            
+
         # For scaling out, we need to reduce the position size
         if scale_out:
             # Calculate the reduction amount
             if quantity is None:
                 quantity = self.position_size * scale_percentage
-                
+
             # Make sure we don't try to reduce more than we have
             quantity = min(quantity, self.position_size)
-            
+
             # Round to the appropriate precision for this symbol
             if self.qty_precision is not None:
                 quantity = round(quantity, self.qty_precision)
-                
+
             # Ensure quantity is not zero after rounding and meets minimum order requirements
             if quantity <= 0:
                 # Use the minimum quantity allowed for this symbol
                 quantity = float(f"{{:.{self.qty_precision}f}}".format(10 ** (-self.qty_precision)))
-            
+
             # Check if it's too small for the exchange
             MIN_ORDER_VALUE = 20.0  # Binance minimum order value (20 USDT)
             order_value = quantity * current_price
@@ -630,17 +630,17 @@ class BinanceFuturesExecutor:
                 # Round to the precision allowed by the exchange
                 quantity = math.ceil(min_quantity * (10 ** self.qty_precision)) / (10 ** self.qty_precision)
                 self.logger.info(f"Adjusted scaling quantity to meet minimum order value of {MIN_ORDER_VALUE} USDT")
-            
+
             # For scaling out, we need to take the opposite action of our position
             side = "SELL" if position_is_long else "BUY"
-            
+
             # Execute in dry run mode
             if self.dry_run:
                 self.logger.info(
                     f"[DRY RUN] Scaling out of {'long' if position_is_long else 'short'} position: "
                     f"{quantity} {self.symbol} @ {current_price} ({scale_percentage*100:.0f}%)"
                 )
-                
+
                 # Update position tracking
                 self.position_size -= quantity
                 if self.position_size <= 0:
@@ -648,7 +648,7 @@ class BinanceFuturesExecutor:
                     self.position_direction = 0
                     self.position_size = 0
                     self.entry_price = 0
-                    
+
                 return {
                     "action": "scale_out",
                     "quantity": quantity,
@@ -658,7 +658,7 @@ class BinanceFuturesExecutor:
                     "position_size": self.position_size,
                     "success": True,
                 }
-                
+
             # Execute real partial close
             try:
                 # Close part of the position with a market order
@@ -669,37 +669,37 @@ class BinanceFuturesExecutor:
                     quantity=quantity,
                     recvWindow=self.recv_window,
                 )
-                
+
                 # Update position tracking
                 self.position_size -= quantity
-                
+
                 # If we've closed the entire position
                 if self.position_size <= 0:
                     self.position_open = False
                     self.position_direction = 0
                     self.position_size = 0
-                    
+
                     # Cancel any remaining orders
                     self.cancel_all_orders()
                 else:
                     # We need to update SL/TP orders for the new position size
                     self.cancel_all_orders()
-                    
+
                     # Recalculate SL/TP with current values but new position size
                     opposite_side = "SELL" if position_is_long else "BUY"
-                    
+
                     # Get current SL and TP levels (estimated)
                     sl_percent = custom_sl_percent if custom_sl_percent is not None else self.stop_loss_percent
                     tp_ratio = custom_tp_ratio if custom_tp_ratio is not None else self.risk_reward_ratio
-                    
+
                     sl_price = self.entry_price * (1 - sl_percent if position_is_long else 1 + sl_percent)
                     tp_price = self.entry_price * (1 + sl_percent * tp_ratio if position_is_long else 1 - sl_percent * tp_ratio)
-                    
+
                     # Round to the appropriate price precision
                     if self.price_precision is not None:
                         sl_price = round(sl_price, self.price_precision)
                         tp_price = round(tp_price, self.price_precision)
-                    
+
                     # Place new SL order for remaining position
                     sl_order = self.client.new_order(
                         symbol=self.symbol,
@@ -712,7 +712,7 @@ class BinanceFuturesExecutor:
                         recvWindow=self.recv_window,
                         closePosition=True,
                     )
-                    
+
                     # Place new TP order for remaining position
                     tp_order = self.client.new_order(
                         symbol=self.symbol,
@@ -724,16 +724,16 @@ class BinanceFuturesExecutor:
                         recvWindow=self.recv_window,
                         closePosition=True,
                     )
-                    
+
                     # Update order tracking
                     self.stop_loss_order_id = sl_order["orderId"]
                     self.take_profit_order_id = tp_order["orderId"]
-                
+
                 self.logger.info(
                     f"Scaled out of {'long' if position_is_long else 'short'} position: "
                     f"{quantity} {self.symbol} @ {current_price} ({scale_percentage*100:.0f}%)"
                 )
-                
+
                 return {
                     "action": "scale_out",
                     "quantity": quantity,
@@ -743,11 +743,11 @@ class BinanceFuturesExecutor:
                     "position_size": self.position_size,
                     "success": True,
                 }
-                
+
             except Exception as e:
                 self.logger.error(f"Error scaling out of position: {e}")
                 return {"action": "error", "message": str(e), "success": False}
-        
+
         # Handle scaling into position
         if scale_in:
             # Calculate the additional size
@@ -755,20 +755,20 @@ class BinanceFuturesExecutor:
                 # Default to a percentage of current position
                 current_value = self.position_size * current_price
                 usdt_amount = current_value * scale_percentage
-                
+
             # If quantity not provided, calculate it from USDT amount
             if quantity is None:
                 quantity = self.calculate_quantity(usdt_amount)
-            
+
             # Round to the appropriate precision for this symbol
             if self.qty_precision is not None:
                 quantity = round(quantity, self.qty_precision)
-                
+
             # Ensure quantity is not zero after rounding and meets minimum order requirements
             if quantity <= 0:
                 # Use the minimum quantity allowed for this symbol
                 quantity = float(f"{{:.{self.qty_precision}f}}".format(10 ** (-self.qty_precision)))
-            
+
             # Check if it's too small for the exchange
             MIN_ORDER_VALUE = 20.0  # Binance minimum order value (20 USDT)
             order_value = quantity * current_price
@@ -778,26 +778,26 @@ class BinanceFuturesExecutor:
                 # Round to the precision allowed by the exchange
                 quantity = math.ceil(min_quantity * (10 ** self.qty_precision)) / (10 ** self.qty_precision)
                 self.logger.info(f"Adjusted scaling quantity to meet minimum order value of {MIN_ORDER_VALUE} USDT")
-                
+
             side = "BUY" if position_is_long else "SELL"
-            
+
             # Execute in dry run mode
             if self.dry_run:
                 self.logger.info(
                     f"[DRY RUN] Scaling into {'long' if position_is_long else 'short'} position: "
                     f"Adding {quantity} {self.symbol} @ {current_price}"
                 )
-                
+
                 # Update position tracking - recalculate average entry price
                 old_value = self.position_size * self.entry_price
                 new_value = quantity * current_price
                 total_value = old_value + new_value
                 total_size = self.position_size + quantity
-                
+
                 # Calculate new average entry price
                 self.entry_price = total_value / total_size
                 self.position_size = total_size
-                
+
                 return {
                     "action": "scale_in",
                     "quantity": quantity,
@@ -808,12 +808,12 @@ class BinanceFuturesExecutor:
                     "entry_price": self.entry_price,
                     "success": True,
                 }
-                
+
             # Execute real scale-in with market order
             try:
                 # First cancel existing SL/TP orders
                 self.cancel_all_orders()
-                
+
                 # Place the market order to add to position
                 order = self.client.new_order(
                     symbol=self.symbol,
@@ -822,34 +822,34 @@ class BinanceFuturesExecutor:
                     quantity=quantity,
                     recvWindow=self.recv_window,
                 )
-                
+
                 # Wait a moment for the order to execute
                 time.sleep(1)
-                
+
                 # Update position tracking - calculate new average entry price and total size
                 old_value = self.position_size * self.entry_price
                 new_value = quantity * current_price
                 total_value = old_value + new_value
                 total_size = self.position_size + quantity
-                
+
                 # Set new position details
                 self.position_size = total_size
                 self.entry_price = total_value / total_size
-                
+
                 # Use provided stop loss or default
                 sl_percent = custom_sl_percent if custom_sl_percent is not None else self.stop_loss_percent
                 tp_ratio = custom_tp_ratio if custom_tp_ratio is not None else self.risk_reward_ratio
-                
+
                 # Calculate new SL/TP levels based on new average entry price
                 opposite_side = "SELL" if side == "BUY" else "BUY"
-                
+
                 if side == "BUY":  # Long position
                     sl_price = round(self.entry_price * (1 - sl_percent), self.price_precision)
                     tp_price = round(self.entry_price * (1 + sl_percent * tp_ratio), self.price_precision)
                 else:  # Short position
                     sl_price = round(self.entry_price * (1 + sl_percent), self.price_precision)
                     tp_price = round(self.entry_price * (1 - sl_percent * tp_ratio), self.price_precision)
-                
+
                 # Place new SL order for entire position
                 sl_order = self.client.new_order(
                     symbol=self.symbol,
@@ -862,7 +862,7 @@ class BinanceFuturesExecutor:
                     recvWindow=self.recv_window,
                     closePosition=True,
                 )
-                
+
                 # Place new TP order for entire position
                 tp_order = self.client.new_order(
                     symbol=self.symbol,
@@ -874,18 +874,18 @@ class BinanceFuturesExecutor:
                     recvWindow=self.recv_window,
                     closePosition=True,
                 )
-                
+
                 # Update order tracking
                 self.stop_loss_order_id = sl_order["orderId"]
                 self.take_profit_order_id = tp_order["orderId"]
-                
+
                 self.logger.info(
                     f"Scaled into {'long' if position_is_long else 'short'} position: "
                     f"Added {quantity} {self.symbol} @ {current_price}, "
                     f"New size: {self.position_size}, Avg entry: {self.entry_price}, "
                     f"SL @ {sl_price}, TP @ {tp_price}"
                 )
-                
+
                 return {
                     "action": "scale_in",
                     "quantity": quantity,
@@ -898,11 +898,11 @@ class BinanceFuturesExecutor:
                     "take_profit": tp_price,
                     "success": True,
                 }
-                
+
             except Exception as e:
                 self.logger.error(f"Error scaling into position: {e}")
                 return {"action": "error", "message": str(e), "success": False}
-        
+
         # Should never reach here
         return {"action": "error", "message": "Scaling logic error", "success": False}
 

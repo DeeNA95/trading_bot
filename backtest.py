@@ -116,7 +116,7 @@ class BacktestAgent:
 
             # Extract model configuration
             model_config = state_dict.get('model_config', {})
-            input_dim = model_config.get('input_dim', 56)  # Default to 56 features to match training
+            input_dim = model_config.get('input_dim', 55)  # Default to 56 features to match training
             hidden_dim = model_config.get('hidden_dim', 128)
 
             # Initialize appropriate model architecture
@@ -463,9 +463,9 @@ def parse_args() -> argparse.Namespace:
                       help='Full GCP path to historical data file (e.g., gs://your-bucket/data/BTCUSDT_15m.csv)')
 
     # Trading parameters
-    parser.add_argument('--symbol', type=str, default='BTCUSDT',
+    parser.add_argument('--symbol', type=str, default='ETHUSDT',
                       help='Trading symbol')
-    parser.add_argument('--interval', type=str, default='15m',
+    parser.add_argument('--interval', type=str, default='1m',
                       choices=['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d'],
                       help='Data interval')
     parser.add_argument('--window_size', type=int, default=60,
@@ -474,9 +474,9 @@ def parse_args() -> argparse.Namespace:
                       help='Trading leverage')
     parser.add_argument('--risk_reward_ratio', type=float, default=1.5,
                       help='Ratio of take profit to stop loss')
-    parser.add_argument('--stop_loss_percent', type=float, default=0.01,
+    parser.add_argument('--stop_loss_percent', type=float, default=0.005,
                       help='Stop loss percentage from entry')
-    parser.add_argument('--initial_balance', type=float, default=3,
+    parser.add_argument('--initial_balance', type=float, default=5,
                       help='Initial balance for trading')
 
     return parser.parse_args()

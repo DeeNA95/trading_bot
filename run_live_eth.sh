@@ -1,7 +1,7 @@
 #! /bin/sh
 
 nohup pipenv run python inference.py \
-  --model_path gs://crypto_trading_models/TRANSFORMERS/ETH/UNCLIPPED/best_model.pt \
+  --model_path gs://crypto_trading_models/TRANSFORMER/6M/best_model.pt \
   --model_type transformer \
   --symbol ETHUSDT \
   --window_size 60 \
