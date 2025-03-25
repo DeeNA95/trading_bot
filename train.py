@@ -56,18 +56,6 @@ def load_and_preprocess_data(file_path):
             df = df.drop(columns=[column])
     # Replace NaN, inf values with 0
     df = df.replace([np.inf, -np.inf], np.nan).fillna(0)
-    # Normalize data to prevent NaN in model outputs
-    for col in df.columns:
-        if col not in ["open_time", "date", "timestamp"]:
-            # Use robust normalization to handle outliers
-            median = df[col].median()
-            iqr = df[col].quantile(0.75) - df[col].quantile(0.25)
-            if iqr > 0:
-                df[col] = (df[col] - median) / (iqr + 1e-8)
-            else:
-                # If IQR is 0, just center the data
-                df[col] = df[col] - median
-
     print(f"Data shape: {df.shape}")
     return df
 
@@ -107,10 +95,10 @@ def create_environment(
 def train_agent(
     train_data_path,
     test_data_path=None,
-    symbol="BTCUSDT",
+    symbol="ETHUSDT",
     window_size=60,
     mode="train",
-    model_type="lstm",
+    model_type="transformer",
     leverage=20,
     episodes=500,
     batch_size=256,
@@ -215,13 +203,13 @@ def train_agent(
         # Comprehensive test evaluation
         print("\nStarting comprehensive test evaluation...")
         test_metrics = {
-            'rewards': [],
-            'trades': [],
-            'win_rates': [],
-            'drawdowns': [],
-            'sharpe_ratios': [],
-            'max_drawdowns': [],
-            'final_balances': []
+            "rewards": [],
+            "trades": [],
+            "win_rates": [],
+            "drawdowns": [],
+            "sharpe_ratios": [],
+            "max_drawdowns": [],
+            "final_balances": [],
         }
 
         # Run multiple test episodes
@@ -234,56 +222,66 @@ def train_agent(
             episode_balances = []
 
             while not done:
-                action = agent.choose_action(state)  # Use deterministic actions for testing
+                action = agent.choose_action(
+                    state
+                )  # Use deterministic actions for testing
                 state, reward, done, truncated, info = test_env.step(action)
                 episode_rewards.append(reward)
-                episode_balances.append(info['account_value'])
+                episode_balances.append(info["account_value"])
 
-                if info.get('is_trade', False):
-                    episode_trades.append({
-                        'action': action,
-                        'reward': reward,
-                        'balance': info['account_value'],
-                        'position': info['position'],
-                        'drawdown': info['drawdown']
-                    })
+                if info.get("is_trade", False):
+                    episode_trades.append(
+                        {
+                            "action": action,
+                            "reward": reward,
+                            "balance": info["account_value"],
+                            "position": info["position"],
+                            "drawdown": info["drawdown"],
+                        }
+                    )
 
             # Calculate episode metrics
-            test_metrics['rewards'].append(sum(episode_rewards))
-            test_metrics['trades'].append(len(episode_trades))
-            test_metrics['final_balances'].append(episode_balances[-1])
-            test_metrics['max_drawdowns'].append(max(info['drawdown'] for info in episode_trades) if episode_trades else 0)
+            test_metrics["rewards"].append(sum(episode_rewards))
+            test_metrics["trades"].append(len(episode_trades))
+            test_metrics["final_balances"].append(episode_balances[-1])
+            test_metrics["max_drawdowns"].append(
+                max(info["drawdown"] for info in episode_trades)
+                if episode_trades
+                else 0
+            )
 
             # Calculate win rate for this episode
-            winning_trades = sum(1 for trade in episode_trades if trade['reward'] > 0)
-            test_metrics['win_rates'].append(winning_trades / len(episode_trades) if episode_trades else 0)
+            winning_trades = sum(1 for trade in episode_trades if trade["reward"] > 0)
+            test_metrics["win_rates"].append(
+                winning_trades / len(episode_trades) if episode_trades else 0
+            )
 
             # Calculate Sharpe ratio for this episode
             if len(episode_rewards) > 1:
                 returns = np.diff(episode_balances) / episode_balances[:-1]
                 sharpe = np.mean(returns) / (np.std(returns) + 1e-8)
-                test_metrics['sharpe_ratios'].append(sharpe)
+                test_metrics["sharpe_ratios"].append(sharpe)
             else:
-                test_metrics['sharpe_ratios'].append(0)
+                test_metrics["sharpe_ratios"].append(0)
 
             if (episode + 1) % 10 == 0:
                 print(f"Completed test episode {episode + 1}/{num_test_episodes}")
 
         # Calculate aggregate metrics
-        avg_reward = np.mean(test_metrics['rewards'])
-        avg_trades = np.mean(test_metrics['trades'])
-        avg_win_rate = np.mean(test_metrics['win_rates'])
-        avg_drawdown = np.mean(test_metrics['max_drawdowns'])
-        avg_sharpe = np.mean(test_metrics['sharpe_ratios'])
-        avg_final_balance = np.mean(test_metrics['final_balances'])
+        avg_reward = np.mean(test_metrics["rewards"])
+        avg_trades = np.mean(test_metrics["trades"])
+        avg_win_rate = np.mean(test_metrics["win_rates"])
+        avg_drawdown = np.mean(test_metrics["max_drawdowns"])
+        avg_sharpe = np.mean(test_metrics["sharpe_ratios"])
+        avg_final_balance = np.mean(test_metrics["final_balances"])
 
         # Calculate standard deviations
-        std_reward = np.std(test_metrics['rewards'])
-        std_trades = np.std(test_metrics['trades'])
-        std_win_rate = np.std(test_metrics['win_rates'])
-        std_drawdown = np.std(test_metrics['max_drawdowns'])
-        std_sharpe = np.std(test_metrics['sharpe_ratios'])
-        std_final_balance = np.std(test_metrics['final_balances'])
+        std_reward = np.std(test_metrics["rewards"])
+        std_trades = np.std(test_metrics["trades"])
+        std_win_rate = np.std(test_metrics["win_rates"])
+        std_drawdown = np.std(test_metrics["max_drawdowns"])
+        std_sharpe = np.std(test_metrics["sharpe_ratios"])
+        std_final_balance = np.std(test_metrics["final_balances"])
 
         # Print comprehensive test results
         print("\n=== Comprehensive Test Results ===")
@@ -293,14 +291,20 @@ def train_agent(
         print(f"Average Win Rate: {avg_win_rate:.2%} ± {std_win_rate:.2%}")
         print(f"Average Max Drawdown: {avg_drawdown:.2%} ± {std_drawdown:.2%}")
         print(f"Average Sharpe Ratio: {avg_sharpe:.2f} ± {std_sharpe:.2f}")
-        print(f"Average Final Balance: {avg_final_balance:.2f} ± {std_final_balance:.2f}")
-        print(f"Return on Initial Investment: {((avg_final_balance - initial_balance) / initial_balance):.2%}")
+        print(
+            f"Average Final Balance: {avg_final_balance:.2f} ± {std_final_balance:.2f}"
+        )
+        print(
+            f"Return on Initial Investment: {((avg_final_balance - initial_balance) / initial_balance):.2%}"
+        )
 
         # Compare with training performance
         print("\n=== Training vs Test Comparison ===")
         print(f"Training Reward: {train_reward:.2f}")
         print(f"Test Reward: {avg_reward:.2f}")
-        print(f"Performance Difference: {((avg_reward - train_reward) / abs(train_reward)):.2%}")
+        print(
+            f"Performance Difference: {((avg_reward - train_reward) / abs(train_reward)):.2%}"
+        )
 
         # Restore original environment
         agent.env = original_env
