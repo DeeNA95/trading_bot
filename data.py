@@ -2,9 +2,9 @@
 import argparse
 import logging
 import os
+import random
 from datetime import datetime, timedelta
 from time import sleep
-import random
 
 import numpy as np
 import pandas as pd
@@ -87,13 +87,13 @@ class DataHandler:
             chunk_size = timedelta(days=1)
         else:
             chunk_size = timedelta(days=7)
-        ctr=1
+        ctr = 1
         current_start = start_time
         while current_start < end_time:
             sleep(0.1)
 
             print(f"Fetching chunk {ctr}")
-            ctr+=1
+            ctr += 1
             current_end = min(current_start + chunk_size, end_time)
             try:
                 klines = self.client.futures_klines(
@@ -259,9 +259,9 @@ class DataHandler:
         # Determine window size based on interval
         periods_per_day = self.get_periods_per_day(interval)
 
-
-        window = min(window_size, int(24 * periods_per_day))  # 24 hours worth of data points
-
+        window = min(
+            window_size, int(24 * periods_per_day)
+        )  # 24 hours worth of data points
 
         result = df.copy()
         result["timely_return"] = result["close"].pct_change()
@@ -283,7 +283,7 @@ class DataHandler:
         drawdown = result["close"] / rolling_max - 1.0
         result["max_drawdown"] = drawdown.rolling(
             window=window
-        ).min()  # weird finance thing min over the window is max drawdown usually cause negative
+        ).min()  # min over the window is max drawdown usually cause negative
 
         # Determine annualization factor based on interval
         if interval.endswith("m"):
@@ -327,13 +327,11 @@ class DataHandler:
         # Calculate efficiency ratio
         risk_free_rate = 0.01  # Example risk-free rate, can be adjusted
         result["efficiency_ratio"] = (
-            result["timely_return"].rolling(window=window).mean()
-            / risk_free_rate
+            result["timely_return"].rolling(window=window).mean() / risk_free_rate
         ) * annualization_factor
 
         logger.info("Calculating risk metrics...")
         return result
-
 
     @staticmethod
     def get_periods_per_day(interval):
@@ -454,10 +452,10 @@ class DataHandler:
                 continue
 
             # Extract the window of data
-            window_data = close_values[i-window:i]
+            window_data = close_values[i - window : i]
 
             # Skip if there's not enough data
-            if len(window_data) < window/2:
+            if len(window_data) < window / 2:
                 result.iloc[i] = np.nan
                 continue
 
@@ -496,7 +494,7 @@ class DataHandler:
                 continue
 
             # Extract the window of data
-            window_data = close_values[i-window:i]
+            window_data = close_values[i - window : i]
 
             # Skip if there's not enough data
             if len(window_data) < window / 2:
@@ -561,6 +559,9 @@ class DataHandler:
         Returns:
             DataFrame with normalized price-related values and complexity metrics
         """
+
+        result["price_density"] = self.calculate_price_density(df, window)
+        result["fractal_dimension"] = self.calculate_fractal_dimension(df, window)
         # Calculate rolling mean and standard deviation
         rolling_mean = df["close"].rolling(window=window).mean()
         rolling_std = df["close"].rolling(window=window).std()
@@ -575,18 +576,18 @@ class DataHandler:
 
         # Normalize moving averages and Bollinger Bands if they exist
         price_related_cols = [
-            "sma_20", "sma_50", "bb_middle", "bb_upper", "bb_lower",
-            "lowest_low", "highest_high"
+            "sma_20",
+            "sma_50",
+            "bb_middle",
+            "bb_upper",
+            "bb_lower",
+            "lowest_low",
+            "highest_high",
         ]
 
         for col in price_related_cols:
             if col in df.columns:
                 result[col] = (df[col] - rolling_mean) / rolling_std
-
-        # Calculate price complexity metrics
-        result["price_density"] = self.calculate_price_density(df, window)
-        result["fractal_dimension"] = self.calculate_fractal_dimension(df, window).fillna(random.random())
-
         return result
 
     def _fetch_futures_metric(
@@ -768,8 +769,8 @@ class DataHandler:
         if test_size > 0:
             if validation_size > 0:
                 # Three-way split: train, validation, test
-                validation_df = df.iloc[train_size:train_size+validation_size]
-                test_df = df.iloc[train_size+validation_size:]
+                validation_df = df.iloc[train_size : train_size + validation_size]
+                test_df = df.iloc[train_size + validation_size :]
                 result["validation"] = validation_df
                 result["test"] = test_df
             else:
@@ -779,13 +780,22 @@ class DataHandler:
 
         # Log split sizes
         for key, data in result.items():
-            logger.info(f"{key.title()} set size: {len(data)} samples ({len(data)/total_rows:.1%})")
+            logger.info(
+                f"{key.title()} set size: {len(data)} samples ({len(data)/total_rows:.1%})"
+            )
 
         return result
 
     def process_market_data(
-        self, symbol, interval="1h", start_time=None, end_time=None, save_path=None,
-        split_data=False, test_ratio=0.2, validation_ratio=0.0
+        self,
+        symbol,
+        interval="1h",
+        start_time=None,
+        end_time=None,
+        save_path=None,
+        split_data=False,
+        test_ratio=0.2,
+        validation_ratio=0.0,
     ):
         """
         Comprehensive function to retrieve futures data, add all metrics (technical,
@@ -813,13 +823,10 @@ class DataHandler:
                 if interval == "1m"
                 else end_time - timedelta(days=60)
             )
-
-
-
-
-
         # Fetch raw data
-        df = self.get_futures_data(symbol, interval, start_time, end_time)  # Pass start_time and end_time correctly
+        df = self.get_futures_data(
+            symbol, interval, start_time, end_time
+        )  # Pass start_time and end_time correctly
         if df.empty:
             logging.warning(f"No data retrieved for {symbol}.")
             raise ValueError(f"No data retrieved for {symbol}.")
@@ -832,7 +839,9 @@ class DataHandler:
         logging.debug(f"Data after calculating technical indicators:\n{df.head()}")
 
         # Add futures-specific metrics
-        df = self.add_futures_metrics(df, symbol, interval, start_time, end_time)  # Pass end_time correctly
+        df = self.add_futures_metrics(
+            df, symbol, interval, start_time, end_time
+        )  # Pass end_time correctly
         logging.debug(f"Data after adding futures-specific metrics:\n{df.head()}")
 
         # Calculate risk metrics
@@ -855,15 +864,15 @@ class DataHandler:
         if df.isnull().values.any():
             logging.warning(f"NaN values found in data:\n{df.isnull().sum()}")
 
-
-
         if save_path:
             # Base filename without extension
-            base_path = save_path.rsplit('.', 1)[0] if '.' in save_path else save_path
+            base_path = save_path.rsplit(".", 1)[0] if "." in save_path else save_path
 
             if split_data:
                 # Split the data
-                split_sets = self.split_data_train_test(df, test_ratio, validation_ratio)
+                split_sets = self.split_data_train_test(
+                    df, test_ratio, validation_ratio
+                )
 
                 # Save each split
                 for split_name, split_df in split_sets.items():
@@ -990,7 +999,9 @@ if __name__ == "__main__":
 
     # Process data with or without splitting
     if args.split:
-        logging.info(f"Processing data with train/test split (test ratio: {args.test_ratio}, validation ratio: {args.validation_ratio})")
+        logging.info(
+            f"Processing data with train/test split (test ratio: {args.test_ratio}, validation ratio: {args.validation_ratio})"
+        )
         split_data = data_handler.process_market_data(
             symbol=args.symbol,
             interval=args.interval,
@@ -999,7 +1010,7 @@ if __name__ == "__main__":
             save_path=output_path,
             split_data=True,
             test_ratio=args.test_ratio,
-            validation_ratio=args.validation_ratio
+            validation_ratio=args.validation_ratio,
         )
 
         # Log split info
@@ -1014,7 +1025,7 @@ if __name__ == "__main__":
             interval=args.interval,
             start_time=start_date,
             end_time=end_date,
-            save_path=output_path
+            save_path=output_path,
         )
 
         logging.info(f"Processed data: {len(processed_data)} rows")
