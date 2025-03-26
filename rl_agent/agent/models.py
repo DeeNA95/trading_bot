@@ -354,9 +354,9 @@ class PyramidalAttention(nn.Module):
     def __init__(
         self,
         hidden_dim: int,
-        n_heads: int,
-        dropout: float = 0.1,
-        max_seq_len: int = 128,
+        n_heads: int = 8,
+        dropout: float = 0.25,
+        max_seq_len: int = 512,
     ):
         """
         Initialize the Pyramidal Attention module.
@@ -486,7 +486,7 @@ class PyraFormerBlock(nn.Module):
     def __init__(
         self,
         hidden_dim: int,
-        n_heads: int,
+        n_heads: int=8,
         dropout: float = 0.1,
         max_seq_len: int = 128,
     ):
@@ -611,13 +611,12 @@ class ActorCriticTransformer(nn.Module):
         self,
         input_shape: Tuple[int, int],  # (window_size, features)
         action_dim: int,
-        hidden_dim: int = 128,
+        hidden_dim: int = 256,
         n_heads: int = 8,
-        n_layers: int = 4,
-        dropout: float = 0.2,
+        n_layers: int = 8,
+        dropout: float = 0.25,
         activation_fn: nn.Module = nn.GELU(),
-        device: str = "auto",
-        force_features: int = None,  # Force specific feature count
+        device: str = "auto"
     ):
         """
         Initialize the Actor-Critic PyraFormer model.
@@ -688,9 +687,9 @@ class ActorCriticTransformer(nn.Module):
             nn.Linear(128, 256),
             activation_fn,
             nn.Dropout(dropout),
-            nn.Linear(256, 57),
+            nn.Linear(256, 128),
             activation_fn,
-            nn.Linear(57, action_dim),
+            nn.Linear(128, action_dim),
         )
 
         # Critic (value network)
@@ -701,9 +700,9 @@ class ActorCriticTransformer(nn.Module):
             nn.Linear(128, 256),
             activation_fn,
             nn.Dropout(dropout),
-            nn.Linear(256, 57),
+            nn.Linear(256, 128),
             activation_fn,
-            nn.Linear(57, 1),
+            nn.Linear(128, 1),
         )
 
         # Initialize weights
