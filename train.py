@@ -341,13 +341,13 @@ if __name__ == "__main__":
     )
     parser.add_argument("--leverage", type=int, default=20, help="Trading leverage")
     parser.add_argument(
-        "--episodes", type=int, default=2000, help="Number of training episodes"
+        "--episodes", type=int, default=500, help="Number of training episodes"
     )
     parser.add_argument(
-        "--batch_size", type=int, default=8192, help="Batch size for training"
+        "--batch_size", type=int, default=512, help="Batch size for training"
     )
     parser.add_argument(
-        "--update_freq", type=int, default=512, help="Steps between policy updates"
+        "--update_freq", type=int, default=256, help="Steps between policy updates"
     )
     parser.add_argument(
         "--log_freq", type=int, default=20, help="Episodes between log updates"

@@ -831,18 +831,14 @@ class DataHandler:
             logging.warning(f"No data retrieved for {symbol}.")
             raise ValueError(f"No data retrieved for {symbol}.")
 
-        # Log raw data
-        logging.debug(f"Raw data:\n{df.head()}")
 
         # Calculate technical indicators
         df = self.calculate_technical_indicators(df)
-        logging.debug(f"Data after calculating technical indicators:\n{df.head()}")
 
         # Add futures-specific metrics
         df = self.add_futures_metrics(
             df, symbol, interval, start_time, end_time
         )  # Pass end_time correctly
-        logging.debug(f"Data after adding futures-specific metrics:\n{df.head()}")
 
         # Calculate risk metrics
         df = self.calculate_risk_metrics(df, interval)
