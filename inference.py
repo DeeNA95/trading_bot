@@ -309,23 +309,8 @@ class InferenceAgent:
             input_dim = model_config.get('input_dim', 55)  # Default to standard feature dim
             hidden_dim = model_config.get('hidden_dim', 128)
 
-            # Initialize appropriate model architecture
-            if self.model_type == 'cnn':
-                model = ActorCriticCNN(
-                    input_shape=(self.window_size, input_dim),
-                    action_dim=3,  # HOLD, BUY/LONG, SELL/SHORT
-                    hidden_dim=hidden_dim,
-                    device=self.device
-                )
-            elif self.model_type == 'lstm':
-                model = ActorCriticLSTM(
-                    input_shape=(self.window_size, input_dim),
-                    action_dim=3,
-                    hidden_dim=hidden_dim,
-                    device=self.device
-                )
-            else:  # default to transformer
-                model = ActorCriticTransformer(
+
+            model = ActorCriticTransformer(
                     input_shape=(self.window_size, input_dim),
                     action_dim=3,
                     hidden_dim=hidden_dim,

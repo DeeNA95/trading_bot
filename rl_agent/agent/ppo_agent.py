@@ -114,7 +114,6 @@ class PPOAgent:
     def __init__(
         self,
         env: BinanceFuturesCryptoEnv,
-        model_type: str = "transformer",
         hidden_dim: int = 128,  # size of first hidden dim
         lr: float = 3e-4,
         gamma: float = 0.99,
@@ -189,31 +188,6 @@ class PPOAgent:
                 self.device = torch.device("cpu")
         else:
             self.device = torch.device(device)
-
-        # Initialize actor-critic model
-        if model_type.lower() == "cnn":
-            self.model = ActorCriticCNN(
-                input_shape=self.input_shape,
-                action_dim=self.action_dim,
-                hidden_dim=hidden_dim,
-                device=self.device,
-            )
-        elif model_type.lower() == "lstm":
-            self.model = ActorCriticLSTM(
-                input_shape=self.input_shape,
-                action_dim=self.action_dim,
-                hidden_dim=hidden_dim,
-                device=self.device,
-            )
-        elif model_type.lower() == "transformer":
-            self.model = ActorCriticTransformer(
-                input_shape=self.input_shape,
-                action_dim=self.action_dim,
-                hidden_dim=hidden_dim,
-                device=self.device,
-            )
-        else:
-            raise ValueError(f"Unknown model type: {model_type}")
 
         # Optimizer with L2 regularization
         self.optimizer = optim.Adam(

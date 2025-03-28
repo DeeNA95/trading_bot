@@ -230,7 +230,7 @@ class BinanceFuturesPositionSizer:
             dynamic_leverage: Whether to adjust leverage based on volatility
         """
         self.max_position_pct = max_position_pct
-        self.position_sizer = position_sizer or FixedFractionPositionSizer()
+        self.position_sizer = position_sizer or VolatilityAdjustedPositionSizer()
         self.default_leverage = default_leverage
         self.max_leverage = max_leverage
         self.dynamic_leverage = dynamic_leverage
