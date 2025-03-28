@@ -75,6 +75,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
         include_open_interest: bool = True,
         include_liquidation_data: bool = True,
         dry_run: bool = False,  # When True, don't execute actual trades
+        slippage_fraction: float = 0.1, # Fraction of bar range (H-L) to use as slippage
         render_mode: str = None,
     ):
         """
@@ -144,6 +145,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
         self.include_funding_rate = include_funding_rate
         self.include_open_interest = include_open_interest
         self.include_liquidation_data = include_liquidation_data
+        self.slippage_fraction = slippage_fraction # Store slippage fraction
 
         # Initialize position sizer
         self.position_sizer = BinanceFuturesPositionSizer(
@@ -867,77 +869,116 @@ class BinanceFuturesCryptoEnv(gym.Env):
                 }
             )
 
-    def _handle_backtesting_trade(self, action, price):
-        """Handle trade simulation in backtesting mode."""
-        if action == 1 and self.current_position <= 0:  # Buy/Long
-            # Calculate PnL if closing a short
-            pnl = 0
-            if self.current_position < 0:
-                pnl = self.current_position * (price - self.entry_price) * self.leverage
-                self.balance += pnl  # Update balance
+    def _handle_backtesting_trade(self, action, price, exit_price: Optional[float] = None):
+        """
+        Handle trade simulation in backtesting mode.
+        Uses `exit_price` if provided (for SL/TP), otherwise uses `price`.
+        `price` is used as the entry price if opening a new position.
+        """
+        # --- Slippage Calculation ---
+        slippage = 0
+        if self.slippage_fraction > 0 and self.current_step < len(self.df):
+            current_bar = self.df.iloc[self.current_step]
+            bar_range = current_bar["high"] - current_bar["low"]
+            # Ensure bar_range is non-negative and finite
+            if pd.notna(bar_range) and bar_range >= 0:
+                slippage = bar_range * self.slippage_fraction
+        # --- End Slippage Calculation ---
 
-                # Record trade
-                self.trades.append(
-                    {
-                        "entry_price": self.entry_price,
-                        "exit_price": price,
-                        "position": self.current_position,
-                        "pnl": pnl,
-                        "timestamp": self.date,
-                    }
-                )
+        # Determine the base price for execution (SL/TP price or current bar's close)
+        base_exec_price = exit_price if exit_price is not None else price
+        realized_pnl = 0
+        transaction_cost = 0
 
-            # Calculate new position size
-            position_size = self._calculate_position_size(price)
+        if action == 1:  # Buy/Long action
+            if self.current_position < 0: # Closing existing short
+                # Apply slippage to exit price (buying back short) - pay more
+                exec_price = base_exec_price + slippage / 2
+                realized_pnl = self.current_position * (exec_price - self.entry_price) * self.leverage
+                self.balance += realized_pnl
+                transaction_cost += abs(self.current_position * exec_price * self.commission) # Exit fee
 
-            # Apply trading fee
-            fee = position_size * price * self.commission
-            self.balance -= fee
+                self.trades.append({
+                    "entry_price": self.entry_price, "exit_price": exec_price,
+                    "position": self.current_position, "pnl": realized_pnl, "timestamp": self.date,
+                })
+                self.current_position = 0
+                self.entry_price = 0
+                self.stop_loss = None
+                self.take_profit = None
 
-            # Update position
-            self.current_position = position_size
-            self.entry_price = price
+            if exit_price is None: # Only open new long if not forced exit by SL/TP
+                # Apply slippage to entry price (buying long) - pay more
+                entry_exec_price = price + slippage / 2
+                position_size = self._calculate_position_size(entry_exec_price) # Size based on execution price
+                fee = position_size * entry_exec_price * self.commission
+                transaction_cost += fee
+                self.balance -= fee
+                self.current_position = position_size
+                self.entry_price = entry_exec_price # Store actual execution price
+                # SL/TP based on actual entry execution price
+                self.stop_loss = entry_exec_price * (1 - self.stop_loss_percent)
+                self.take_profit = entry_exec_price * (1 + self.stop_loss_percent * self.risk_reward_ratio)
 
-            # Set stop loss and take profit
-            self.stop_loss = price * (1 - self.stop_loss_percent)
-            self.take_profit = price * (
-                1 + self.stop_loss_percent * self.risk_reward_ratio
-            )
+        elif action == 2:  # Sell/Short action
+            if self.current_position > 0: # Closing existing long
+                # Apply slippage to exit price (selling long) - receive less
+                exec_price = base_exec_price - slippage / 2
+                realized_pnl = self.current_position * (exec_price - self.entry_price) * self.leverage
+                self.balance += realized_pnl
+                transaction_cost += abs(self.current_position * exec_price * self.commission) # Exit fee
 
-        elif action == 2 and self.current_position >= 0:  # Sell/Short
-            # Calculate PnL if closing a long
-            pnl = 0
-            if self.current_position > 0:
-                pnl = self.current_position * (price - self.entry_price) * self.leverage
-                self.balance += pnl  # Update balance
+                self.trades.append({
+                    "entry_price": self.entry_price, "exit_price": exec_price,
+                    "position": self.current_position, "pnl": realized_pnl, "timestamp": self.date,
+                })
+                self.current_position = 0
+                self.entry_price = 0
+                self.stop_loss = None
+                self.take_profit = None
 
-                # Record trade
-                self.trades.append(
-                    {
-                        "entry_price": self.entry_price,
-                        "exit_price": price,
-                        "position": self.current_position,
-                        "pnl": pnl,
-                        "timestamp": self.date,
-                    }
-                )
+            if exit_price is None: # Only open new short if not forced exit by SL/TP
+                # Apply slippage to entry price (selling short) - receive less
+                entry_exec_price = price - slippage / 2
+                position_size = self._calculate_position_size(entry_exec_price) # Size based on execution price
+                fee = position_size * entry_exec_price * self.commission
+                transaction_cost += fee
+                self.balance -= fee
+                self.current_position = -position_size
+                self.entry_price = entry_exec_price # Store actual execution price
+                # SL/TP based on actual entry execution price
+                self.stop_loss = entry_exec_price * (1 + self.stop_loss_percent)
+                self.take_profit = entry_exec_price * (1 - self.stop_loss_percent * self.risk_reward_ratio)
 
-            # Calculate new position size
-            position_size = self._calculate_position_size(price)
+        elif action == 0 and exit_price is not None: # Hold action BUT SL/TP triggered closing position
+             if self.current_position > 0: # Closing existing long
+                # Apply slippage to exit price (selling long) - receive less
+                exec_price = base_exec_price - slippage / 2
+                realized_pnl = self.current_position * (exec_price - self.entry_price) * self.leverage
+                self.balance += realized_pnl
+                transaction_cost += abs(self.current_position * exec_price * self.commission) # Exit fee
+                self.trades.append({
+                    "entry_price": self.entry_price, "exit_price": exec_price,
+                    "position": self.current_position, "pnl": realized_pnl, "timestamp": self.date,
+                })
+             elif self.current_position < 0: # Closing existing short
+                # Apply slippage to exit price (buying back short) - pay more
+                exec_price = base_exec_price + slippage / 2
+                realized_pnl = self.current_position * (exec_price - self.entry_price) * self.leverage
+                self.balance += realized_pnl
+                transaction_cost += abs(self.current_position * exec_price * self.commission) # Exit fee
+                self.trades.append({
+                    "entry_price": self.entry_price, "exit_price": exec_price,
+                    "position": self.current_position, "pnl": realized_pnl, "timestamp": self.date,
+                })
+             # Reset position state after SL/TP close during hold
+             self.current_position = 0
+             self.entry_price = 0
+             self.stop_loss = None
+             self.take_profit = None
 
-            # Apply trading fee
-            fee = position_size * price * self.commission
-            self.balance -= fee
-
-            # Update position
-            self.current_position = -position_size  # Negative for short
-            self.entry_price = price
-
-            # Set stop loss and take profit
-            self.stop_loss = price * (1 + self.stop_loss_percent)
-            self.take_profit = price * (
-                1 - self.stop_loss_percent * self.risk_reward_ratio
-            )
+        # Return PnL and cost for reward calculation if needed
+        return realized_pnl, transaction_cost
 
     def step(self, action, scale_in=False, scale_out=False, scale_percentage=0.5):
         """
@@ -1003,24 +1044,51 @@ class BinanceFuturesCryptoEnv(gym.Env):
                 )
                 self.current_open_interest = new_oi
 
-            # Check for stop loss or take profit hit
-            if self.current_position > 0:  # Long position
-                if current_price <= self.stop_loss:
-                    # Stop loss hit
-                    action = 2  # Force sell
-                elif current_price >= self.take_profit:
-                    # Take profit hit
-                    action = 2  # Force sell
+            # --- SL/TP Check using NEXT bar's data (Fix for Lookahead Bias) ---
+            sl_tp_triggered = False
+            sl_tp_exit_price = None
+            # Start with the agent's intended action, may be overridden by SL/TP
+            forced_action = action
 
-            elif self.current_position < 0:  # Short position
-                if current_price >= self.stop_loss:
-                    # Stop loss hit
-                    action = 1  # Force buy
-                elif current_price <= self.take_profit:
-                    # Take profit hit
-                    action = 1  # Force buy
+            # Only check if we have a position and there's a next bar available
+            if self.current_position != 0 and self.current_step + 1 < len(self.df):
+                next_bar = self.df.iloc[self.current_step + 1]
+                next_high = next_bar["high"]
+                next_low = next_bar["low"]
+                # next_open = next_bar["open"] # Keep for potential future use (e.g., tie-breaking)
 
-        # Calculate unrealized PnL before the action
+                sl_hit = False
+                tp_hit = False
+
+                if self.current_position > 0: # Long position check
+                    if self.stop_loss is not None and next_low <= self.stop_loss:
+                        sl_hit = True
+                    if self.take_profit is not None and next_high >= self.take_profit:
+                        tp_hit = True
+                elif self.current_position < 0: # Short position check
+                    if self.stop_loss is not None and next_high >= self.stop_loss:
+                        sl_hit = True
+                    if self.take_profit is not None and next_low <= self.take_profit:
+                        tp_hit = True
+
+                # Determine exit price and forced action, prioritizing SL
+                if sl_hit:
+                    sl_tp_triggered = True
+                    # Assume fill at SL price. More complex models could use next_open or SL price.
+                    sl_tp_exit_price = self.stop_loss
+                    forced_action = 2 if self.current_position > 0 else 1 # Force close action
+                    # print(f"Debug: SL Hit at step {self.current_step+1}. Price: {sl_tp_exit_price}") # Optional debug
+                elif tp_hit:
+                    sl_tp_triggered = True
+                    # Assume fill at TP price. More complex models could use next_open or TP price.
+                    sl_tp_exit_price = self.take_profit
+                    forced_action = 2 if self.current_position > 0 else 1 # Force close action
+                    # print(f"Debug: TP Hit at step {self.current_step+1}. Price: {sl_tp_exit_price}") # Optional debug
+
+            # ---------------------------------------------------------------------
+
+        # Calculate unrealized PnL *before* the potential trade action
+        # Use current_price from the *current* step for this calculation
         old_unrealized_pnl = 0
         if self.current_position != 0:
             old_unrealized_pnl = (
@@ -1029,19 +1097,28 @@ class BinanceFuturesCryptoEnv(gym.Env):
                 * self.leverage
             )
 
-        # Position direction before action
+        # Position direction before action (used for info dict)
         old_position_direction = (
             1 if self.current_position > 0 else (-1 if self.current_position < 0 else 0)
         )
 
-        # Execute the action
+        # Execute the action (either agent's original 'action' or 'forced_action' from SL/TP)
+        realized_pnl = 0
+        transaction_cost = 0
         if self.live_trading:
+            # Live trading uses its own execution logic which should handle SL/TP via exchange orders
+            # We pass the original agent action here, assuming SL/TP is managed by the executor/exchange.
             self._execute_trade(action, scale_in, scale_out, scale_percentage)
+            # PnL/costs would need to be updated based on executor feedback or API calls
         else:
-            # TODO: Implement scaling in backtesting mode
-            self._handle_backtesting_trade(action, current_price)
+            # Backtesting: Use the potentially forced action and SL/TP exit price.
+            # current_price is used for new entries if SL/TP didn't trigger an exit.
+            realized_pnl, transaction_cost = self._handle_backtesting_trade(
+                forced_action, current_price, exit_price=sl_tp_exit_price
+            )
 
-        # Calculate new unrealized PnL
+        # Calculate new unrealized PnL *after* the trade action
+        # Use current_price from the *current* step
         if self.current_position != 0:
             self.unrealized_pnl = (
                 self.current_position
@@ -1051,17 +1128,8 @@ class BinanceFuturesCryptoEnv(gym.Env):
         else:
             self.unrealized_pnl = 0
 
-        # Calculate realized PnL from trade execution
-        realized_pnl = (
-            old_unrealized_pnl if action != 0 and old_position_direction != 0 else 0
-        )
-
-        # Transaction cost (simplified)
-        transaction_cost = (
-            abs(self.current_position) * current_price * self.commission
-            if action != 0
-            else 0
-        )
+        # Note: realized_pnl and transaction_cost are now directly returned by _handle_backtesting_trade
+        # for backtesting mode. Live mode would need separate handling.
 
         # Update state with new market data
         if not self.live_trading:

@@ -5,6 +5,7 @@ Training script for the Binance Futures RL trading agent.
 import argparse
 import logging
 import os
+import random # Added import
 from datetime import datetime
 
 import numpy as np
@@ -15,6 +16,19 @@ from rl_agent.agent.ppo_agent import PPOAgent
 from rl_agent.environment.trading_env import BinanceFuturesCryptoEnv
 
 logger = logging.getLogger(__name__)
+
+
+def set_seeds(seed_value=42):
+    """Sets random seeds for reproducibility."""
+    random.seed(seed_value)
+    np.random.seed(seed_value)
+    torch.manual_seed(seed_value)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed_value)
+        torch.cuda.manual_seed_all(seed_value) # if using multi-GPU
+        # Optional: uncomment for full determinism (may impact performance)
+        # torch.backends.cudnn.deterministic = True
+        # torch.backends.cudnn.benchmark = False
 
 
 def load_and_preprocess_data(file_path):
@@ -54,9 +68,23 @@ def load_and_preprocess_data(file_path):
         except:
             print(f"Dropping column {column} as it cannot be converted to float")
             df = df.drop(columns=[column])
-    # Replace NaN, inf values with 0
-    df = df.replace([np.inf, -np.inf], np.nan).fillna(0)
-    print(f"Data shape: {df.shape}")
+
+    # Replace inf values with NaN
+    df = df.replace([np.inf, -np.inf], np.nan)
+
+    # Forward fill remaining NaNs (uses last valid observation)
+    df = df.ffill()
+    # Drop any rows that still contain NaNs (typically the initial rows)
+    original_len = len(df)
+    df = df.dropna()
+    new_len = len(df)
+    if original_len > new_len:
+        print(f"Dropped {original_len - new_len} initial rows containing NaNs after ffill.")
+
+    print(f"Data shape after ffill & dropna: {df.shape}")
+    if df.isnull().values.any():
+         print("Error: NaNs still detected after ffill and dropna!") # Should not happen
+
     return df
 
 
@@ -387,6 +415,11 @@ if __name__ == "__main__":
         "--save_path", type=str, default="models", help="Path to save trained model"
     )
     args = parser.parse_args()
+
+    # Set random seeds for reproducibility (using default seed 42 for now)
+    # TODO: Optionally add a --seed argument to parser and use args.seed
+    set_seeds()
+    logger.info("Random seeds set.")
 
     train_agent(
         train_data_path=args.train_data,

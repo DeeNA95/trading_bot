@@ -95,6 +95,7 @@ class FuturesRiskAdjustedReward(RiskAdjustedReward):
         funding_rate_penalty=0.05,
         liquidation_distance_factor=1.0,
         max_leverage=5.0,
+        loss_leverage_factor: float = 0.1, # Factor to amplify losses based on leverage
     ):
         super().__init__(
             trade_penalty=trade_penalty,
@@ -105,6 +106,7 @@ class FuturesRiskAdjustedReward(RiskAdjustedReward):
         )
         self.liquidation_distance_factor = liquidation_distance_factor
         self.max_leverage = max_leverage
+        self.loss_leverage_factor = loss_leverage_factor
 
     def calculate_reward(self, state, action, next_state, info):
         # Extract base information
@@ -123,17 +125,30 @@ class FuturesRiskAdjustedReward(RiskAdjustedReward):
         current_price = info.get("current_price", None)
         position_direction = info.get("position_direction", 0)
 
-        # Adjust reward based on performance and risk
-        risk_multiplier = 1 + max(0, return_pct)
+        # --- Adjust base reward based on PnL and leverage ---
         if raw_return > 0:
-            reward = (raw_return * (1 + leverage / 2)) * risk_multiplier
-        else:
-            reward = raw_return * (1 - leverage / 3)
+            # Optional: Amplify positive returns (consider if this encourages too much risk)
+            # risk_multiplier = 1 + max(0, return_pct) # Original multiplier
+            # reward = (raw_return * (1 + leverage / 2)) * risk_multiplier
+            # Simpler: just use raw return for now
+            reward = raw_return
+        elif raw_return < 0:
+            # Amplify losses based on leverage, ensuring reward stays negative
+            # Factor increases penalty for losses with higher leverage
+            loss_amplification = 1 + (leverage * self.loss_leverage_factor)
+            reward = raw_return * loss_amplification # raw_return is negative, amplification > 1
+        else: # raw_return == 0
+            reward = 0.0
+        # --- End reward adjustment ---
 
+        # Apply penalties
         if is_trade:
             reward -= self.trade_penalty
 
-        leverage_penalty = self.leverage_penalty * (leverage**2) / risk_multiplier
+        # Note: The original leverage penalty was divided by risk_multiplier.
+        # Keeping it simple now by just applying the penalty directly.
+        # Consider if risk_multiplier logic should be applied elsewhere if desired.
+        leverage_penalty = self.leverage_penalty * (leverage**2) # / risk_multiplier
         reward -= leverage_penalty
 
         drawdown_penalty = self.drawdown_penalty * drawdown

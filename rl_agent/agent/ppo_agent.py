@@ -114,6 +114,7 @@ class PPOAgent:
     def __init__(
         self,
         env: BinanceFuturesCryptoEnv,
+        # model_type: str, # Removed: Only using Transformer now
         hidden_dim: int = 128,  # size of first hidden dim
         lr: float = 3e-4,
         gamma: float = 0.99,
@@ -189,7 +190,21 @@ class PPOAgent:
         else:
             self.device = torch.device(device)
 
-        # Optimizer with L2 regularization
+        # Instantiate the ActorCriticTransformer model directly
+        # TODO: Consider making Transformer-specific args (n_heads, n_layers, dropout)
+        # configurable in PPOAgent or passing them if needed. Using defaults for now.
+        self.model = ActorCriticTransformer(
+            input_shape=self.input_shape,
+            action_dim=self.action_dim,
+            hidden_dim=hidden_dim, # Use hidden_dim from PPOAgent args
+            device=self.device
+            # n_heads=8, # Default in ActorCriticTransformer
+            # n_layers=8, # Default in ActorCriticTransformer
+            # dropout=0.25 # Default in ActorCriticTransformer
+        )
+        self.model.to(self.device) # Ensure model is on the correct device
+
+        # Optimizer with L2 regularization (Now uses the instantiated self.model)
         self.optimizer = optim.Adam(
             self.model.parameters(), lr=lr, weight_decay=self.weight_decay
         )

@@ -90,7 +90,6 @@ class DataHandler:
         ctr = 1
         current_start = start_time
         while current_start < end_time:
-            sleep(0.1)
 
             print(f"Fetching chunk {ctr}")
             ctr += 1

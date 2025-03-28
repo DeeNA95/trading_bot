@@ -19,6 +19,8 @@ ta = "*"
 fastparquet = "*"
 gcsfs = "*"
 google-cloud-storage = "*"
+psycopg2-binary="*"
+mlflow="*"
 
 [dev-packages]
 
