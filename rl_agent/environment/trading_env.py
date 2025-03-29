@@ -27,6 +27,7 @@ from .position_sizer import (BinanceFuturesPositionSizer,
                              VolatilityAdjustedPositionSizer)
 # Import local modules
 from .reward import FuturesRiskAdjustedReward
+from .utils import calculate_adaptive_leverage # Added import
 
 
 class BinanceFuturesCryptoEnv(gym.Env):
@@ -288,12 +289,21 @@ class BinanceFuturesCryptoEnv(gym.Env):
         """Initialize Binance Futures account with leverage and margin type."""
         if self.live_trading:
             try:
-                # Set initial leverage
+                # Set initial leverage using the utility function
+                # Ensure volatility is updated first if needed for dynamic leverage
+                if self.dynamic_leverage and self.current_volatility == 0.0:
+                    self._update_volatility() # Make sure volatility is current
+
                 adaptive_leverage = (
-                    self._calculate_adaptive_leverage()
-                    if self.dynamic_leverage
+                    calculate_adaptive_leverage(
+                        volatility=self.current_volatility,
+                        max_leverage=self.max_leverage,
+                        default_leverage=self.leverage
+                    ) if self.dynamic_leverage
                     else self.leverage
                 )
+                # Store the calculated leverage being used
+                self.leverage = adaptive_leverage
 
                 self.client.change_leverage(
                     symbol=self.symbol, leverage=adaptive_leverage, recvWindow=6000
@@ -327,36 +337,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
             except Exception as e:
                 print(f"Error initializing Binance account: {e}")
 
-    def _calculate_adaptive_leverage(self):
-        """Calculate adaptive leverage based on market volatility."""
-        try:
-            # Get volatility if not already calculated
-            if self.current_volatility == 0.0:
-                self._update_volatility()
-
-            # Calculate adaptive leverage - lower leverage when volatility is high
-            # Base formula: max_leverage * (1 / (1 + volatility * volatility_factor))
-            volatility_factor = 5.0  # Adjusts sensitivity to volatility
-
-            if self.current_volatility > 0:
-                adaptive_leverage = max(
-                    1,
-                    min(
-                        self.max_leverage,
-                        int(
-                            self.max_leverage
-                            * (1 / (1 + self.current_volatility * volatility_factor))
-                        ),
-                    ),
-                )
-            else:
-                adaptive_leverage = self.leverage
-
-            return adaptive_leverage
-
-        except Exception as e:
-            print(f"Error calculating adaptive leverage: {e}")
-            return self.leverage
+    # Removed duplicated _calculate_adaptive_leverage method. Using utils.calculate_adaptive_leverage instead.
 
     def _update_volatility(self):
         """Update market volatility calculation."""

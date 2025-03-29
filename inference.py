@@ -266,7 +266,7 @@ class InferenceAgent:
         self.last_update_time = datetime.now() - timedelta(minutes=10)
         self.processed_df = pd.DataFrame()  # Initialize as empty DataFrame instead of None
 
-    def _load_model(self) -> Union[ActorCriticCNN, ActorCriticLSTM, ActorCriticTransformer]:
+    def _load_model(self) -> Union[ActorCriticTransformer]:
         """
         Load the trained model weights and initialize architecture.
 

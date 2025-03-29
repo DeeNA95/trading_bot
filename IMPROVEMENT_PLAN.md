@@ -32,24 +32,27 @@ This document outlines a phased plan to address the issues identified in `PROJEC
 
 **Goal:** Improve the reliability of training and evaluation, add tracking, and refactor code.
 
-7.  **Implement Walk-Forward Validation with Train/Val/Test Splits:**
-    *   **Action:** Refactor `train.py` to use a walk-forward approach. Within each walk-forward step, split the available data into training, validation, and test sets. Use the validation set for hyperparameter optimization (HPO) and model selection (e.g., choosing the best epoch). Use the test set for final, unbiased performance evaluation (backtesting) of the selected model on unseen data.
-    *   **File(s):** `train.py`, potentially `data.py` (for splitting logic)
-8.  **Introduce Experiment Tracking:**
-    *   **Action:** Integrate MLflow or Weights & Biases into the training pipeline (`train.py`, `ppo_agent.py`) to log parameters, metrics, code versions, and model artifacts.
-    *   **File(s):** `train.py`, `ppo_agent.py`
-9.  **Refactor & Centralize Logic:**
-    *   **Action:** Move duplicated `_calculate_adaptive_leverage` logic to a shared utility or pass context appropriately. Review and potentially simplify `FuturesRiskAdjustedReward`.
-    *   **File(s):** `rl_agent/environment/position_sizer.py`, `rl_agent/environment/trading_env.py`, `rl_agent/environment/reward.py`
-10. **Improve Data Pipeline:**
-    *   **Action:** Add data validation checks (gaps, outliers) in `data.py`. Ensure feature calculations avoid lookahead bias (calculate post-split or within env step).
-    *   **File(s):** `data.py`, `train.py`, `rl_agent/environment/trading_env.py`
-11. **Add Unit & Integration Tests:**
+7.  **[COMPLETED] Implement Walk-Forward Validation with Train/Val/Test Splits & Conditional Saving:**
+    *   **Action:** Refactor `train.py` to use a walk-forward approach. Within each walk-forward step, split data into training, validation, and test sets. Train on the training set. Periodically evaluate on the *validation set* and save the best model checkpoint based on validation performance (e.g., highest reward/Sharpe, meeting minimum criteria like positive reward). Use the *test set* only once per fold for final, unbiased performance evaluation of the best model selected via validation. Log validation and test metrics to MLflow.
+    *   **File(s):** `train.py`, `ppo_agent.py`, potentially `data.py` (for splitting logic)
+8.  **[COMPLETED] Introduce Experiment Tracking:**
+    *   **Action:** Integrate MLflow into the training pipeline (`train.py`) to log parameters, metrics per fold, aggregated results, and model artifacts. MLflow server configured with Cloud SQL + GCS.
+    *   **File(s):** `train.py`
+9.  **[COMPLETED] Refactor & Centralize Logic:**
+    *   **Action:** Moved duplicated `_calculate_adaptive_leverage` logic to `rl_agent/environment/utils.py`.
+    *   **File(s):** `rl_agent/environment/position_sizer.py`, `rl_agent/environment/trading_env.py`, `rl_agent/environment/utils.py`
+10. **Improve Data Pipeline & Refactor `data.py`:**
+    *   **Action:** Add data validation checks (gaps, outliers). Ensure feature calculations avoid lookahead bias (calculate post-split or within env step). Remove `calculate_fractal_dimension`. Vectorize `calculate_price_density` for performance. Improve modularity by extracting feature calculations. Externalize hardcoded parameters.
+    *   **File(s):** `data.py`, `train.py`
+11. **Explore Unsupervised Feature Extraction:**
+    *   **Action:** Research and potentially implement unsupervised methods (e.g., Autoencoders, PCA, clustering on returns/volatility) on the training data folds to extract alternative features. Evaluate if these features improve agent performance when added to the observation space.
+    *   **File(s):** Potentially new feature engineering scripts, `data.py`, `train.py`
+12. **Incorporate Alternative Data (e.g., X Sentiment):**
+    *   **Action:** Investigate sources for historical crypto sentiment data derived from X (formerly Twitter). Develop methods to fetch, clean, align (time-synchronize), and integrate this sentiment data as additional features into the observation space. Evaluate its impact on model performance.
+    *   **File(s):** Potentially new data fetching/processing scripts, `data.py`, `train.py`
+13. **Add Unit & Integration Tests:**
     *   **Action:** Create a `tests/` directory. Start adding `pytest` tests for critical functions (reward calculation, position sizing, data processing).
     *   **File(s):** New test files.
-12. **Implement Conditional Model Saving:**
-    *   **Action:** Modify the training loop (`train.py`, `ppo_agent.py`) to evaluate the model periodically on the *validation set*. Only save model checkpoints (e.g., best performing model based on validation reward/Sharpe ratio) if the performance meets a certain criterion (e.g., positive average reward, improvement over previous best). Log evaluation metrics to MLflow.
-    *   **File(s):** `train.py`, `ppo_agent.py`
 
 ## Phase 3: Towards Institutional Standards
 
