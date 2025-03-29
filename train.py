@@ -176,8 +176,9 @@ def train_evaluate_fold(
     initial_balance = args.balance
     risk_reward_ratio = args.risk_reward
     stop_loss_percent = args.stop_loss
+    trade_fee_percent = args.trade_fee # Extract from args
     base_save_path = args.save_path
-    # trade_fee_percent = args.trade_fee # If added as arg
+
 
     # Define fold-specific save path
     fold_save_path = os.path.join(base_save_path, f"fold_{fold_num}")
@@ -199,7 +200,7 @@ def train_evaluate_fold(
         stop_loss_percent=stop_loss_percent,
         dynamic_leverage=dynamic_leverage,
         use_risk_adjusted_rewards=use_risk_adjusted_rewards,
-        # trade_fee_percent=trade_fee_percent, # Using default from env
+        trade_fee_percent=trade_fee_percent, # Pass the fee
     )
     # Validation Env
     val_env = create_environment(
@@ -214,7 +215,7 @@ def train_evaluate_fold(
         stop_loss_percent=stop_loss_percent,
         dynamic_leverage=dynamic_leverage,
         use_risk_adjusted_rewards=use_risk_adjusted_rewards,
-        # trade_fee_percent=trade_fee_percent,
+        trade_fee_percent=trade_fee_percent, # Pass the fee
     )
     # Test Env (created later before final testing)
 
@@ -369,7 +370,7 @@ def train_evaluate_fold(
         stop_loss_percent=stop_loss_percent,
         dynamic_leverage=dynamic_leverage,
         use_risk_adjusted_rewards=use_risk_adjusted_rewards,
-        # trade_fee_percent=trade_fee_percent,
+        trade_fee_percent=trade_fee_percent, # Pass the fee
     )
 
     logger.info(f"Fold {fold_num}: Evaluating best model on test set...")
@@ -466,6 +467,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--stop_loss", type=float, default=0.005, help="Stop loss percentage"
+    )
+    parser.add_argument(
+        "--trade_fee", type=float, default=0.0004, help="Trade fee percentage (e.g., 0.0004 for 0.04%)"
     )
     parser.add_argument(
         "--static_leverage",

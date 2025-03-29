@@ -505,8 +505,8 @@ class DataHandler:
             DataFrame with normalized price-related values and complexity metrics
         """
 
-        df["price_density"] = self.calculate_price_density(df, window)
-        # df["fractal_dimension"] = self.calculate_fractal_dimension(df, window)
+        # Removed call to calculate_price_density (line 508). It's called separately in train.py now.
+        # df["fractal_dimension"] = self.calculate_fractal_dimension(df, window) # Already removed
         # Calculate rolling mean and standard deviation
         rolling_mean = df["close"].rolling(window=window).mean()
         rolling_std = df["close"].rolling(window=window).std()
