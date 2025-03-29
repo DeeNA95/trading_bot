@@ -66,8 +66,12 @@ def load_and_preprocess_data(file_path):
             "bearish_reversal": -0.5,
         }
         df["trade_setup"] = df["trade_setup"].map(setup_mapping)
+        # Explicitly convert to float after mapping, handle potential NaNs from unmapped values
+        df["trade_setup"] = pd.to_numeric(df["trade_setup"], errors='coerce')
 
-    # Convert all object/string columns to float
+
+    # Convert all remaining object/string columns to float
+    # Note: trade_setup should no longer be 'object' type after the above conversion
     for column in df.select_dtypes(include=["object"]).columns:
         try:
             df[column] = df[column].astype(float)
