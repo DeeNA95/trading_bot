@@ -741,11 +741,69 @@ class DataHandler:
         split_data=False,
         test_ratio=0.2,
         validation_ratio=0.0,
-    ): # Removed process_market_data method. Orchestration moved to train.py
-        pass # Keep method signature temporarily to avoid breaking calls? Or remove entirely. Let's remove.
+    ):
+        """
+        Fetch, process, and optionally split market data for a given symbol and interval.
+        This method now includes the full feature calculation pipeline needed for inference.
+        """
+        logger.info(f"Processing market data for {symbol} from {start_time} to {end_time}")
 
-    # Removed process_market_data method (lines ~744-838).
-    # Feature calculation orchestration is now handled in train.py within the walk-forward loop.
+        # 1. Fetch raw klines data
+        df = self.get_futures_data(symbol, interval, start_time, end_time)
+        if df.empty:
+            logger.error("Failed to fetch raw klines data.")
+            return pd.DataFrame() # Return empty df if fetch fails
+
+        # 2. Add futures-specific metrics (Funding, OI, Liquidations)
+        # Note: Ensure start_time and end_time are appropriate for these metrics
+        df = self.add_futures_metrics(df, symbol, interval, start_time, end_time)
+
+        # 3. Calculate Technical Indicators
+        df = DataHandler.calculate_technical_indicators(df) # Use static call
+
+        # 4. Calculate Risk Metrics
+        # Assuming window_size is needed - how to get it here? Use a default or pass it?
+        # Let's use a default window size consistent with typical usage, e.g., 60 for 1m
+        # TODO: Consider passing window_size as an argument if needed for consistency
+        default_window_size = 60 # Example default
+        df = DataHandler.calculate_risk_metrics(df, interval=interval, window_size=default_window_size) # Use static call
+
+        # 5. Identify Trade Setups
+        df = DataHandler.identify_trade_setups(df) # Use static call
+
+        # 6. Calculate Price Density
+        df = DataHandler.calculate_price_density(df, window=default_window_size) # Use static call
+
+        # 7. Normalize OHLC and other price-related features
+        df = self.normalise_ohlc(df, window=default_window_size)
+
+        # 8. Final clean-up: Forward fill and drop NaNs introduced by calculations
+        logger.info(f'Successfully updated market data with {(df.columns.tolist())} features')
+
+        original_len = len(df)
+        df = df.ffill().dropna()
+        new_len = len(df)
+        if original_len > new_len:
+            logger.info(f"Dropped {original_len - new_len} rows containing NaNs after feature calculation.")
+
+        if df.empty:
+            logger.error("DataFrame became empty after feature calculation and dropna.")
+            return pd.DataFrame()
+
+        logger.info(f"Finished processing data. Shape: {df.shape}")
+
+        # 9. Save data if path provided
+        if save_path:
+            self.save_data_to_csv(df, save_path)
+
+        # 10. Split data if requested (less common for pure inference, but kept for consistency)
+        if split_data:
+            return self.split_data_train_test(df, test_ratio, validation_ratio)
+        else:
+            return df
+
+    # Removed process_market_data method (lines ~744-838). # <-- This comment is now outdated
+    # Feature calculation orchestration is now handled in train.py within the walk-forward loop. # <-- This comment is now outdated
 
     def save_data_to_csv(self, df, file_path): # Keep save method for now if needed elsewhere
         """Save DataFrame to CSV."""

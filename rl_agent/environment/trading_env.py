@@ -29,7 +29,7 @@ from .position_sizer import (BinanceFuturesPositionSizer,
 from .reward import FuturesRiskAdjustedReward
 from .utils import calculate_adaptive_leverage # Added import
 
-
+logger = logging.getLogger(__name__)
 class BinanceFuturesCryptoEnv(gym.Env):
     """
     Enhanced cryptocurrency trading environment for Binance Futures BTCUSDT.
@@ -278,7 +278,57 @@ class BinanceFuturesCryptoEnv(gym.Env):
                     unrealized_pnl.reshape(-1, 1),
                 )
             )
-            self.state = combined_data.astype(np.float32)
+            # Attempt conversion, drop problematic columns if it fails
+            try:
+                self.state = combined_data.astype(np.float32)
+            except ValueError as e:
+                logger.warning(f"Initial state conversion failed: {e}. Attempting to drop problematic columns...")
+                # TODO: Fix root cause of non-numeric data (e.g., 'none' string in 'trade_setup') upstream.
+                # This block is a temporary workaround.
+
+                import pandas as pd # Import locally for this block
+                df_check = pd.DataFrame(combined_data)
+                is_numeric = df_check.apply(lambda s: pd.to_numeric(s, errors='coerce').notna().all())
+                problematic_cols_indices = [i for i, numeric in enumerate(is_numeric) if not numeric]
+
+                if problematic_cols_indices:
+                    logger.warning(f"Dropping non-numeric columns at indices: {problematic_cols_indices}")
+                    combined_data_cleaned = np.delete(combined_data, problematic_cols_indices, axis=1)
+                    try:
+                        self.state = combined_data_cleaned.astype(np.float32)
+                        logger.info(f"State created successfully after dropping columns. New state shape: {self.state.shape}")
+
+                        # --- IMPORTANT: Redefine observation space based on the new shape ---
+                        # Assuming the original definition was something like:
+                        # num_features = df.shape[1] # Original number of features from input df
+                        # state_shape = (window_size, num_features + 3) # + balance, position, pnl
+                        # We need to adjust the number of features based on dropped columns
+                        new_num_features = self.state.shape[1] # Get the actual number of columns in the final state
+                        original_space_low = self.observation_space.low
+                        original_space_high = self.observation_space.high
+
+                        # Create new bounds based on the new shape.
+                        # Assuming original bounds were uniform, replicate for the new shape.
+                        # If bounds were feature-specific, this needs more complex logic.
+                        new_low = np.full((self.window_size, new_num_features), original_space_low.flat[0], dtype=np.float32)
+                        new_high = np.full((self.window_size, new_num_features), original_space_high.flat[0], dtype=np.float32)
+
+                        self.observation_space = gym.spaces.Box(
+                            low=new_low,
+                            high=new_high,
+                            dtype=np.float32,
+                        )
+                        logger.warning(f"Observation space redefined to shape: {self.observation_space.shape}")
+                        # --- End Observation Space Redefinition ---
+
+                    except ValueError as e2:
+                        logger.error(f"State conversion failed EVEN AFTER dropping columns: {e2}")
+                        logger.error("Problematic data likely persists or is widespread. Cannot initialize state.")
+                        # Raise the error or handle appropriately (e.g., set state to zeros and hope?)
+                        raise e2 # Re-raise the error as we can't recover
+                else:
+                    logger.error("ValueError occurred but could not identify problematic columns. Raising original error.")
+                    raise e # Re-raise original error if columns weren't identified
         else:
             # For live trading, create an empty state that will be filled later
             self.state = np.zeros(
@@ -1243,7 +1293,53 @@ class BinanceFuturesCryptoEnv(gym.Env):
                     unrealized_pnl.reshape(-1, 1),
                 )
             )
-            self.state = combined_data.astype(np.float32)
+            try:
+                self.state = combined_data.astype(np.float32)
+            except ValueError as e:
+                logger.warning(f"Initial state conversion failed: {e}. Attempting to drop problematic columns...")
+                # TODO: Fix root cause of non-numeric data (e.g., 'none' string in 'trade_setup') upstream.
+                # This block is a temporary workaround.
+
+                import pandas as pd # Import locally for this block
+                df_check = pd.DataFrame(combined_data)
+                is_numeric = df_check.apply(lambda s: pd.to_numeric(s, errors='coerce').notna().all())
+                problematic_cols_indices = [i for i, numeric in enumerate(is_numeric) if not numeric]
+
+                if problematic_cols_indices:
+                    logger.warning(f"Dropping non-numeric columns at indices: {problematic_cols_indices}")
+                    combined_data_cleaned = np.delete(combined_data, problematic_cols_indices, axis=1)
+                    try:
+                        self.state = combined_data_cleaned.astype(np.float32)
+                        logger.info(f"State created successfully after dropping columns. New state shape: {self.state.shape}")
+
+                        # --- IMPORTANT: Redefine observation space based on the new shape ---
+                        # Assuming the original definition was something like:
+                        # num_features = df.shape[1] # Original number of features from input df
+                        # state_shape = (window_size, num_features + 3) # + balance, position, pnl
+                        # We need to adjust the number of features based on dropped columns
+                        new_num_features = self.state.shape[1] # Get the actual number of columns in the final state
+                        original_space_low = self.observation_space.low
+                        original_space_high = self.observation_space.high
+
+                        # Create new bounds based on the new shape.
+                        # Assuming original bounds were uniform, replicate for the new shape.
+                        # If bounds were feature-specific, this needs more complex logic.
+                        new_low = np.full((self.window_size, new_num_features), original_space_low.flat[0], dtype=np.float32)
+                        new_high = np.full((self.window_size, new_num_features), original_space_high.flat[0], dtype=np.float32)
+
+                        self.observation_space = gym.spaces.Box(
+                            low=new_low,
+                            high=new_high,
+                            dtype=np.float32,
+                        )
+                        logger.warning(f"Observation space redefined to shape: {self.observation_space.shape}")
+                        # --- End Observation Space Redefinition ---
+
+                    except ValueError as e2:
+                        logger.error(f"State conversion failed EVEN AFTER dropping columns: {e2}")
+                        logger.error("Problematic data likely persists or is widespread. Cannot initialize state.")
+                        # Raise the error or handle appropriately (e.g., set state to zeros and hope?)
+                        raise e2 # Re-raise the error as we can't recover
 
         else:
             # For live trading, fetch data from Binance API
@@ -1290,8 +1386,53 @@ class BinanceFuturesCryptoEnv(gym.Env):
                     unrealized_pnl.reshape(-1, 1),
                 )
             )
-            self.state = combined_data.astype(np.float32)
+            try:
+                self.state = combined_data.astype(np.float32)
+            except ValueError as e:
+                logger.warning(f"Initial state conversion failed: {e}. Attempting to drop problematic columns...")
+                # TODO: Fix root cause of non-numeric data (e.g., 'none' string in 'trade_setup') upstream.
+                # This block is a temporary workaround.
 
+                import pandas as pd # Import locally for this block
+                df_check = pd.DataFrame(combined_data)
+                is_numeric = df_check.apply(lambda s: pd.to_numeric(s, errors='coerce').notna().all())
+                problematic_cols_indices = [i for i, numeric in enumerate(is_numeric) if not numeric]
+
+                if problematic_cols_indices:
+                    logger.warning(f"Dropping non-numeric columns at indices: {problematic_cols_indices}")
+                    combined_data_cleaned = np.delete(combined_data, problematic_cols_indices, axis=1)
+                    try:
+                        self.state = combined_data_cleaned.astype(np.float32)
+                        logger.info(f"State created successfully after dropping columns. New state shape: {self.state.shape}")
+
+                        # --- IMPORTANT: Redefine observation space based on the new shape ---
+                        # Assuming the original definition was something like:
+                        # num_features = df.shape[1] # Original number of features from input df
+                        # state_shape = (window_size, num_features + 3) # + balance, position, pnl
+                        # We need to adjust the number of features based on dropped columns
+                        new_num_features = self.state.shape[1] # Get the actual number of columns in the final state
+                        original_space_low = self.observation_space.low
+                        original_space_high = self.observation_space.high
+
+                        # Create new bounds based on the new shape.
+                        # Assuming original bounds were uniform, replicate for the new shape.
+                        # If bounds were feature-specific, this needs more complex logic.
+                        new_low = np.full((self.window_size, new_num_features), original_space_low.flat[0], dtype=np.float32)
+                        new_high = np.full((self.window_size, new_num_features), original_space_high.flat[0], dtype=np.float32)
+
+                        self.observation_space = gym.spaces.Box(
+                            low=new_low,
+                            high=new_high,
+                            dtype=np.float32,
+                        )
+                        logger.warning(f"Observation space redefined to shape: {self.observation_space.shape}")
+                        # --- End Observation Space Redefinition ---
+
+                    except ValueError as e2:
+                        logger.error(f"State conversion failed EVEN AFTER dropping columns: {e2}")
+                        logger.error("Problematic data likely persists or is widespread. Cannot initialize state.")
+                        # Raise the error or handle appropriately (e.g., set state to zeros and hope?)
+                        raise e2 # Re-raise the error as we can't recover
             # Update date for reference
             self.date = datetime.now()
 

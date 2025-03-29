@@ -248,10 +248,7 @@ class PPOAgent:
         # Get action probabilities and value from model
         with torch.no_grad():
             try:
-                if isinstance(self.model, ActorCriticLSTM):
-                    logits, value = self.model(state_tensor, reset_hidden=False)
-                else:
-                    logits, value = self.model(state_tensor)
+                logits, value = self.model(state_tensor)
 
                 # Check for NaN values in logits
                 if torch.isnan(logits).any() or torch.isinf(logits).any():
@@ -306,11 +303,7 @@ class PPOAgent:
         states = torch.clamp(states, min=-10.0, max=10.0)
 
         try:
-            # Forward pass through model
-            if isinstance(self.model, ActorCriticLSTM):
-                logits, values = self.model(states, reset_hidden=True)
-            else:
-                logits, values = self.model(states)
+            logits, values = self.model(states)
 
             # Check for NaN values
             if torch.isnan(logits).any() or torch.isinf(logits).any():
@@ -563,9 +556,7 @@ class PPOAgent:
             episode_reward = 0
             step = 0
 
-            # Reset LSTM hidden state if using LSTM
-            if isinstance(self.model, ActorCriticLSTM):
-                self.model.reset_hidden_state()
+
 
             # Create episode step progress bar
             episode_pbar = tqdm(total=max_steps, desc=f"Episode {episode}", leave=False)
@@ -694,19 +685,15 @@ class PPOAgent:
             episode_reward = 0
             step = 0
 
-            # Reset LSTM hidden state if using LSTM
-            if isinstance(self.model, ActorCriticLSTM):
-                self.model.reset_hidden_state()
+
 
             while not (done or truncated):
                 # Choose action (no exploration)
                 with torch.no_grad():
                     state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
 
-                    if isinstance(self.model, ActorCriticLSTM):
-                        logits, _ = self.model(state_tensor, reset_hidden=False)
-                    else:
-                        logits, _ = self.model(state_tensor)
+
+                    logits, _ = self.model(state_tensor)
 
                     action_probs = torch.softmax(logits, dim=-1)
                     action = torch.argmax(action_probs, dim=1).item()

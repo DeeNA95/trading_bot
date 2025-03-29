@@ -21,8 +21,7 @@ from dotenv import load_dotenv
 from google.cloud import secretmanager, storage
 
 from data import DataHandler
-from rl_agent.agent.models import (ActorCriticCNN, ActorCriticLSTM,
-                                   ActorCriticTransformer)
+from rl_agent.agent.models import (ActorCriticTransformer)
 from rl_agent.environment.execution import BinanceFuturesExecutor
 
 # Load environment variables
@@ -306,7 +305,7 @@ class InferenceAgent:
 
             # Extract model configuration
             model_config = state_dict.get('model_config', {})
-            input_dim = model_config.get('input_dim', 55)  # Default to standard feature dim
+            input_dim = model_config.get('input_dim', 54)  # Default to standard feature dim
             hidden_dim = model_config.get('hidden_dim', 128)
 
 
@@ -376,7 +375,6 @@ class InferenceAgent:
                 return False
 
             self.last_update_time = current_time
-            logger.info(f'Successfully updated market data with {len(self.processed_df.columns)} features')
             return True
 
         except Exception as e:
@@ -444,6 +442,9 @@ class InferenceAgent:
                 else:
                     data[col] = pd.to_numeric(data[col], errors='coerce').fillna(0)
 
+            # --- Debug: Log final columns before conversion ---
+            logger.info(f"Columns in final state DataFrame: {data.columns.tolist()}")
+            # --- End Debug ---
 
             # Convert to numpy array and handle any remaining NaN values
             state = data.values.astype(np.float32)

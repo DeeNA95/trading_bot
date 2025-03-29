@@ -231,18 +231,17 @@ def train_evaluate_fold(
         batch_size=batch_size,
         save_dir=fold_save_path, # Use fold-specific path
         # Pass other relevant hyperparameters from args if needed
-        lr=args.lr, # Example if lr was an arg
-        gamma=args.gamma,
-        gae_lambda=args.gae_lambda,
-        policy_clip=args.policy_clip,
-        n_epochs=args.n_epochs,
-        entropy_coef=args.entropy_coef,
-        value_coef=args.value_coef,
-        max_grad_norm=args.max_grad_norm,
-        # device=args.device, # Using auto device
-        use_gae=args.use_gae,
-        normalize_advantage=args.normalize_advantage,
-        weight_decay=args.weight_decay,
+        # gamma=args.gamma,
+        # gae_lambda=args.gae_lambda,
+        # policy_clip=args.policy_clip,
+        # n_epochs=args.n_epochs,
+        # entropy_coef=args.entropy_coef,
+        # value_coef=args.value_coef,
+        # max_grad_norm=args.max_grad_norm,
+        # # device=args.device, # Using auto device
+        # use_gae=args.use_gae,
+        # normalize_advantage=args.normalize_advantage,
+        # weight_decay=args.weight_decay,
     )
 
     # --- Training Loop with Validation ---
@@ -329,7 +328,7 @@ def train_evaluate_fold(
             # Conditional Saving Logic
             # Define 'better' score (e.g., higher reward)
             # Define minimum acceptable score (e.g., positive reward)
-            MIN_ACCEPTABLE_VAL_SCORE = 0.0 # Example threshold - Make configurable?
+            MIN_ACCEPTABLE_VAL_SCORE = -140.0 # Example threshold - Make configurable?
             if val_reward > best_val_score and val_reward >= MIN_ACCEPTABLE_VAL_SCORE:
                 best_val_score = val_reward
                 best_val_episode = episode + 1
