@@ -15,9 +15,11 @@ from sklearn.model_selection import TimeSeriesSplit # Added import
 import mlflow # Added import
 import mlflow.pytorch # Added import for model logging
 import tqdm
+from tqdm import tqdm # Explicit import for progress bar usage
 
 from rl_agent.agent.ppo_agent import PPOAgent
 from rl_agent.environment.trading_env import BinanceFuturesCryptoEnv
+from data import DataHandler # Added import
 
 logger = logging.getLogger(__name__)
 
@@ -423,13 +425,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--window", type=int, default=60, help="Observation window size"
     )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="transformer",
-        choices=["cnn", "lstm", "transformer"],
-        help="Model architecture",
-    )
+    # parser.add_argument( # Removed: Model type is hardcoded to Transformer in PPOAgent
+    #     "--model",
+    #     type=str,
+    #     default="transformer",
+    #     choices=["cnn", "lstm", "transformer"],
+    #     help="Model architecture",
+    # )
     parser.add_argument("--leverage", type=int, default=20, help="Trading leverage")
     parser.add_argument(
         "--episodes", type=int, default=500, help="Number of training episodes"
@@ -574,6 +576,52 @@ if __name__ == "__main__":
             logger.info(f"Train period: {train_df.index.min()} to {train_df.index.max()}")
             logger.info(f"Val period:   {val_df.index.min()} to {val_df.index.max()}")
             logger.info(f"Test period:  {test_df.index.min()} to {test_df.index.max()}")
+            # Log data params to nested run
+            mlflow.log_param("fold_train_size", len(train_df))
+            mlflow.log_param("fold_val_size", len(val_df))
+            mlflow.log_param("fold_test_size", len(test_df))
+
+
+        # --- Feature Calculation (Post-Split) ---
+        logger.info(f"Fold {fold_num}: Calculating features for Train/Val/Test sets...")
+        # Apply feature calculations to each slice independently
+        # TODO: Add error handling for feature calculation
+        # TODO: Externalize parameters for these functions (window sizes etc.)
+        # TODO: Decide if futures metrics (add_futures_metrics) are needed and how to handle them post-split
+        #       (requires DataHandler instance and careful time alignment - potentially complex)
+        train_df = DataHandler.calculate_technical_indicators(train_df.copy())
+        train_df = DataHandler.calculate_risk_metrics(train_df.copy(), interval=args.interval, window_size=args.window) # Pass interval/window?
+        train_df = DataHandler.identify_trade_setups(train_df.copy())
+        train_df = DataHandler.calculate_price_density(train_df.copy(), window=args.window) # Pass window?
+        train_df = DataHandler.normalise_ohlc(train_df.copy(), window=args.window) # Pass window?
+
+        val_df = DataHandler.calculate_technical_indicators(val_df.copy())
+        val_df = DataHandler.calculate_risk_metrics(val_df.copy(), interval=args.interval, window_size=args.window)
+        val_df = DataHandler.identify_trade_setups(val_df.copy())
+        val_df = DataHandler.calculate_price_density(val_df.copy(), window=args.window)
+        val_df = DataHandler.normalise_ohlc(val_df.copy(), window=args.window)
+
+        test_df = DataHandler.calculate_technical_indicators(test_df.copy())
+        test_df = DataHandler.calculate_risk_metrics(test_df.copy(), interval=args.interval, window_size=args.window)
+        test_df = DataHandler.identify_trade_setups(test_df.copy())
+        test_df = DataHandler.calculate_price_density(test_df.copy(), window=args.window)
+        test_df = DataHandler.normalise_ohlc(test_df.copy(), window=args.window)
+
+        # Important: Re-apply ffill().dropna() after feature calculation as indicators introduce NaNs
+        logger.info(f"Fold {fold_num}: Applying final ffill/dropna after feature calculation...")
+        train_df = train_df.ffill().dropna()
+        val_df = val_df.ffill().dropna()
+        test_df = test_df.ffill().dropna()
+
+        # Check if data remains after processing
+        if train_df.empty or val_df.empty or test_df.empty:
+            logger.error(f"Fold {fold_num}: Dataframe became empty after feature calculation/dropna. Skipping fold.")
+            mlflow.log_metric("fold_skipped_post_feature_calc", 1.0)
+            continue # Skip to next fold
+
+        logger.info(f"Fold {fold_num}: Final Train size={len(train_df)}, Val size={len(val_df)}, Test size={len(test_df)}")
+        # --- End Feature Calculation ---
+
 
         # Call the refactored training and evaluation function for this fold
         fold_test_metrics, fold_training_info = train_evaluate_fold(

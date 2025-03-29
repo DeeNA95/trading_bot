@@ -161,7 +161,8 @@ class DataHandler:
         logger.info(f"Retrieved {len(combined_data)} data points for {symbol}.")
         return combined_data
 
-    def calculate_technical_indicators(self, df):
+    @staticmethod
+    def calculate_technical_indicators(df):
         """
         Calculate a set of technical indicators: SMA, RSI, Bollinger Bands, MACD,
         Stochastic Oscillator, ATR, and ADX.
@@ -250,13 +251,14 @@ class DataHandler:
         logging.info("Calculating technical indicators...")
         return result
 
-    def calculate_risk_metrics(self, df, interval="1h", window_size=60):
+    @staticmethod
+    def calculate_risk_metrics(df, interval="1h", window_size=60):
         """
         Calculate risk-related metrics: volatility, VaR, CVaR, max drawdown,
         Sharpe, Sortino, and Calmar ratios.
         """
         # Determine window size based on interval
-        periods_per_day = self.get_periods_per_day(interval)
+        periods_per_day = DataHandler.get_periods_per_day(interval) # Use static call
 
         window = min(
             window_size, int(24 * periods_per_day)
@@ -320,7 +322,7 @@ class DataHandler:
 
         result["calmar_ratio"] = (
             result["timely_return"].rolling(window=window).mean()
-            * (365 * 24 / self.get_periods_per_day(interval))
+            * (365 * 24 / DataHandler.get_periods_per_day(interval)) # Use static call
         ) / result["max_drawdown"].abs()
 
         # Calculate efficiency ratio
@@ -332,6 +334,7 @@ class DataHandler:
         logger.info("Calculating risk metrics...")
         return result
 
+    # Note: This helper is used by calculate_risk_metrics, making it static too.
     @staticmethod
     def get_periods_per_day(interval):
         """Helper function to calculate periods per day for a given interval"""
@@ -347,7 +350,8 @@ class DataHandler:
         else:
             return 1
 
-    def identify_trade_setups(self, df):
+    @staticmethod
+    def identify_trade_setups(df):
         """
         Identify potential trade setups using trend, momentum, volatility, and strength signals.
         """
@@ -366,7 +370,8 @@ class DataHandler:
             "minus_di",
         ]:
             if col not in result.columns:
-                result = self.calculate_technical_indicators(result)
+                # Call the static method directly using the class name
+                result = DataHandler.calculate_technical_indicators(result)
                 break
 
         # Initialize signals
@@ -427,7 +432,8 @@ class DataHandler:
         logging.info("Identifying trade setups...")
         return result
 
-    def calculate_price_density(self, df, window=20, bins=10):
+    @staticmethod
+    def calculate_price_density(df, window=20, bins=10):
         """
         Calculate price density using a rolling window
 
@@ -437,116 +443,56 @@ class DataHandler:
             bins: Number of price bins for density calculation (default: 10)
 
         Returns:
-            Series with price density values
+            DataFrame with 'price_density' column added.
         """
-        # Calculate price density for the entire DataFrame
-        result = pd.Series(index=df.index, dtype=float)
-        close_values = df["close"].values
+        # Define the helper function to apply to each rolling window
+        def _calculate_density_for_window(window_data: np.ndarray, min_periods: int, num_bins: int) -> float:
+            # Check if enough non-NaN values exist in the window
+            # Note: rolling().apply() handles min_periods, but we double-check
+            # or handle cases where the window might contain NaNs passed by `apply`
+            valid_data = window_data[~np.isnan(window_data)]
+            if len(valid_data) < min_periods:
+                return np.nan
 
-        # For each position in the DataFrame
-        for i in range(len(df)):
-            # Skip positions that don't have enough data for the window
-            if i < window:
-                result.iloc[i] = np.nan
-                continue
-
-            # Extract the window of data
-            window_data = close_values[i - window : i]
-
-            # Skip if there's not enough data
-            if len(window_data) < window / 2:
-                result.iloc[i] = np.nan
-                continue
-
-            # Create histogram of prices in the window
             try:
-                hist, _ = np.histogram(window_data, bins=bins)
-                # Calculate density as the proportion of populated bins
+                # Ensure there's variation for histogram bins
+                if np.nanmax(valid_data) == np.nanmin(valid_data):
+                    # If all values are the same, density is concentrated in one bin (or 1/bins if we consider range)
+                    # Let's return 1/bins as it occupies one bin.
+                    return 1.0 / num_bins
+
+                hist, _ = np.histogram(valid_data, bins=num_bins)
                 populated_bins = np.sum(hist > 0)
-                result.iloc[i] = populated_bins / bins
-            except Exception:
-                # Handle any numerical issues
-                result.iloc[i] = np.nan
+                density = populated_bins / num_bins
+                return density
+            except Exception as e:
+                # Handle potential numerical issues during histogram calculation
+                # logger.warning(f"Could not calculate density for window: {e}") # Requires logger setup
+                return np.nan
 
-        return result
+        # Apply the function over a rolling window on the 'close' prices
+        # Ensure window size is at least 2 for histogram
+        eff_window = max(2, window)
+        min_periods_check = max(1, eff_window // 2) # Minimum valid data points needed in window
 
-    def calculate_fractal_dimension(self, df, window=20):
-        """
-        Calculate fractal dimension of price movements using box-counting method
+        # Use functools.partial to pass extra arguments to the apply function
+        from functools import partial
+        density_calculator = partial(_calculate_density_for_window, min_periods=min_periods_check, num_bins=bins)
 
-        Args:
-            df: DataFrame containing OHLC data
-            window: Size of the rolling window (default: 20)
+        # Apply using raw=True for performance (passes numpy arrays)
+        df['price_density'] = df['close'].rolling(window=eff_window, min_periods=min_periods_check).apply(density_calculator, raw=True)
 
-        Returns:
-            Series with fractal dimension values
-        """
-        # Calculate fractal dimension for the entire DataFrame
-        result = pd.Series(index=df.index, dtype=float)
-        close_values = df["close"].values
+        # Optional: Log number of NaNs created if logger is available
+        # nan_count = df['price_density'].isnull().sum()
+        # if nan_count > 0:
+        #     logger.info(f"Price density calculation resulted in {nan_count} NaN values (likely due to insufficient window data).")
 
-        # For each position in the DataFrame
-        for i in range(len(df)):
-            # Skip positions that don't have enough data for the window
-            if i < window:
-                result.iloc[i] = np.nan
-                continue
+        return df
 
-            # Extract the window of data
-            window_data = close_values[i - window : i]
+    # Removed calculate_fractal_dimension method as requested.
 
-            # Skip if there's not enough data
-            if len(window_data) < window / 2:
-                result.iloc[i] = np.nan
-                continue
-
-            # Normalize the window data to [0,1] range
-            min_val = np.min(window_data)
-            max_val = np.max(window_data)
-            if max_val == min_val:
-                result.iloc[i] = 1.0  # Flat line has dimension 1
-                continue
-
-            norm_data = (window_data - min_val) / (max_val - min_val)
-
-            # Use box-counting with multiple scales
-            scales = [2, 4, 8, 16]
-            log_counts = []
-            log_scales = []
-
-            for scale in scales:
-                if scale >= len(norm_data):
-                    continue
-
-                # Count boxes at this scale
-                box_count = 0
-                for j in range(0, scale):
-                    box_min = j / scale
-                    box_max = (j + 1) / scale
-                    # Check if any price falls within this box
-                    if np.any((norm_data >= box_min) & (norm_data < box_max)):
-                        box_count += 1
-
-                if box_count > 0:
-                    log_counts.append(np.log(box_count))
-                    log_scales.append(np.log(scale))
-
-            # Need at least 2 valid scales to calculate slope
-            if len(log_counts) < 2:
-                result.iloc[i] = np.nan
-                continue
-
-            # Linear regression to find the fractal dimension
-            try:
-                slope, _, _, _, _ = np.polyfit(log_scales, log_counts, 1, full=True)
-                result.iloc[i] = slope
-            except Exception:
-                # Handle any numerical issues
-                result.iloc[i] = np.nan
-
-        return result
-
-    def normalise_ohlc(self, df, window=20):
+    @staticmethod
+    def normalise_ohlc(df, window=20):
         """
         Normalise price-related columns of a dataframe using a rolling window and
         calculate additional complexity metrics
@@ -795,103 +741,13 @@ class DataHandler:
         split_data=False,
         test_ratio=0.2,
         validation_ratio=0.0,
-    ):
-        """
-        Comprehensive function to retrieve futures data, add all metrics (technical,
-        risk, and futures-specific), and fill missing values.
+    ): # Removed process_market_data method. Orchestration moved to train.py
+        pass # Keep method signature temporarily to avoid breaking calls? Or remove entirely. Let's remove.
 
-        Args:
-            symbol: Trading symbol (e.g., 'BTCUSDT')
-            interval: Data interval (e.g., '15m', '1h')
-            start_time: Start time for data collection (default: depends on interval)
-            end_time: End time for data collection (default: current time)
-            save_path: Path to save processed data (optional)
-            split_data: Whether to split data into training and test sets (default: False)
-            test_ratio: Ratio of data to use for testing (default: 0.2)
-            validation_ratio: Ratio of data to use for validation (default: 0.0)
+    # Removed process_market_data method (lines ~744-838).
+    # Feature calculation orchestration is now handled in train.py within the walk-forward loop.
 
-        Returns:
-            If split_data is False: DataFrame containing processed data
-            If split_data is True: Dictionary containing train, test, and optionally validation DataFrames
-        """
-        if end_time is None:
-            end_time = datetime.now()
-        if start_time is None:
-            start_time = (
-                end_time - timedelta(days=7)
-                if interval == "1m"
-                else end_time - timedelta(days=60)
-            )
-        # Fetch raw data
-        df = self.get_futures_data(
-            symbol, interval, start_time, end_time
-        )  # Pass start_time and end_time correctly
-        if df.empty:
-            logging.warning(f"No data retrieved for {symbol}.")
-            raise ValueError(f"No data retrieved for {symbol}.")
-
-
-        # Calculate technical indicators
-        df = self.calculate_technical_indicators(df)
-
-        # Add futures-specific metrics
-        df = self.add_futures_metrics(
-            df, symbol, interval, start_time, end_time
-        )  # Pass end_time correctly
-
-        # Calculate risk metrics
-        df = self.calculate_risk_metrics(df, interval)
-        logging.debug(f"Data after calculating risk metrics:\n{df.head()}")
-
-        # Identify trade setups
-        df = self.identify_trade_setups(df)
-        logging.debug(f"Data after identifying trade setups:\n{df.head()}")
-
-        # Normalize OHLC data
-        df = self.normalise_ohlc(df)
-        logging.debug(f"Data after normalizing OHLC:\n{df.head()}")
-
-        # Fill missing values
-        df = df.ffill().bfill()
-        logging.debug(f"Data after filling missing values:\n{df.head()}")
-
-        # Check for NaN values
-        if df.isnull().values.any():
-            logging.warning(f"NaN values found in data:\n{df.isnull().sum()}")
-
-        if save_path:
-            # Base filename without extension
-            base_path = save_path.rsplit(".", 1)[0] if "." in save_path else save_path
-
-            if split_data:
-                # Split the data
-                split_sets = self.split_data_train_test(
-                    df, test_ratio, validation_ratio
-                )
-
-                # Save each split
-                for split_name, split_df in split_sets.items():
-                    split_path = f"{base_path}_{split_name}.csv"
-                    self.save_data_to_csv(split_df, split_path)
-                    logging.info(f"{split_name.title()} data saved to {split_path}")
-
-                # Return the split datasets
-                return split_sets
-            else:
-                # Save the whole dataset
-                self.save_data_to_csv(df, save_path)
-                logging.info(f"Data with metrics saved to {save_path}")
-
-                # Return the full dataset
-                return df
-
-        # If no save path is provided, just return the model data
-        if split_data:
-            return self.split_data_train_test(df, test_ratio, validation_ratio)
-        else:
-            return df
-
-    def save_data_to_csv(self, df, file_path):
+    def save_data_to_csv(self, df, file_path): # Keep save method for now if needed elsewhere
         """Save DataFrame to CSV."""
 
         if file_path.startswith("gs://"):

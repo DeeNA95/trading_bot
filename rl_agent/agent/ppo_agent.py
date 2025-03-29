@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 from rl_agent.environment.trading_env import BinanceFuturesCryptoEnv
 
-from .models import ActorCriticCNN, ActorCriticLSTM, ActorCriticTransformer
+from .models import  ActorCriticTransformer
 
 
 class PPOMemory:

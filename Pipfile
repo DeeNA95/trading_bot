@@ -20,7 +20,8 @@ fastparquet = "*"
 gcsfs = "*"
 google-cloud-storage = "*"
 psycopg2-binary="*"
-mlflow="*"
+mlflow = "*"
+scikit-learn = "*"
 
 [dev-packages]
 

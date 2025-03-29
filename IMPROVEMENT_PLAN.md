@@ -41,8 +41,8 @@ This document outlines a phased plan to address the issues identified in `PROJEC
 9.  **[COMPLETED] Refactor & Centralize Logic:**
     *   **Action:** Moved duplicated `_calculate_adaptive_leverage` logic to `rl_agent/environment/utils.py`.
     *   **File(s):** `rl_agent/environment/position_sizer.py`, `rl_agent/environment/trading_env.py`, `rl_agent/environment/utils.py`
-10. **Improve Data Pipeline & Refactor `data.py`:**
-    *   **Action:** Add data validation checks (gaps, outliers). Ensure feature calculations avoid lookahead bias (calculate post-split or within env step). Remove `calculate_fractal_dimension`. Vectorize `calculate_price_density` for performance. Improve modularity by extracting feature calculations. Externalize hardcoded parameters.
+10. **[COMPLETED] Improve Data Pipeline & Refactor `data.py`:**
+    *   **Action:** Removed `process_market_data`, `split_data_train_test`, `calculate_fractal_dimension`. Vectorized `calculate_price_density`. Made feature calculation methods static. Moved feature calculation calls to `train.py` (post-split) to avoid lookahead bias.
     *   **File(s):** `data.py`, `train.py`
 11. **Explore Unsupervised Feature Extraction:**
     *   **Action:** Research and potentially implement unsupervised methods (e.g., Autoencoders, PCA, clustering on returns/volatility) on the training data folds to extract alternative features. Evaluate if these features improve agent performance when added to the observation space.
