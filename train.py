@@ -423,6 +423,9 @@ if __name__ == "__main__":
         "--symbol", type=str, default="ETHUSDT", help="Trading pair symbol"
     )
     parser.add_argument(
+        "--interval", type=str, default="1m", help="Data interval (e.g., '1m', '15m', '1h')"
+    )
+    parser.add_argument(
         "--window", type=int, default=60, help="Observation window size"
     )
     # parser.add_argument( # Removed: Model type is hardcoded to Transformer in PPOAgent
