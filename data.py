@@ -917,7 +917,7 @@ if __name__ == "__main__":
             start_time=start_date,
             end_time=end_date,
             save_path=output_path,
-            split_data=True,
+            split_data=False,
             test_ratio=args.test_ratio,
             validation_ratio=args.validation_ratio,
         )
