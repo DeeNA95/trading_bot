@@ -357,7 +357,7 @@ class InferenceAgent:
             # Calculate time range for data fetch
             end_time = current_time
             start_time = end_time - timedelta(
-                seconds=interval_seconds * (self.window_size + 1)  # Add buffer
+                seconds=interval_seconds * (self.window_size + 150)  # Add buffer
             )
 
             logger.info(f'Fetching market data for {self.symbol} from {start_time} to {end_time}')
@@ -442,9 +442,11 @@ class InferenceAgent:
                 else:
                     data[col] = pd.to_numeric(data[col], errors='coerce').fillna(0)
 
-            # --- Debug: Log final columns before conversion ---
-            logger.info(f"Columns in final state DataFrame: {data.columns.tolist()}")
-            # --- End Debug ---
+            # --- Drop 'trade_setup' to match training data where it was dropped due to 'none' ---
+            if 'trade_setup' in data.columns:
+                logger.info("Dropping 'trade_setup' column to match model's expected input features (54).")
+                data = data.drop(columns=['trade_setup'])
+            # --- End Drop ---
 
             # Convert to numpy array and handle any remaining NaN values
             state = data.values.astype(np.float32)

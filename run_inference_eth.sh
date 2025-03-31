@@ -9,7 +9,7 @@ cd "$SCRIPT_DIR" || exit 1 # Change to script directory to ensure pipenv works
 echo "Starting ETHUSDT inference..."
 
 pipenv run python inference.py \
-    --model_path models/test_run_walk_forward/fold_1/best_model.pt \
+    --model_path models/test_run_walk_forward/fold_4/best_model.pt  \
     --symbol ETHUSDT \
     --interval 1m \
     --window_size 60 \
