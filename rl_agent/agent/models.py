@@ -107,7 +107,7 @@ class ActorCriticTransformer(nn.Module):
         n_layers: int = 8,
         dropout: float = 0.25,
         activation_fn: nn.Module = nn.GELU(),
-        transformer_type: Literal["pyraformer", "decoder"] = "pyraformer",
+        transformer_type: Literal["pyraformer", "decoder"] = "decoder",
         device: str = "auto",
     ):
         """
