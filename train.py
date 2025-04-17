@@ -55,19 +55,19 @@ def load_and_preprocess_data(file_path):
         df["date"] = pd.to_datetime(df["date"])
         df.set_index("date", inplace=True)
 
-    # Convert string columns like 'trade_setup' to numerical values
-    if "trade_setup" in df.columns:
-        # Map trade setup values to numerical equivalents
-        setup_mapping = {
-            "none": 0.0,
-            "strong_bullish": 1.0,
-            "strong_bearish": -1.0,
-            "bullish_reversal": 0.5,
-            "bearish_reversal": -0.5,
-        }
-        df["trade_setup"] = df["trade_setup"].map(setup_mapping)
-        # Explicitly convert to float after mapping, handle potential NaNs from unmapped values
-        df["trade_setup"] = pd.to_numeric(df["trade_setup"], errors='coerce')
+    # # Convert string columns like 'trade_setup' to numerical values
+    # if "trade_setup" in df.columns:
+    #     # Map trade setup values to numerical equivalents
+    #     setup_mapping = {
+    #         "none": 0.0,
+    #         "strong_bullish": 1.0,
+    #         "strong_bearish": -1.0,
+    #         "bullish_reversal": 0.5,
+    #         "bearish_reversal": -0.5,
+    #     }
+    #     df["trade_setup"] = df["trade_setup"].map(setup_mapping)
+    #     # Explicitly convert to float after mapping, handle potential NaNs from unmapped values
+    #     df["trade_setup"] = pd.to_numeric(df["trade_setup"], errors='coerce')
 
 
     # Convert all remaining object/string columns to float

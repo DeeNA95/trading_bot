@@ -2,9 +2,7 @@
 import argparse
 import logging
 import os
-import random
 from datetime import datetime, timedelta
-from time import sleep
 
 import numpy as np
 import pandas as pd
@@ -17,27 +15,21 @@ logger = logging.getLogger(__name__)
 
 
 class DataHandler:
-    """
-    Class for retrieving, processing, and preprocessing Binance Futures market data.
-    This includes fetching raw klines data, adding technical and risk metrics,
-    incorporating futures-specific metrics (funding rates, open interest, liquidations),
-    """
-
     def __init__(self):
 
         try:
             self.gcloud_client = secretmanager.SecretManagerServiceClient()
-            project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "seraphic-bliss-451413-c8")
+            PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "future-linker-456622-f8")
 
-            binance_key_response = self.gcloud_client.access_secret_version(
-                name=f"projects/{project_id}/secrets/BINANCE_API_KEY/versions/latest"
+            BINANCE_KEY_response = self.gcloud_client.access_secret_version(
+                name=f"projects/{PROJECT_ID}/secrets/BINANCE_API/versions/latest"
             )
-            binance_key = binance_key_response.payload.data.decode("UTF-8").strip()
+            BINANCE_KEY = BINANCE_KEY_response.payload.data.decode("UTF-8").strip()
 
-            binance_secret_response = self.gcloud_client.access_secret_version(
-                name=f"projects/{project_id}/secrets/BINANCE_SECRET_KEY/versions/latest"
+            BINANCE_SECRET_response = self.gcloud_client.access_secret_version(
+                name=f"projects/{PROJECT_ID}/secrets/BINANCE_SECRET/versions/latest"
             )
-            binance_secret = binance_secret_response.payload.data.decode(
+            BINANCE_SECRET = BINANCE_SECRET_response.payload.data.decode(
                 "UTF-8"
             ).strip()
 
@@ -48,33 +40,29 @@ class DataHandler:
         except Exception as e:
             logger.error(f"Could not retrieve from Google Secret Manager: {e}")
             load_dotenv()
-            binance_key = os.getenv("binance_api")
-            binance_secret = os.getenv("binance_secret")
+            BINANCE_KEY = os.getenv("BINANCE_KEY")
+            BINANCE_SECRET = os.getenv("BINANCE_SECRET")
             logger.info("Falling back to .env file for Binance credentials")
 
-        if not binance_key or not binance_secret:
+        if not BINANCE_KEY or not BINANCE_SECRET:
             raise ValueError(
                 "Binance API credentials not found in environment variables. "
-                "Ensure that binance_api and binance_secret are set in your .env file."
+                "Ensure that BINANCE_KEY and BINANCE_SECRET are set in your .env file."
             )
 
         # init binance client
         self.client = Client(
-            api_key=binance_key,
-            api_secret=binance_secret,
+            api_key=BINANCE_KEY,
+            api_secret=BINANCE_SECRET,
             requests_params={"timeout": 100},
         )
         logger.info("Binance Futures client initialized successfully.")
 
     def get_futures_data(self, symbol, interval="1m", start_time=None, end_time=None):
-        """
-        Fetch historical futures data using Binance klines endpoint.
-        Data is retrieved in chunks to bypass the API row limit.
-        """
         if start_time is None:
             start_time = datetime.now() - timedelta(
-                days=30
-            )  # default to 30 days for 1h data
+                days=210
+            )
 
         if end_time is None:
             end_time = datetime.now()
@@ -132,6 +120,7 @@ class DataHandler:
             )
             # Convert timestamps and cast data types
             df_chunk["open_time"] = pd.to_datetime(df_chunk["open_time"], unit="ms")
+            df_chunk.drop(columns=["ignore"], inplace=True)
             df_chunk.set_index("open_time", inplace=True)
             df_chunk = df_chunk.astype(
                 {
@@ -167,12 +156,14 @@ class DataHandler:
         Calculate a set of technical indicators: SMA, RSI, Bollinger Bands, MACD,
         Stochastic Oscillator, ATR, and ADX.
         """
+        logger.info("Calculating technical indicators...")
         result = df.copy()
         close = result["close"]
 
         # Simple Moving Averages
         result["sma_20"] = close.rolling(window=20).mean()
         result["sma_50"] = close.rolling(window=50).mean()
+        result['sma_7'] = close.rolling(window=7).mean()
 
         # RSI calculation
         delta = close.diff()
@@ -184,10 +175,10 @@ class DataHandler:
         result["rsi"] = 100 - (100 / (1 + rs))
 
         # Bollinger Bands
-        result["bb_middle"] = close.rolling(window=20).mean()
+        # result["bb_middle"] = close.rolling(window=20).mean() identical to sma_20
         bb_std = close.rolling(window=20).std()
-        result["bb_upper"] = result["bb_middle"] + 2 * bb_std
-        result["bb_lower"] = result["bb_middle"] - 2 * bb_std
+        result["bb_upper"] = result["sma_20"] + 2 * bb_std
+        result["bb_lower"] = result["sma_20"] - 2 * bb_std
 
         # MACD and Signal
         ema_12 = close.ewm(span=12, adjust=False).mean()  # expo MA accross 12 timespans
@@ -211,7 +202,7 @@ class DataHandler:
         low_close = np.abs(result["low"] - close.shift())
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         result["atr"] = true_range.rolling(14).mean()
-        result["atr"] = result["atr"].bfill()
+        result["atr"] = result["atr"].ffill()
         # print('how many nas in atr',result["atr"].isna().sum())
 
         # ADX and Directional Indicators
@@ -227,9 +218,9 @@ class DataHandler:
         plus_dm = pd.Series(plus_dm, index=result.index)
         minus_dm = pd.Series(minus_dm, index=result.index)
 
-        # Fill NaN values in +DM and -DM
-        plus_dm.fillna(0, inplace=True)
-        minus_dm.fillna(0, inplace=True)
+        # # Fill NaN values in +DM and -DM
+        # plus_dm.fillna(0, inplace=True)
+        # minus_dm.fillna(0, inplace=True)
         # Calculate the Positive Directional Indicator (+DI)
         plus_di = (
             100
@@ -248,17 +239,16 @@ class DataHandler:
         dx = 100 * np.abs(plus_di - minus_di) / (plus_di + minus_di)
         result["adx"] = pd.Series(dx).ewm(alpha=1 / 14, adjust=False).mean()
 
-        logging.info("Calculating technical indicators...")
         return result
 
     @staticmethod
-    def calculate_risk_metrics(df, interval="1h", window_size=60):
+    def calculate_risk_metrics(df, interval="1m", window_size=60):
         """
         Calculate risk-related metrics: volatility, VaR, CVaR, max drawdown,
         Sharpe, Sortino, and Calmar ratios.
         """
         # Determine window size based on interval
-        periods_per_day = DataHandler.get_periods_per_day(interval) # Use static call
+        periods_per_day = DataHandler.get_periods_per_day(interval)
 
         window = min(
             window_size, int(24 * periods_per_day)
@@ -360,6 +350,7 @@ class DataHandler:
         for col in [
             "sma_20",
             "sma_50",
+            'sma_7',
             "rsi",
             "macd",
             "macd_signal",
@@ -429,67 +420,18 @@ class DataHandler:
             "trade_setup",
         ] = "bearish_reversal"
 
+        trade_setup_map = {
+            "none": 0,
+            "strong_bullish": 1,
+            "strong_bearish": 2,
+            "bullish_reversal": 3,
+            "bearish_reversal": 4,
+        }
+        result["trade_setup_id"] = result["trade_setup"].map(trade_setup_map).fillna(0).astype(int)
+
         logging.info("Identifying trade setups...")
         return result
 
-    @staticmethod
-    def calculate_price_density(df, window=20, bins=10):
-        """
-        Calculate price density using a rolling window
-
-        Args:
-            df: DataFrame containing OHLC data
-            window: Size of the rolling window (default: 20)
-            bins: Number of price bins for density calculation (default: 10)
-
-        Returns:
-            DataFrame with 'price_density' column added.
-        """
-        # Define the helper function to apply to each rolling window
-        def _calculate_density_for_window(window_data: np.ndarray, min_periods: int, num_bins: int) -> float:
-            # Check if enough non-NaN values exist in the window
-            # Note: rolling().apply() handles min_periods, but we double-check
-            # or handle cases where the window might contain NaNs passed by `apply`
-            valid_data = window_data[~np.isnan(window_data)]
-            if len(valid_data) < min_periods:
-                return np.nan
-
-            try:
-                # Ensure there's variation for histogram bins
-                if np.nanmax(valid_data) == np.nanmin(valid_data):
-                    # If all values are the same, density is concentrated in one bin (or 1/bins if we consider range)
-                    # Let's return 1/bins as it occupies one bin.
-                    return 1.0 / num_bins
-
-                hist, _ = np.histogram(valid_data, bins=num_bins)
-                populated_bins = np.sum(hist > 0)
-                density = populated_bins / num_bins
-                return density
-            except Exception as e:
-                # Handle potential numerical issues during histogram calculation
-                # logger.warning(f"Could not calculate density for window: {e}") # Requires logger setup
-                return np.nan
-
-        # Apply the function over a rolling window on the 'close' prices
-        # Ensure window size is at least 2 for histogram
-        eff_window = max(2, window)
-        min_periods_check = max(1, eff_window // 2) # Minimum valid data points needed in window
-
-        # Use functools.partial to pass extra arguments to the apply function
-        from functools import partial
-        density_calculator = partial(_calculate_density_for_window, min_periods=min_periods_check, num_bins=bins)
-
-        # Apply using raw=True for performance (passes numpy arrays)
-        df['price_density'] = df['close'].rolling(window=eff_window, min_periods=min_periods_check).apply(density_calculator, raw=True)
-
-        # Optional: Log number of NaNs created if logger is available
-        # nan_count = df['price_density'].isnull().sum()
-        # if nan_count > 0:
-        #     logger.info(f"Price density calculation resulted in {nan_count} NaN values (likely due to insufficient window data).")
-
-        return df
-
-    # Removed calculate_fractal_dimension method as requested.
 
     @staticmethod
     def normalise_ohlc(df, window=20):
@@ -505,22 +447,14 @@ class DataHandler:
             DataFrame with normalized price-related values and complexity metrics
         """
 
-        # Removed call to calculate_price_density (line 508). It's called separately in train.py now.
-        # df["fractal_dimension"] = self.calculate_fractal_dimension(df, window) # Already removed
-        # Calculate rolling mean and standard deviation
-        rolling_mean = df["close"].rolling(window=window).mean()
-        rolling_std = df["close"].rolling(window=window).std()
-
         result = df.copy()
-
-        # Normalize OHLC values
-        result["open"] = (df["open"] - rolling_mean) / rolling_std
-        result["high"] = (df["high"] - rolling_mean) / rolling_std
-        result["low"] = (df["low"] - rolling_mean) / rolling_std
-        result["close"] = (df["close"] - rolling_mean) / rolling_std
 
         # Normalize moving averages and Bollinger Bands if they exist
         price_related_cols = [
+            'open',
+            'high',
+            'low',
+            'close',
             "sma_20",
             "sma_50",
             "bb_middle",
@@ -532,6 +466,8 @@ class DataHandler:
 
         for col in price_related_cols:
             if col in df.columns:
+                rolling_mean = df[col].rolling(window=window).mean()
+                rolling_std = df[col].rolling(window=window).std()
                 result[col] = (df[col] - rolling_mean) / rolling_std
         return result
 
@@ -620,7 +556,7 @@ class DataHandler:
         # Open interest: using futures_open_interest_hist endpoint
         oi_params = {
             "symbol": symbol,
-            "period": interval,  # Changed from 'period' to 'interval'
+            "period": '5m',  # Changed from 'period' to 'interval'
             "limit": 500,  # Changed from 1000 to 500
             "startTime": int(start_time.timestamp() * 1000),
             "endTime": int(end_time.timestamp() * 1000),
@@ -734,7 +670,7 @@ class DataHandler:
     def process_market_data(
         self,
         symbol,
-        interval="1h",
+        interval="1m",
         start_time=None,
         end_time=None,
         save_path=None,
@@ -771,9 +707,6 @@ class DataHandler:
         # 5. Identify Trade Setups
         df = DataHandler.identify_trade_setups(df) # Use static call
 
-        # 6. Calculate Price Density
-        df = DataHandler.calculate_price_density(df, window=default_window_size) # Use static call
-
         # 7. Normalize OHLC and other price-related features
         df = self.normalise_ohlc(df, window=default_window_size)
 
@@ -802,8 +735,6 @@ class DataHandler:
         else:
             return df
 
-    # Removed process_market_data method (lines ~744-838). # <-- This comment is now outdated
-    # Feature calculation orchestration is now handled in train.py within the walk-forward loop. # <-- This comment is now outdated
 
     def save_data_to_csv(self, df, file_path): # Keep save method for now if needed elsewhere
         """Save DataFrame to CSV."""
@@ -845,7 +776,7 @@ def parse_args():
         help="Data interval",
     )
     parser.add_argument(
-        "--days", type=int, default=7, help="Number of days of historical data to fetch"
+        "--days", type=int, default=1, help="Number of days of historical data to fetch"
     )
     parser.add_argument(
         "--start_date", type=str, default=None, help="Start date in YYYY-MM-DD format"
@@ -903,7 +834,7 @@ if __name__ == "__main__":
     os.makedirs(args.output_dir, exist_ok=True)
 
     # Create output filename
-    base_filename = f"{args.symbol}_{args.interval}_with_metrics_3m"
+    base_filename = f"{args.symbol}_{args.interval}_with_metrics"
     output_path = os.path.join(args.output_dir, f"{base_filename}.csv")
 
     # Process data with or without splitting
