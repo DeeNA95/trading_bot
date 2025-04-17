@@ -3,6 +3,7 @@ import argparse
 import logging
 import os
 from datetime import datetime, timedelta
+import io
 
 import numpy as np
 import pandas as pd
@@ -10,6 +11,9 @@ from binance.client import Client
 from binance.exceptions import BinanceAPIException
 from dotenv import load_dotenv
 from google.cloud import secretmanager, storage
+from joblib import load
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +61,40 @@ class DataHandler:
             requests_params={"timeout": 100},
         )
         logger.info("Binance Futures client initialized successfully.")
+
+                # Load models from GCS
+        self.ridge_model = None
+        self.svr_model = None
+        self.rfr_model = None
+        model_names = {
+            'ridge': 'ridge_model.joblib',
+            'svr': 'svr_model.joblib',
+            'rfr': 'rfr_model.joblib'
+        }
+
+        try:
+            self.storage_client = storage.Client()
+            bucket = self.storage_client.bucket('ctrading') # Replace 'ctrading' if needed
+
+            for model_key, model_filename in model_names.items():
+                model_blob_path = f'regressors/{model_filename}'
+                blob = bucket.blob(model_blob_path)
+                model_data = io.BytesIO()
+                try:
+                    logger.info(f"Attempting to load model from gs://{bucket.name}/{model_blob_path}")
+                    blob.download_to_file(model_data)
+                    model_data.seek(0)
+                    loaded_model = load(model_data)
+                    setattr(self, f"{model_key}_model", loaded_model) # e.g., self.ridge_model = loaded_model
+                    logger.info(f"Successfully loaded {model_key}_model: {getattr(self, f'{model_key}_model')}")
+                except Exception as load_error:
+                    logger.error(f"Failed to load model {model_blob_path}: {load_error}")
+                finally:
+                    model_data.close() # Close the buffer
+
+        except Exception as e:
+            logger.error(f"Error initializing GCS client or bucket: {e}")
+
 
     def get_futures_data(self, symbol, interval="1m", start_time=None, end_time=None):
         if start_time is None:
@@ -120,7 +158,7 @@ class DataHandler:
             )
             # Convert timestamps and cast data types
             df_chunk["open_time"] = pd.to_datetime(df_chunk["open_time"], unit="ms")
-            df_chunk.drop(columns=["ignore"], inplace=True)
+            df_chunk["close_time"] = pd.to_datetime(df_chunk["close_time"], unit="ms")
             df_chunk.set_index("open_time", inplace=True)
             df_chunk = df_chunk.astype(
                 {
@@ -136,6 +174,13 @@ class DataHandler:
                 }
             )
             df_chunk["symbol"] = symbol
+            df_chunk['rfr_feature'] = self.rfr_model.predict(df_chunk.drop(columns=['symbol', 'close_time', 'close']))
+            df_chunk['svr_feature'] = self.svr_model.predict(df_chunk.drop(columns=['symbol', 'close_time', 'close', 'rfr_feature']))
+            df_chunk['ridge_feature'] = self.ridge_model.predict(df_chunk.drop(columns=['symbol', 'close_time', 'close', 'rfr_feature', 'svr_feature']))
+
+
+            df_chunk.drop(columns=["ignore"], inplace=True)
+
             all_data.append(df_chunk)
             # Advance current_start using the last close_time plus 1ms to avoid duplicates
             last_close = int(klines[-1][6]) + 1
@@ -238,6 +283,11 @@ class DataHandler:
         result["minus_di"] = minus_di
         dx = 100 * np.abs(plus_di - minus_di) / (plus_di + minus_di)
         result["adx"] = pd.Series(dx).ewm(alpha=1 / 14, adjust=False).mean()
+
+        result['high-low'] = result['high'] - result['low']
+        result['open-low'] = result['open'] - result['low']
+        result['open-high'] = result['open'] - result['high']
+        result['qav/vol'] = result['quote_asset_volume'] / result['volume']
 
         return result
 
@@ -462,6 +512,9 @@ class DataHandler:
             "bb_lower",
             "lowest_low",
             "highest_high",
+            'rfr_feature',
+            'svr_feature',
+            'ridge_feature',
         ]
 
         for col in price_related_cols:
