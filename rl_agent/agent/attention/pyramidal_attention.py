@@ -71,7 +71,11 @@ class PyramidalAttention(nn.Module):
         Returns:
             Tensor of shape (n_heads, max_seq_len, max_seq_len) with masks
         """
-        masks = torch.zeros(len(self.dilations), max_seq_len, max_seq_len)
+        # Determine device from a parameter (assuming parameters are on the correct device)
+        # This assumes the module has been moved to the device before this is called.
+        # A more robust way might involve passing the device explicitly if needed earlier.
+        device = next(self.parameters()).device
+        masks = torch.zeros(len(self.dilations), max_seq_len, max_seq_len, device=device)
 
         for h, dilation in enumerate(self.dilations):
             for i in range(max_seq_len):

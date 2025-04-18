@@ -42,17 +42,16 @@ class PPOMemory:
 
     def store(
         self,
-        state: torch.Tensor,  # Expect tensor
-        action: torch.Tensor,  # Expect tensor
-        probs: torch.Tensor,  # Expect tensor
-        vals: torch.Tensor,  # Expect tensor
-        reward: torch.Tensor,  # Expect tensor
-        done: torch.Tensor,  # Expect tensor
+        state: torch.Tensor,
+        action: torch.Tensor,
+        probs: torch.Tensor,
+        vals: torch.Tensor,
+        reward: torch.Tensor,
+        done: torch.Tensor,
     ) -> None:
-        # Convert state to tensor before storing
-        state_tensor = torch.tensor(state, dtype=torch.float32)
-        self.states.append(state_tensor)
-        self.actions.append(action)
+        # state is already a tensor when passed from PPOAgent.train
+        self.states.append(state)  # Append the tensor directly
+        self.actions.append(action)  # Append the tensor directly
         self.probs.append(probs)
         self.vals.append(vals)
         self.rewards.append(reward)
@@ -189,9 +188,9 @@ class PPOAgent:
                 self.device = torch.device("cpu")
         else:
             self.device = torch.device(device)
-            if "xla" in device and not _HAS_XLA:
-                print("Warning: XLA device specified but torch_xla not found. Falling back to CPU.")
-                self.device = torch.device("cpu")
+            # if "xla" in device and not _HAS_XLA:
+            #     print("Warning: XLA device specified but torch_xla not found. Falling back to CPU.")
+            #     self.device = torch.device("cpu")
 
         # --- Instantiate Core Transformer ---
         if 'window_size' not in transformer_core_config:
@@ -319,9 +318,10 @@ class PPOAgent:
 
         except Exception as e:
             print(f"Error in evaluate_actions: {e}")
-            action_log_probs = torch.zeros_like(actions, dtype=torch.float32)
-            values = torch.zeros((len(actions),), dtype=torch.float32)
-            entropy = torch.zeros((len(actions),), dtype=torch.float32)
+            # Create fallback tensors on the correct device
+            action_log_probs = torch.zeros_like(actions, dtype=torch.float32, device=self.device)
+            values = torch.zeros((len(actions),), dtype=torch.float32, device=self.device)
+            entropy = torch.zeros((len(actions),), dtype=torch.float32, device=self.device)
 
         return action_log_probs, values.squeeze(), entropy
 
