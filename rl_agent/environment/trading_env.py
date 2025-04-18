@@ -68,7 +68,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
         dynamic_leverage: bool = True,
         use_risk_adjusted_rewards: bool = True,
         funding_rate_weight: float = 0.05,
-        liquidation_penalty_weight: float = 2.0,
+        liquidation_penalty_weight: float = 1.75,
         open_interest_weight: float = 0.1,
         volatility_lookback: int = 24,  # Hours for volatility calculation
         data_fetch_interval: str = "15m",  # Interval for fetching market data
@@ -170,7 +170,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
         # Initialize reward calculator
         if self.use_risk_adjusted_rewards:
             self.reward_calculator = FuturesRiskAdjustedReward(
-                leverage_penalty=0.05,
+                leverage_penalty=0.02,
                 drawdown_penalty=0.2,
                 liquidation_penalty=self.liquidation_penalty_weight,
                 funding_rate_penalty=self.funding_rate_weight,

@@ -157,7 +157,7 @@ class KellyPositionSizer(PositionSizer):
 class VolatilityAdjustedPositionSizer(PositionSizer):
     """Position sizer that adjusts position size based on ATR volatility."""
 
-    def __init__(self, base_risk_pct: float = 0.2, volatility_scale: float = 2.0):
+    def __init__(self, base_risk_pct: float = 0.3, volatility_scale: float = 1.75):
         """
         Initialize the volatility adjusted position sizer.
 
