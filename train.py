@@ -502,7 +502,7 @@ if __name__ == "__main__":
     full_df = load_and_preprocess_data(args.train_data)
     if full_df.empty or len(full_df) < args.window * (args.n_splits + 1):
         logger.error(f"Not enough data for {args.n_splits} splits with window {args.window}. Exiting.")
-        exit()
+        # exit()
 
     tscv = TimeSeriesSplit(n_splits=args.n_splits)
 
@@ -537,5 +537,69 @@ if __name__ == "__main__":
             logger.info(f"Val period:   {val_df.index.min()} to {val_df.index.max()}")
             logger.info(f"Test period:  {test_df.index.min()} to {test_df.index.max()}")
 
-        logger.info(f"Fold {fold_num}: Calculating features for Train/Val/Test sets...")
-        train_df = DataHandler.calculate_technical_indicators(train_df.copy())
+        # --- Train and Evaluate on this Fold ---
+        test_metrics, training_info = train_evaluate_fold(
+            fold_num=fold_num,
+            train_df=train_df,
+            val_df=val_df,
+            test_df=test_df,
+            args=args
+        )
+
+        if test_metrics is None:
+            logger.warning(f"Fold {fold_num}: Training/evaluation failed or was skipped. Continuing to next fold.")
+            continue
+
+        all_fold_results.append(test_metrics)
+        logger.info(f"Fold {fold_num} Test Results: {test_metrics}")
+
+        # Optional: Save training info per fold
+        fold_results_path = os.path.join(args.save_path, f"fold_{fold_num}", "training_info.json")
+        try:
+            with open(fold_results_path, 'w') as f:
+                # Convert numpy arrays to lists for JSON serialization
+                serializable_info = {}
+                for key, value in training_info.items():
+                    if isinstance(value, list) and value and isinstance(value[0], np.generic):
+                         serializable_info[key] = [item.item() for item in value] # Convert numpy types
+                    elif isinstance(value, np.ndarray):
+                         serializable_info[key] = value.tolist()
+                    else:
+                         serializable_info[key] = value
+                json.dump(serializable_info, f, indent=4)
+            logger.info(f"Fold {fold_num}: Saved training info to {fold_results_path}")
+        except Exception as e:
+            logger.error(f"Fold {fold_num}: Failed to save training info: {e}")
+
+
+    logger.info("\n===== Walk-Forward Validation Finished =====")
+
+    if not all_fold_results:
+        logger.error("No folds completed successfully. Exiting.")
+        # exit() # Consider exiting if no folds ran
+
+    # --- Aggregate and Print Final Results ---
+    avg_rewards = [r['avg_reward'] for r in all_fold_results if not np.isnan(r['avg_reward'])]
+    avg_sharpes = [r['avg_sharpe'] for r in all_fold_results if not np.isnan(r['avg_sharpe'])] # Assuming Sharpe is calculated
+
+    final_avg_reward = np.mean(avg_rewards) if avg_rewards else np.nan
+    final_avg_sharpe = np.mean(avg_sharpes) if avg_sharpes else np.nan # Adjust if Sharpe isn't always present
+
+    logger.info(f"Overall Average Test Reward across {len(avg_rewards)} successful folds: {final_avg_reward:.4f}")
+    logger.info(f"Overall Average Test Sharpe across {len(avg_sharpes)} successful folds: {final_avg_sharpe:.4f}") # Adjust log message
+
+    # Save overall results
+    overall_results = {
+        "num_successful_folds": len(avg_rewards),
+        "average_test_reward": final_avg_reward,
+        "average_test_sharpe": final_avg_sharpe, # Add Sharpe here
+        "fold_results": all_fold_results,
+        "args": vars(args) # Save arguments used for the run
+    }
+    results_file = os.path.join(args.save_path, "overall_results.json")
+    try:
+        with open(results_file, 'w') as f:
+            json.dump(overall_results, f, indent=4, default=lambda x: str(x) if isinstance(x, (np.generic, np.ndarray)) else x) # Handle numpy types
+        logger.info(f"Saved overall results to {results_file}")
+    except Exception as e:
+        logger.error(f"Failed to save overall results: {e}")
