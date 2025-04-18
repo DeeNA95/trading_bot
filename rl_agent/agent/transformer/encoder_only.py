@@ -5,6 +5,7 @@ from ..embeddings import TimeEmbedding
 # Import default components if needed for defaults
 from ..attention.multi_head_attention import MultiHeadAttention
 from ..feedforward import FeedForward
+import torch
 
 class EncoderOnlyTransformer(nn.Module):
     def __init__(self, n_embd: int, n_layers: int, window_size: int,

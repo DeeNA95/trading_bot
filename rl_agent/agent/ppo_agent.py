@@ -49,7 +49,9 @@ class PPOMemory:
         reward: torch.Tensor,  # Expect tensor
         done: torch.Tensor,  # Expect tensor
     ) -> None:
-        self.states.append(state)
+        # Convert state to tensor before storing
+        state_tensor = torch.tensor(state, dtype=torch.float32)
+        self.states.append(state_tensor)
         self.actions.append(action)
         self.probs.append(probs)
         self.vals.append(vals)
