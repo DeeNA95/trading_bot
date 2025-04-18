@@ -18,7 +18,8 @@ class EncoderDecoderTransformer(nn.Module):
                  n_encoder_layers: int,
                  n_decoder_layers: int,
                  window_size: int, # Needed for TimeEmbedding max_len
-                 attention_args: Dict[str, Any], # Args for MHA (e.g., n_heads)
+                 attention_args: Dict[str, Any], # Moved before attention_class
+                 attention_class: Type[nn.Module] = MultiHeadAttention, # Moved after attention_args
                  ffn_class: Type[nn.Module] = FeedForward,
                  ffn_args: Optional[Dict[str, Any]] = None,
                  norm_class: Type[nn.Module] = nn.LayerNorm,
@@ -32,7 +33,8 @@ class EncoderDecoderTransformer(nn.Module):
             n_encoder_layers: Number of layers in the encoder stack.
             n_decoder_layers: Number of layers in the decoder stack.
             window_size: Max sequence length for time embedding.
-            attention_args: Arguments for MultiHeadAttention (e.g., {'n_heads': 8}).
+            attention_args: Arguments for attention_class constructor. # Moved doc
+            attention_class: The class to use for attention mechanisms. # Moved doc
             ffn_class: Class for the feed-forward network.
             ffn_args: Arguments for ffn_class constructor.
             norm_class: Class for the normalization layer.
@@ -53,7 +55,7 @@ class EncoderDecoderTransformer(nn.Module):
         for _ in range(n_encoder_layers):
             block = EncoderBlock(
                 n_embd=n_embd,
-                attention_class=MultiHeadAttention, # Explicitly MHA
+                attention_class=attention_class, # Pass attention_class
                 attention_args=attention_args.copy(),
                 ffn_class=ffn_class,
                 ffn_args=ffn_args,
@@ -69,9 +71,9 @@ class EncoderDecoderTransformer(nn.Module):
         for _ in range(n_decoder_layers):
             block = DecoderBlock(
                 n_embd=n_embd,
-                self_attention_class=MultiHeadAttention, # Explicitly MHA
+                self_attention_class=attention_class, # Pass attention_class
                 self_attention_args=attention_args.copy(),
-                cross_attention_class=MultiHeadAttention, # Explicitly MHA
+                cross_attention_class=attention_class, # Pass attention_class
                 cross_attention_args=attention_args.copy(), # Enable cross-attn
                 ffn_class=ffn_class,
                 ffn_args=ffn_args,
