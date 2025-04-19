@@ -26,9 +26,21 @@ try:
 except ImportError:
     _HAS_XLA = False
 
+from dataclasses import asdict # For saving ModelConfig
+
 from .models import ActorCriticWrapper
-from .transformer.encoder_only import EncoderOnlyTransformer
-from .transformer.encoder_decoder_mha import EncoderDecoderTransformer
+# Removed old transformer imports as model is pre-built
+# from .transformer.encoder_only import EncoderOnlyTransformer
+# from .transformer.encoder_decoder_mha import EncoderDecoderTransformer
+
+# Import ModelConfig type hint (assuming it's accessible)
+# Need to adjust path based on final location of ModelConfig
+try:
+    # If ModelConfig is in training.model_factory
+    from training.model_factory import ModelConfig
+except ImportError:
+    # Fallback if ModelConfig is moved or circular dependency occurs
+    ModelConfig = Any # Use Any as a fallback type hint
 
 
 class PPOMemory:
@@ -117,8 +129,8 @@ class PPOAgent:
     def __init__(
         self,
         env: BinanceFuturesCryptoEnv,
-        transformer_arch_class: Type[nn.Module],
-        transformer_core_config: Dict[str, Any],
+        model: ActorCriticWrapper, # Accept pre-built model
+        model_config: ModelConfig, # Accept ModelConfig used to build the model
         # --- PPO Hyperparameters ---
         lr: float = 3e-4,
         gamma: float = 0.99,
@@ -132,13 +144,11 @@ class PPOAgent:
         use_gae: bool = True,
         normalize_advantage: bool = True,
         weight_decay: float = 0.01,
-        # --- Core Model Configuration ---
+        # --- Core Model Configuration (Removed - handled by factory) ---
 
-        # --- Wrapper/Head Configuration ---
-        actor_critic_wrapper_class: Type[nn.Module] = ActorCriticWrapper,
-        wrapper_config: Optional[Dict[str, Any]] = None,
+        # --- Wrapper/Head Configuration (Removed - handled by factory) ---
         # --- General ---
-        device: str = "auto",
+        device: str = "auto", # Device still needed for agent logic & memory
         save_dir: str = "models",
     ):
         """
@@ -158,10 +168,8 @@ class PPOAgent:
             use_gae: Whether to use Generalized Advantage Estimation
             normalize_advantage: Whether to normalize advantages
             weight_decay: L2 regularization parameter
-            transformer_arch_class: Class of the core transformer
-            transformer_core_config: Configuration dictionary for the core transformer
-            actor_critic_wrapper_class: Class of the actor-critic wrapper
-            wrapper_config: Configuration dictionary for the wrapper
+            model: Pre-instantiated ActorCriticWrapper model instance.
+            model_config: The ModelConfig instance used to create the model.
             device: Device to run on ('cpu', 'cuda', 'mps', or 'auto')
             save_dir: Directory to save models to
         """
@@ -208,32 +216,11 @@ class PPOAgent:
             #     print("Warning: XLA device specified but torch_xla not found. Falling back to CPU.")
             #     self.device = torch.device("cpu")
 
-        # --- Instantiate Core Transformer ---
-        if 'window_size' not in transformer_core_config:
-            transformer_core_config['window_size'] = env.window_size
-        if 'n_embd' not in transformer_core_config:
-            if wrapper_config and 'embedding_dim' in wrapper_config:
-                transformer_core_config['n_embd'] = wrapper_config['embedding_dim']
-            else:
-                raise ValueError("embedding_dim ('n_embd') must be provided in transformer_core_config or wrapper_config")
-
-        transformer_core = transformer_arch_class(**transformer_core_config)
-
-        # --- Instantiate ActorCriticWrapper ---
-        if wrapper_config is None:
-            wrapper_config = {}
-        if 'embedding_dim' not in wrapper_config:
-            wrapper_config['embedding_dim'] = transformer_core_config['n_embd']
-        elif wrapper_config['embedding_dim'] != transformer_core_config['n_embd']:
-            raise ValueError("Wrapper embedding_dim must match core n_embd")
-
-        self.model = actor_critic_wrapper_class(
-            input_shape=self.input_shape,
-            action_dim=self.action_dim,
-            transformer_core=transformer_core,
-            device=self.device,
-            **wrapper_config
-        )
+        # --- Use Pre-instantiated Model ---
+        self.model = model
+        self.model_config = model_config # Store the model config
+        # Ensure the passed model is on the correct device
+        self.model.to(self.device)
 
         # Optimizer
         self.optimizer = optim.Adam(
@@ -256,12 +243,17 @@ class PPOAgent:
         # Best model tracking
         self.best_reward = -float("inf")
 
-    def choose_action(self, state: np.ndarray) -> Tuple[int, float, float]:
+    def choose_action(
+        self,
+        state: np.ndarray,
+        deterministic: bool = False
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Choose an action based on the current state.
 
         Args:
             state: Current environment state
+            deterministic: Whether to select actions deterministically
 
         Returns:
             Tuple of (action, action probabilities, value)
@@ -276,15 +268,25 @@ class PPOAgent:
         with torch.no_grad():
             try:
                 logits, value = self.model(state_tensor)
+
+                # Apply temperature scaling to logits
+                logits = logits / self.model.temperature
+
                 logits = torch.clamp(logits, min=-20.0, max=20.0)
                 action_probs = torch.softmax(logits, dim=-1)
                 action_probs = action_probs + 1e-8
                 action_probs = action_probs / action_probs.sum(dim=-1, keepdim=True)
 
+                # --- DEBUG: Print state stats ---
+                print(f"DEBUG state_tensor mean: {state_tensor.mean():.4f}, std: {state_tensor.std():.4f}")
+
                 dist = Categorical(action_probs)
                 action = dist.sample()
 
                 # Get action probability and value as tensors
+                # --- DEBUG: Print raw logits ---
+                print(f"DEBUG action_logits: {logits.detach().cpu().numpy()}")
+
                 action_prob_tensor = action_probs.gather(1, action.unsqueeze(-1)).squeeze()
                 value_tensor = value.squeeze()
 
@@ -293,7 +295,7 @@ class PPOAgent:
                 action_prob_item = action_prob_tensor.item()
                 value_item = value_tensor.item() if not torch.isnan(value_tensor).any() else 0.0
 
-            except Exception as e:
+            except Exception as e: # Correctly aligned except block
                 print(f"Error in choose_action: {e}")
                 action_item = np.random.randint(0, self.action_dim)
                 action_prob_item = 1.0 / self.action_dim
@@ -635,15 +637,8 @@ class PPOAgent:
             'optimizer_state_dict': optimizer_state_dict,
             'epoch': getattr(self, 'current_epoch', None),
             'best_reward': self.best_reward,
-            'architecture_args': {
-                'transformer_arch': getattr(self, 'args', {}).get('transformer_arch', None),
-                'embedding_dim': getattr(self, 'args', {}).get('embedding_dim', None),
-                'n_layers': getattr(self, 'args', {}).get('n_layers', None),
-                'n_heads': getattr(self, 'args', {}).get('n_heads', None),
-                'dropout': getattr(self, 'args', {}).get('dropout', None),
-                'feature_extractor_dim': getattr(self, 'args', {}).get('feature_extractor_dim', None),
-            },
-            'training_args': vars(self.args) if hasattr(self, 'args') else None,
+            'model_config': asdict(self.model_config) if self.model_config else None, # Save the model config
+            # 'training_args': vars(self.args) if hasattr(self, 'args') else None, # Keep PPO/env args if needed
             'timestamp': time.strftime("%Y%m%d-%H%M%S"),
         }
 
@@ -747,11 +742,11 @@ class PPOAgent:
             except Exception as e:
                 print(f"Warning: Could not load optimizer state: {e}")
 
-        if "reward_history" in checkpoint:
-            self.reward_history = checkpoint["reward_history"]
-        if "policy_loss_history" in checkpoint:
-            self.policy_loss_history = checkpoint["policy_loss_history"]
-        if "value_loss_history" in checkpoint:
-            self.value_loss_history = checkpoint["value_loss_history"]
-        if "entropy_history" in checkpoint:
-            self.entropy_history = checkpoint["entropy_history"]
+        # Load history if available
+        self.reward_history = checkpoint.get("reward_history", [])
+        self.policy_loss_history = checkpoint.get("policy_loss_history", [])
+        self.value_loss_history = checkpoint.get("value_loss_history", [])
+        self.entropy_history = checkpoint.get("entropy_history", [])
+        # Note: We don't load model_config here, as the model structure should be
+        # recreated using the saved config *before* calling load.
+        # self.model_config = ModelConfig(**checkpoint['model_config']) if 'model_config' in checkpoint else None

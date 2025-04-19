@@ -8,13 +8,7 @@ class TimeEmbedding(nn.Module):
     Combines learnable position embeddings with a temporal encoding network.
     """
     def __init__(self, hidden_dim: int, max_len: int = 512):
-        """
-        Initializes the time embedding layer.
 
-        Args:
-            hidden_dim: Size of the hidden dimension.
-            max_len: Maximum sequence length for position embedding.
-        """
         super(TimeEmbedding, self).__init__()
 
         # Learnable position embedding
@@ -22,7 +16,7 @@ class TimeEmbedding(nn.Module):
             torch.zeros(1, max_len, hidden_dim), requires_grad=True
         )
 
-        # Temporal encoding network (optional based on time_values input)
+        # Temporal encoding network
         self.temporal_encoder = nn.Sequential(
             nn.Linear(1, hidden_dim // 2),
             nn.GELU(),
@@ -32,16 +26,7 @@ class TimeEmbedding(nn.Module):
     def forward(
         self, x: torch.Tensor, time_values: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """
-        Adds time-aware embedding to the input tensor.
-
-        Args:
-            x: Input tensor (batch_size, seq_len, hidden_dim).
-            time_values: Optional tensor with time values (batch_size, seq_len, 1).
-
-        Returns:
-            Time-embedded tensor (batch_size, seq_len, hidden_dim).
-        """
+        
         seq_len = x.shape[1]
 
         # Add learnable position embedding (sliced to current seq_len)
