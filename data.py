@@ -789,28 +789,37 @@ class DataHandler:
             return df
 
 
-    def save_data_to_csv(self, df, file_path): # Keep save method for now if needed elsewhere
-        """Save DataFrame to CSV."""
+    def save_data_to_csv(self, df, file_path):
+        """Save DataFrame to CSV or Parquet."""
 
         if file_path.startswith("gs://"):
-            # parse bucket and blob path
             path_parts = file_path[5:].split("/", 1)
             bucket_name = path_parts[0]
             blob_path = path_parts[1] if len(path_parts) > 1 else ""
 
-            csv_string = df.to_csv(index=False)
-
-            # upload to GCS
             storage_client = storage.Client()
             bucket = storage_client.bucket(bucket_name)
             blob = bucket.blob(blob_path)
-            blob.upload_from_string(csv_string, content_type="text/csv")
-            logger.info(f"Data saved to GCS: {file_path}")
 
+            if file_path.endswith('.parquet'):
+                import pyarrow as pa
+                import pyarrow.parquet as pq
+                table = pa.Table.from_pandas(df)
+                buffer = pa.BufferOutputStream()
+                pq.write_table(table, buffer)
+                blob.upload_from_string(buffer.getvalue().to_pybytes())
+                logger.info(f"Data saved to GCS: {file_path}")
+            else:
+                csv_string = df.to_csv(index=False)
+                blob.upload_from_string(csv_string, content_type="text/csv")
+                logger.info(f"Data saved to GCS: {file_path}")
         else:
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             df.reset_index(inplace=True)
-            df.to_csv(file_path, index=False)
+            if file_path.endswith('.parquet'):
+                df.to_parquet(file_path, index=False)
+            else:
+                df.to_csv(file_path, index=False)
             logging.info(f"Data saved to {file_path}")
 
 
