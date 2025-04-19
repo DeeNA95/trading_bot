@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from google.cloud import secretmanager, storage
 
 from data import DataHandler
-from rl_agent.agent.models import (ActorCriticTransformer)
+from rl_agent.agent.models import (ActorCriticWrapper)  # Corrected import
 from rl_agent.environment.execution import BinanceFuturesExecutor
 from rl_agent.agent.transformer.encoder_only import EncoderOnlyTransformer
 from rl_agent.agent.attention.multi_head_attention import MultiHeadAttention
@@ -46,65 +46,53 @@ def check_api_keys() -> Tuple[str, str]:
     Returns:
         tuple: (api_key, api_secret) if keys are found, raises ValueError otherwise
     """
-    binance_key = None
-    binance_secret = None
+    BINANCE_KEY = None
+    BINANCE_secret = None
 
     try:
-        # Try environment variables first
-        binance_key = (
-            os.getenv("binance_api")
-            or os.getenv("binance_future_api")
-            or os.getenv("binance_api2")
+        gcloud_client = secretmanager.SecretManagerServiceClient()
+        PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "future-linker-456622-f8")
+
+        BINANCE_KEY_response = gcloud_client.access_secret_version(
+            name=f"projects/{PROJECT_ID}/secrets/BINANCE_API/versions/latest"
         )
-        binance_secret = (
-            os.getenv("binance_secret")
-            or os.getenv("binance_future_secret")
-            or os.getenv("binance_secret2")
+        BINANCE_KEY = BINANCE_KEY_response.payload.data.decode("UTF-8").strip()
+
+        BINANCE_secret_response = gcloud_client.access_secret_version(
+            name=f"projects/{PROJECT_ID}/secrets/BINANCE_SECRET/versions/latest"
         )
+        BINANCE_secret = BINANCE_secret_response.payload.data.decode(
+            "UTF-8"
+        ).strip()
 
-        if binance_key and binance_secret:
-            logger.info("Using Binance credentials from environment variables")
-            return binance_key, binance_secret
-
-        # If env vars not found, try Google Cloud Secret Manager
-        try:
-            gcloud_client = secretmanager.SecretManagerServiceClient()
-            project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "seraphic-bliss-451413-c8")
-
-            binance_key_response = gcloud_client.access_secret_version(
-                name=f"projects/{project_id}/secrets/BINANCE_API_KEY/versions/latest"
-            )
-            binance_key = binance_key_response.payload.data.decode("UTF-8").strip()
-
-            binance_secret_response = gcloud_client.access_secret_version(
-                name=f"projects/{project_id}/secrets/BINANCE_SECRET_KEY/versions/latest"
-            )
-            binance_secret = binance_secret_response.payload.data.decode("UTF-8").strip()
-
-            logger.info("Successfully retrieved Binance credentials from Google Secret Manager")
-
-        except Exception as e:
-            logger.warning(f"Could not retrieve from Google Secret Manager: {e}")
+        logger.info(
+            "Successfully retrieved Binance credentials from Google Secret Manager"
+        )
 
     except Exception as e:
-        logger.error(f"Could not retrieve credentials: {e}")
-        raise
+        logger.error(f"Could not retrieve from Google Secret Manager: {e}")
+        load_dotenv()
+        BINANCE_KEY = os.getenv("BINANCE_KEY")
+        BINANCE_secret = os.getenv("BINANCE_secret")
+        logger.info("Falling back to .env file for Binance credentials")
 
-    if not binance_key or not binance_secret:
+    if not BINANCE_KEY or not BINANCE_secret:
         raise ValueError(
-            "Binance API credentials not found. Ensure that API credentials are set "
-            "in your .env file or Google Secret Manager."
+            "Binance API credentials not found in environment variables. "
+            "Ensure that BINANCE_KEY and BINANCE_secret are set in your .env file."
         )
 
-    # Set these in environment variables for other components to use
-    os.environ["binance_api"] = binance_key
-    os.environ["binance_secret"] = binance_secret
-    os.environ["binance_future_api"] = binance_key
-    os.environ["binance_future_secret"] = binance_secret
-    os.environ["binance_api2"] = binance_key
-    os.environ["binance_secret2"] = binance_secret
 
-    return binance_key, binance_secret
+
+    # Set these in environment variables for other components to use
+    os.environ["binance_api"] = BINANCE_KEY
+    os.environ["BINANCE_secret"] = BINANCE_secret
+    os.environ["binance_future_api"] = BINANCE_KEY
+    os.environ["binance_future_secret"] = BINANCE_secret
+    os.environ["binance_api2"] = BINANCE_KEY
+    os.environ["BINANCE_secret2"] = BINANCE_secret
+
+    return BINANCE_KEY, BINANCE_secret
 
 def parse_args() -> argparse.Namespace:
     """
@@ -301,7 +289,7 @@ class InferenceAgent:
         self.last_update_time = datetime.now() - timedelta(minutes=10)
         self.processed_df = pd.DataFrame()  # Initialize as empty DataFrame instead of None
 
-    def _load_model(self) -> Union[ActorCriticTransformer]:
+    def _load_model(self) -> Union[ActorCriticWrapper]:  # Corrected type hint
         """
         Load the trained model weights and initialize architecture based on args.
         """
@@ -343,7 +331,7 @@ class InferenceAgent:
             dropout = self.args.dropout
             window_size = self.args.window_size
             feature_extractor_dim = self.args.feature_extractor_dim
-            input_dim = 53  # Or determine dynamically if needed, matching prepare_state
+            input_dim = 59  # Or determine dynamically if needed, matching prepare_state
 
             core_transformer = EncoderOnlyTransformer(
                 n_embd=embedding_dim,
@@ -359,7 +347,7 @@ class InferenceAgent:
                 dropout=dropout
             )
 
-            model = ActorCriticTransformer(
+            model = ActorCriticWrapper(  # Corrected class name
                 input_shape=(window_size, input_dim),
                 action_dim=3,
                 transformer_core=core_transformer,

@@ -75,9 +75,7 @@ class ActorCriticWrapper(nn.Module):
                 self.device = torch.device("cpu")
         else:
             self.device = torch.device(device)
-            if "xla" in device and not _HAS_XLA:
-                print("Warning: XLA device specified but torch_xla not found. Falling back to CPU.")
-                self.device = torch.device("cpu")
+            
 
         window_size, n_features = input_shape
 

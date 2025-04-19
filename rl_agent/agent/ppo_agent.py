@@ -67,13 +67,29 @@ class PPOMemory:
 
     def generate_batches(self) -> Tuple[torch.Tensor, ...]:
         n_states = len(self.states)
-        # Stack tensors along a new dimension (batch dimension)
-        states_tensor = torch.stack(self.states).to(self.device)
-        actions_tensor = torch.stack(self.actions).to(self.device)
-        probs_tensor = torch.stack(self.probs).to(self.device)
-        vals_tensor = torch.stack(self.vals).to(self.device)
-        rewards_tensor = torch.stack(self.rewards).to(self.device)
-        dones_tensor = torch.stack(self.dones).to(self.device)
+
+        # Convert lists to numpy arrays first
+        try:
+            states_np = np.array(self.states, dtype=np.float32)
+            actions_np = np.array(self.actions, dtype=np.int64)
+            probs_np = np.array(self.probs, dtype=np.float32)
+            vals_np = np.array(self.vals, dtype=np.float32)
+            rewards_np = np.array(self.rewards, dtype=np.float32)
+            dones_np = np.array(self.dones, dtype=np.bool_)
+        except ValueError as e:
+            print(f"Error converting lists to NumPy arrays: {e}")
+            # Potentially add more robust error handling or logging here
+            # For example, inspect the types within the lists if conversion fails
+            print("Types in self.states:", [type(s) for s in self.states[:5]])
+            raise
+
+        # Convert numpy arrays to torch tensors
+        states_tensor = torch.from_numpy(states_np).to(self.device)
+        actions_tensor = torch.from_numpy(actions_np).to(self.device)
+        probs_tensor = torch.from_numpy(probs_np).to(self.device)
+        vals_tensor = torch.from_numpy(vals_np).to(self.device)
+        rewards_tensor = torch.from_numpy(rewards_np).to(self.device)
+        dones_tensor = torch.from_numpy(dones_np).to(self.device)
 
         # Generate random indices for batches using torch
         indices = torch.randperm(n_states).to(self.device)
@@ -86,7 +102,7 @@ class PPOMemory:
             vals_tensor,
             rewards_tensor,
             dones_tensor,
-            batches,  # List of index tensors
+            batches,
         )
 
 
@@ -341,10 +357,10 @@ class PPOAgent:
             last_gae = 0.0
             for t in reversed(range(len(rewards))):
                 if t == len(rewards) - 1:
-                    next_non_terminal = 1.0 - dones[t]
+                    next_non_terminal = 1.0 - dones[t].float()
                     next_value = 0.0
                 else:
-                    next_non_terminal = 1.0 - dones[t + 1]
+                    next_non_terminal = 1.0 - dones[t + 1].float()
                     next_value = values[t + 1]
 
                 delta = rewards[t] + self.gamma * next_value * (1.0 - dones[t].float()) - values[t]
