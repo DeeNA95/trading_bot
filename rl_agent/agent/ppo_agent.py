@@ -611,16 +611,24 @@ class PPOAgent:
         Args:
             path: Path to save the agent to (local path or gs:// URL)
         """
-        model_data = {
-            "model_state_dict": self.model.state_dict(),
-            "optimizer_state_dict": self.optimizer.state_dict(),
-            "model_type": self.model.__class__.__name__,
-            "architecture": self.model.__class__.__name__,
-            "timestamp": time.strftime("%Y%m%d-%H%M%S"),
-            "reward_history": self.reward_history,
-            "policy_loss_history": self.policy_loss_history,
-            "value_loss_history": self.value_loss_history,
-            "entropy_history": self.entropy_history,
+        model_state_dict = self.model.state_dict()
+        optimizer_state_dict = self.optimizer.state_dict()
+
+        checkpoint = {
+            'model_state_dict': model_state_dict,
+            'optimizer_state_dict': optimizer_state_dict,
+            'epoch': getattr(self, 'current_epoch', None),
+            'best_reward': self.best_reward,
+            'architecture_args': {
+                'transformer_arch': getattr(self, 'args', {}).get('transformer_arch', None),
+                'embedding_dim': getattr(self, 'args', {}).get('embedding_dim', None),
+                'n_layers': getattr(self, 'args', {}).get('n_layers', None),
+                'n_heads': getattr(self, 'args', {}).get('n_heads', None),
+                'dropout': getattr(self, 'args', {}).get('dropout', None),
+                'feature_extractor_dim': getattr(self, 'args', {}).get('feature_extractor_dim', None),
+            },
+            'training_args': vars(self.args) if hasattr(self, 'args') else None,
+            'timestamp': time.strftime("%Y%m%d-%H%M%S"),
         }
 
         if path.startswith("gs://"):
@@ -637,7 +645,7 @@ class PPOAgent:
             blob_path = path_parts[1] if len(path_parts) > 1 else ""
 
             buffer = io.BytesIO()
-            torch.save(model_data, buffer)
+            torch.save(checkpoint, buffer)
             buffer.seek(0)
 
             try:
@@ -651,8 +659,9 @@ class PPOAgent:
                 raise
         else:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            torch.save(model_data, path)
+            torch.save(checkpoint, path)
             print(f"Model saved locally: {path}")
+        self.logger.info(f"Model checkpoint saved to: {path}")
 
     def load(self, path: str) -> None:
         """

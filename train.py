@@ -55,7 +55,6 @@ FFN_CLASSES = {
 }
 NORM_CLASSES = {
     "LayerNorm": nn.LayerNorm,
-    # Add other norm classes here if implemented (e.g., "RMSNorm": RMSNorm)
 }
 
 # --- Add Mapping for Transformer Architectures ---
@@ -120,8 +119,10 @@ def load_and_preprocess_data(file_path):
     print(f"Data shape after ffill & dropna: {df.shape}")
     if df.isnull().values.any():
         print("Error: NaNs still detected after ffill and dropna!")  # Should not happen
+        exit(1)
 
     return df
+    exit(1)
 
 
 def create_environment(
@@ -174,7 +175,6 @@ def train_evaluate_fold(
         logger.error(f"Fold {fold_num}: Empty dataframe received. Skipping.")
         return None, None  # Indicate failure
 
-    # Extract args for clarity (optional, but can improve readability)
     symbol = args.symbol
     window_size = args.window
     leverage = args.leverage
@@ -211,7 +211,7 @@ def train_evaluate_fold(
         stop_loss_percent=stop_loss_percent,
         dynamic_leverage=dynamic_leverage,
         use_risk_adjusted_rewards=use_risk_adjusted_rewards,
-        trade_fee_percent=trade_fee_percent,  # Pass the fee
+        trade_fee_percent=trade_fee_percent,
     )
     # Validation Env
     val_env = create_environment(
@@ -228,7 +228,6 @@ def train_evaluate_fold(
         use_risk_adjusted_rewards=use_risk_adjusted_rewards,
         trade_fee_percent=trade_fee_percent,  # Pass the fee
     )
-    # Test Env (created later before final testing)
 
     # --- Agent Creation ---
     logger.info(f"Fold {fold_num}: Creating PPO Agent...")
