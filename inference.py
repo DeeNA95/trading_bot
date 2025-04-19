@@ -23,6 +23,10 @@ from google.cloud import secretmanager, storage
 from data import DataHandler
 from rl_agent.agent.models import (ActorCriticTransformer)
 from rl_agent.environment.execution import BinanceFuturesExecutor
+from rl_agent.agent.transformer.encoder_only import EncoderOnlyTransformer
+from rl_agent.agent.attention.multi_head_attention import MultiHeadAttention
+from rl_agent.agent.feedforward import FeedForward
+import torch.nn as nn
 
 # Load environment variables
 load_dotenv()
@@ -134,6 +138,36 @@ def parse_args() -> argparse.Namespace:
         choices=['auto', 'cpu', 'cuda'],
         help='Device to run inference on'
     )
+    parser.add_argument(
+        '--embedding_dim',
+        type=int,
+        default=128,
+        help='Embedding dimension for the transformer model'
+    )
+    parser.add_argument(
+        '--n_layers',
+        type=int,
+        default=4,
+        help='Number of layers in the transformer model'
+    )
+    parser.add_argument(
+        '--n_heads',
+        type=int,
+        default=8,
+        help='Number of attention heads in the transformer model'
+    )
+    parser.add_argument(
+        '--dropout',
+        type=float,
+        default=0.1,
+        help='Dropout rate for the transformer model'
+    )
+    parser.add_argument(
+        '--feature_extractor_dim',
+        type=int,
+        default=64,
+        help='Hidden dimension for the feature extractor'
+    )
 
     # Trading parameters
     parser.add_argument(
@@ -220,6 +254,8 @@ class InferenceAgent:
         Args:
             args: Parsed command line arguments containing configuration parameters
         """
+        self.args = args  # Store args for use in _load_model
+
         # Check and set up API keys
         api_key, api_secret = check_api_keys()
 
@@ -267,10 +303,7 @@ class InferenceAgent:
 
     def _load_model(self) -> Union[ActorCriticTransformer]:
         """
-        Load the trained model weights and initialize architecture.
-
-        Returns:
-            Initialized model with loaded weights
+        Load the trained model weights and initialize architecture based on args.
         """
         try:
             # Handle Google Cloud Storage paths
@@ -303,28 +336,57 @@ class InferenceAgent:
                 state_dict = torch.load(self.model_path, map_location=self.device, weights_only=False)
                 logger.info(f'Successfully loaded model from local file: {self.model_path}')
 
-            # Extract model configuration
-            model_config = state_dict.get('model_config', {})
-            input_dim = model_config.get('input_dim', 53)  # Default to features from DataHandler (53)
-            hidden_dim = model_config.get('hidden_dim', 128)
+            # --- Reconstruct model based on command-line args ---
+            embedding_dim = self.args.embedding_dim
+            n_layers = self.args.n_layers
+            n_heads = self.args.n_heads
+            dropout = self.args.dropout
+            window_size = self.args.window_size
+            feature_extractor_dim = self.args.feature_extractor_dim
+            input_dim = 53  # Or determine dynamically if needed, matching prepare_state
 
+            core_transformer = EncoderOnlyTransformer(
+                n_embd=embedding_dim,
+                n_layers=n_layers,
+                window_size=window_size,
+                use_causal_mask=True,
+                attention_class=MultiHeadAttention,
+                attention_args={'n_heads': n_heads, 'dropout': dropout},
+                ffn_class=FeedForward,
+                ffn_args=None,
+                norm_class=nn.LayerNorm,
+                norm_args=None,
+                dropout=dropout
+            )
 
             model = ActorCriticTransformer(
-                    input_shape=(self.window_size, input_dim),
-                    action_dim=3,
-                    hidden_dim=hidden_dim,
-                    device=self.device
-                )
+                input_shape=(window_size, input_dim),
+                action_dim=3,
+                transformer_core=core_transformer,
+                feature_extractor_hidden_dim=feature_extractor_dim,
+                embedding_dim=embedding_dim,
+                device=self.device
+            )
+            # --- End Reconstruction ---
 
-            # Load weights
+            # Load weights into the correctly structured model
             if 'model_state_dict' in state_dict:
                 model.load_state_dict(state_dict['model_state_dict'])
+            elif 'transformer_core' in state_dict:
+                model.transformer_core.load_state_dict(state_dict['transformer_core'])
+                if 'actor' in state_dict:
+                    model.actor.load_state_dict(state_dict['actor'])
+                if 'critic' in state_dict:
+                    model.critic.load_state_dict(state_dict['critic'])
+                if 'feature_extractor' in state_dict:
+                    model.feature_extractor.load_state_dict(state_dict['feature_extractor'])
             else:
-                model.load_state_dict(state_dict)  # For older models that saved state dict directly
+                model.load_state_dict(state_dict)
 
             model = model.to(self.device)
-            model.eval()  # Set to evaluation mode
+            model.eval()
 
+            logger.info(f"Successfully loaded model weights into reconstructed architecture.")
             return model
 
         except Exception as e:
