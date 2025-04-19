@@ -11,14 +11,14 @@ python train.py \
     --window 60 \
     --episodes 500 \
     --batch_size 1024 \
-    --update_freq 4096 \
+    --update_freq 2048 \
     --lr 5e-5 \
     --save_path "$SAVE_DIR" \
     --device auto \
     --n_splits 5 \
     --val_ratio 0.15 \
-    --eval_freq 25 \
-    --leverage 10 \
+    --eval_freq 20 \
+    --leverage 20 \
     --max_position 1.0 \
     --balance 100 \
     --risk_reward 1.5 \
