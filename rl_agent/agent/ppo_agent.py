@@ -42,12 +42,12 @@ class PPOMemory:
 
     def store(
         self,
-        state: torch.Tensor,
-        action: torch.Tensor,
-        probs: torch.Tensor,
-        vals: torch.Tensor,
-        reward: torch.Tensor,
-        done: torch.Tensor,
+        state,
+        action,
+        probs,
+        vals,
+        reward,
+        done,
     ) -> None:
         # state is already a tensor when passed from PPOAgent.train
         self.states.append(state)  # Append the tensor directly
