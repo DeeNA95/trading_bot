@@ -294,7 +294,7 @@ class InferenceAgent:
 
             # Extract model configuration
             model_config = state_dict.get('model_config', {})
-            input_dim = model_config.get('input_dim', 55)  # Default to standard feature dim
+            input_dim = model_config.get('input_dim', 60)  # Default to standard feature dim
             hidden_dim = model_config.get('hidden_dim', 128)
 
             # Initialize appropriate model architecture

@@ -27,17 +27,17 @@ class DataHandler:
 
         try:
             self.gcloud_client = secretmanager.SecretManagerServiceClient()
-            project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "seraphic-bliss-451413-c8")
+            PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "future-linker-456622-f8")
 
-            binance_key_response = self.gcloud_client.access_secret_version(
-                name=f"projects/{project_id}/secrets/BINANCE_API_KEY/versions/latest"
+            BINANCE_KEY_response = self.gcloud_client.access_secret_version(
+                name=f"projects/{PROJECT_ID}/secrets/BINANCE_API/versions/latest"
             )
-            binance_key = binance_key_response.payload.data.decode("UTF-8").strip()
+            BINANCE_KEY = BINANCE_KEY_response.payload.data.decode("UTF-8").strip()
 
-            binance_secret_response = self.gcloud_client.access_secret_version(
-                name=f"projects/{project_id}/secrets/BINANCE_SECRET_KEY/versions/latest"
+            BINANCE_SECRET_response = self.gcloud_client.access_secret_version(
+                name=f"projects/{PROJECT_ID}/secrets/BINANCE_SECRET/versions/latest"
             )
-            binance_secret = binance_secret_response.payload.data.decode(
+            BINANCE_SECRET = BINANCE_SECRET_response.payload.data.decode(
                 "UTF-8"
             ).strip()
 
@@ -48,20 +48,20 @@ class DataHandler:
         except Exception as e:
             logger.error(f"Could not retrieve from Google Secret Manager: {e}")
             load_dotenv()
-            binance_key = os.getenv("binance_api")
-            binance_secret = os.getenv("binance_secret")
+            BINANCE_KEY = os.getenv("BINANCE_KEY")
+            BINANCE_SECRET = os.getenv("BINANCE_SECRET")
             logger.info("Falling back to .env file for Binance credentials")
 
-        if not binance_key or not binance_secret:
+        if not BINANCE_KEY or not BINANCE_SECRET:
             raise ValueError(
                 "Binance API credentials not found in environment variables. "
-                "Ensure that binance_api and binance_secret are set in your .env file."
+                "Ensure that BINANCE_KEY and BINANCE_SECRET are set in your .env file."
             )
 
         # init binance client
         self.client = Client(
-            api_key=binance_key,
-            api_secret=binance_secret,
+            api_key=BINANCE_KEY,
+            api_secret=BINANCE_SECRET,
             requests_params={"timeout": 100},
         )
         logger.info("Binance Futures client initialized successfully.")
