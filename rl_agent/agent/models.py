@@ -82,12 +82,16 @@ class ActorCriticWrapper(nn.Module):
         window_size, n_features = input_shape
 
         # --- Feature Extractor and Input Embedding ---
-        # Adjust hidden dim if needed, ensure output matches embedding_dim
+        # Revised feature extractor with correct channel dimensions
         self.feature_extractor = nn.Sequential(
-            nn.Conv1d(n_features, feature_extractor_hidden_dim, kernel_size=3, padding=1),
+            # First conv layer: n_features -> hidden_dim
+            nn.Conv1d(in_channels=n_features, out_channels=feature_extractor_hidden_dim, kernel_size=3, padding=1),
             nn.GELU(),
-            nn.Conv1d(feature_extractor_hidden_dim, embedding_dim, kernel_size=3, padding=1),
+            nn.BatchNorm1d(feature_extractor_hidden_dim),
+            # Second conv layer: hidden_dim -> embedding_dim
+            nn.Conv1d(in_channels=feature_extractor_hidden_dim, out_channels=embedding_dim, kernel_size=3, padding=1),
             nn.GELU(),
+            nn.BatchNorm1d(embedding_dim),
         )
         # No separate input_embedding linear layer needed if CNN outputs embedding_dim
 

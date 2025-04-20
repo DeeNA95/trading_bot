@@ -24,6 +24,7 @@ from rl_agent.environment.trading_env import BinanceFuturesCryptoEnv # Env creat
 # --- New Imports ---
 from training.trainer import Trainer # Import the new Trainer class
 from training.model_factory import ModelConfig # Import ModelConfig
+from training.load_preprocess_data import load_and_preprocess # Import the new data loading function
 
 # --- Removed old model component/architecture imports and mappings ---
 # (These are now handled by the model_factory and PPOAgent internally)
@@ -44,50 +45,6 @@ def set_seeds(seed_value=42):
         # torch.backends.cudnn.benchmark = False
 
 
-def load_and_preprocess_data(file_path):
-    """Load and preprocess data from CSV or Parquet file."""
-    logger.info(f"Loading data from {file_path}...")
-
-    # Determine file type by extension
-    if file_path.endswith(".parquet"):
-        df = pd.read_parquet(file_path)
-    else:
-        df = pd.read_csv(file_path)
-
-    # Convert date column to datetime index if needed
-    if "Unnamed: 0" in df.columns:
-        df.drop(columns="Unnamed: 0", axis=1, inplace=True)
-
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"])
-        df.set_index("date", inplace=True)
-
-    # Convert all remaining object/string columns to float
-    for column in df.select_dtypes(include=["object"]).columns:
-        try:
-            df[column] = df[column].astype(float)
-        except:
-            print(f"Dropping column {column} as it cannot be converted to float")
-            df = df.drop(columns=[column])
-
-    # Replace inf values with NaN
-    df = df.replace([np.inf, -np.inf], np.nan)
-
-    # Forward fill remaining NaNs (uses last valid observation)
-    df = df.ffill()
-    # Drop any rows that still contain NaNs (typically the initial rows)
-    original_len = len(df)
-    df = df.dropna()
-    new_len = len(df)
-    if original_len > new_len:
-        print(f"Dropped {original_len - new_len} initial rows containing NaNs after ffill.")
-
-    print(f"Data shape after ffill & dropna: {df.shape}")
-    if df.isnull().values.any():
-        print("Error: NaNs still detected after ffill and dropna!")  # Should not happen
-        exit(1)
-
-    return df
 
 
 
@@ -161,7 +118,7 @@ if __name__ == "__main__":
 
     logger.info("Starting Walk-Forward Validation...")
 
-    full_df = load_and_preprocess_data(args.train_data)
+    full_df = load_and_preprocess(args.train_data)
     if full_df.empty or len(full_df) < args.window * (args.n_splits + 1):
         logger.error(f"Not enough data for {args.n_splits} splits with window {args.window}. Exiting.")
         # exit()
