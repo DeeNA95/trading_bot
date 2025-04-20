@@ -44,6 +44,7 @@ class ModelConfig:
     # ActorCritic specific
     feature_extractor_dim: int = 128
     action_dim: int = 3  # HOLD, LONG, SHORT
+    n_features: int = 59 # <<< ADDED: Number of input features from data
 
 # --- Dynamically Assembled Transformer Core ---
 class DynamicTransformerCore(nn.Module):
@@ -304,7 +305,7 @@ def create_model(config: ModelConfig, device: str = "auto") -> ActorCriticWrappe
 
     # Create ActorCriticWrapper with the core transformer
     model = ActorCriticWrapper(
-        input_shape=(config.window_size, config.embedding_dim),
+        input_shape=(config.window_size, config.n_features), # <<< CHANGED: Use actual n_features
         action_dim=config.action_dim,
         transformer_core=core_transformer,
         feature_extractor_hidden_dim=config.feature_extractor_dim,

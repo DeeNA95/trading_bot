@@ -175,6 +175,7 @@ if __name__ == "__main__":
             top_k=args.top_k,
             norm_type=args.norm_type,
             feature_extractor_dim=args.feature_extractor_dim,
+            n_features=train_df.shape[1]+3, # <<< ADDED: Get actual feature count from data
             # action_dim is determined by env, set within ActorCriticWrapper
         )
 
