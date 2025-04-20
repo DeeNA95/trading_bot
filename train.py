@@ -16,53 +16,19 @@ from sklearn.model_selection import TimeSeriesSplit
 import tqdm
 from tqdm import tqdm
 
-from rl_agent.agent.ppo_agent import PPOAgent
-from rl_agent.environment.trading_env import BinanceFuturesCryptoEnv
-from data import DataHandler
+# Agent, Env, Data Imports (Keep)
+# from rl_agent.agent.ppo_agent import PPOAgent # PPOAgent is used within Trainer now
+from rl_agent.environment.trading_env import BinanceFuturesCryptoEnv # Env creation still happens here conceptually before Trainer
+# from data import DataHandler # Assuming DataHandler is used in load_and_preprocess
 
-# --- Import necessary classes for type hints and instantiation ---
-from rl_agent.agent.blocks.encoder_block import EncoderBlock
-from rl_agent.agent.blocks.decoder_block import DecoderBlock
-from rl_agent.agent.attention.multi_head_attention import MultiHeadAttention
-from rl_agent.agent.attention.pyramidal_attention import PyramidalAttention
-from rl_agent.agent.attention.multi_query_attention import MultiQueryAttention
-from rl_agent.agent.attention.grouped_query_attention import GroupedQueryAttention
-from rl_agent.agent.attention.multi_latent_attention import MultiLatentAttention
-from rl_agent.agent.feedforward import FeedForward, MixtureOfExperts
-import torch.nn as nn  # For LayerNorm default
+# --- New Imports ---
+from training.trainer import Trainer # Import the new Trainer class
+from training.model_factory import ModelConfig # Import ModelConfig
 
-# --- Import Transformer Core Architectures ---
-from rl_agent.agent.transformer.encoder_only import EncoderOnlyTransformer
-from rl_agent.agent.transformer.encoder_decoder_mha import EncoderDecoderTransformer
+# --- Removed old model component/architecture imports and mappings ---
+# (These are now handled by the model_factory and PPOAgent internally)
 
 logger = logging.getLogger(__name__)
-
-# Mapping for class selection from strings
-BLOCK_CLASSES = {
-    "EncoderBlock": EncoderBlock,
-    "DecoderBlock": DecoderBlock,
-}
-ATTENTION_CLASSES = {
-    "MultiHeadAttention": MultiHeadAttention,
-    "PyramidalAttention": PyramidalAttention,
-    "MultiQueryAttention": MultiQueryAttention,
-    "GroupedQueryAttention": GroupedQueryAttention,
-    "MultiLatentAttention": MultiLatentAttention,
-}
-FFN_CLASSES = {
-    "FeedForward": FeedForward,
-    "MixtureOfExperts": MixtureOfExperts,
-}
-NORM_CLASSES = {
-    "LayerNorm": nn.LayerNorm,
-}
-
-# --- Add Mapping for Transformer Architectures ---
-TRANSFORMER_ARCH_CLASSES = {
-    "EncoderOnlyTransformer": EncoderOnlyTransformer,
-    "EncoderDecoderTransformer": EncoderDecoderTransformer,
-    # Add other architectures here
-}
 
 
 def set_seeds(seed_value=42):
@@ -122,311 +88,11 @@ def load_and_preprocess_data(file_path):
         exit(1)
 
     return df
-    exit(1)
 
 
-def create_environment(
-    df,
-    symbol,
-    window_size,
-    mode,
-    leverage,
-    max_position,
-    initial_balance,
-    risk_reward_ratio,
-    stop_loss_percent,
-    dynamic_leverage,
-    use_risk_adjusted_rewards,
-    trade_fee_percent,
-):
-    """Create and return a trading environment."""
-    env = BinanceFuturesCryptoEnv(
-        df=df,
-        symbol=symbol,
-        window_size=window_size,
-        mode=mode,
-        leverage=leverage,
-        max_position=max_position,
-        initial_balance=initial_balance,
-        risk_reward_ratio=risk_reward_ratio,
-        stop_loss_percent=stop_loss_percent,
-        dynamic_leverage=dynamic_leverage,
-        use_risk_adjusted_rewards=use_risk_adjusted_rewards,
-        trade_fee_percent=trade_fee_percent,
-    )
-    return env
 
-
-def train_evaluate_fold(
-    fold_num: int,
-    train_df: pd.DataFrame,
-    val_df: pd.DataFrame,
-    test_df: pd.DataFrame,
-    args: argparse.Namespace
-):
-    """
-    Train the RL agent for a single walk-forward fold, evaluate on validation set
-    for model selection, and finally test the best model on the test set.
-    """
-    logger.info(f"--- Starting Training for Fold {fold_num} ---")
-
-    # Data is already loaded and split
-    if train_df.empty or val_df.empty or test_df.empty:
-        logger.error(f"Fold {fold_num}: Empty dataframe received. Skipping.")
-        return None, None  # Indicate failure
-
-    symbol = args.symbol
-    window_size = args.window
-    leverage = args.leverage
-    episodes = args.episodes
-    batch_size = args.batch_size
-    update_freq = args.update_freq
-    eval_freq = args.eval_freq  # Frequency for validation checks
-    dynamic_leverage = args.dynamic_leverage
-    use_risk_adjusted_rewards = args.use_risk_adjusted_rewards
-    max_position = args.max_position
-    initial_balance = args.balance
-    risk_reward_ratio = args.risk_reward
-    stop_loss_percent = args.stop_loss
-    trade_fee_percent = args.trade_fee  # Extract from args
-    base_save_path = args.save_path
-
-    # Define fold-specific save path
-    fold_save_path = os.path.join(base_save_path, f"fold_{fold_num}")
-    os.makedirs(fold_save_path, exist_ok=True)
-    best_model_path = os.path.join(fold_save_path, "best_model.pt")
-
-    # --- Environment Creation ---
-    logger.info(f"Fold {fold_num}: Creating environments...")
-    # Training Env
-    train_env = create_environment(
-        df=train_df,
-        symbol=symbol,
-        window_size=window_size,
-        mode="train",  # Use train mode
-        leverage=leverage,
-        max_position=max_position,
-        initial_balance=initial_balance,
-        risk_reward_ratio=risk_reward_ratio,
-        stop_loss_percent=stop_loss_percent,
-        dynamic_leverage=dynamic_leverage,
-        use_risk_adjusted_rewards=use_risk_adjusted_rewards,
-        trade_fee_percent=trade_fee_percent,
-    )
-    # Validation Env
-    val_env = create_environment(
-        df=val_df,
-        symbol=symbol,
-        window_size=window_size,
-        mode="test",  # Use test mode for evaluation logic
-        leverage=leverage,
-        max_position=max_position,
-        initial_balance=initial_balance,  # Start with same balance for comparison
-        risk_reward_ratio=risk_reward_ratio,
-        stop_loss_percent=stop_loss_percent,
-        dynamic_leverage=dynamic_leverage,
-        use_risk_adjusted_rewards=use_risk_adjusted_rewards,
-        trade_fee_percent=trade_fee_percent,  # Pass the fee
-    )
-
-    # --- Agent Creation ---
-    logger.info(f"Fold {fold_num}: Creating PPO Agent...")
-
-    # --- Select Core Transformer Architecture ---
-    transformer_arch_class = TRANSFORMER_ARCH_CLASSES.get(args.transformer_arch)
-    if not transformer_arch_class:
-        logger.error(f"Invalid transformer_arch specified: {args.transformer_arch}")
-        return None, None
-
-    # --- Construct Core Transformer Config ---
-    try:
-        attention_args_dict = json.loads(args.attention_args) if args.attention_args else {}
-    except json.JSONDecodeError:
-        logger.error(f"Invalid JSON string for attention_args: {args.attention_args}")
-        return None, None
-    if 'n_heads' not in attention_args_dict: attention_args_dict['n_heads'] = args.n_heads
-    if 'dropout' not in attention_args_dict: attention_args_dict['dropout'] = args.dropout
-
-    attention_class = ATTENTION_CLASSES.get(args.attention_class)
-    ffn_class = FFN_CLASSES.get(args.ffn_class)
-    norm_class = NORM_CLASSES.get(args.norm_class)
-    if not all([attention_class, ffn_class, norm_class]):
-        logger.error("Invalid class name provided for attention, ffn, or norm.")
-        return None, None
-
-    # Base config applicable to most cores
-    transformer_core_config = {
-        'n_embd': args.embedding_dim, # Use new embedding_dim arg
-        'attention_args': attention_args_dict,
-        'attention_class': attention_class, # Pass class itself if core expects it
-        'ffn_class': ffn_class,
-        'ffn_args': json.loads(args.ffn_args) if args.ffn_args else None,
-        'norm_class': norm_class,
-        'norm_args': json.loads(args.norm_args) if args.norm_args else None,
-        'dropout': args.dropout,
-        'window_size': args.window, # Pass window size
-    }
-
-    # Add architecture-specific arguments
-    if transformer_arch_class == EncoderOnlyTransformer:
-        transformer_core_config['n_layers'] = args.n_layers # Single layer count
-        transformer_core_config['use_causal_mask'] = args.use_causal_mask # Add causal mask flag
-    elif transformer_arch_class == EncoderDecoderTransformer:
-        transformer_core_config['n_encoder_layers'] = args.n_encoder_layers
-        transformer_core_config['n_decoder_layers'] = args.n_decoder_layers
-    else:
-        transformer_core_config['n_layers'] = args.n_layers
-
-    # --- Construct Wrapper Config (Optional) ---
-    wrapper_config = {
-        'embedding_dim': args.embedding_dim, # Pass embedding dim
-        'feature_extractor_hidden_dim': args.feature_extractor_dim, # Add arg for this
-        'dropout': args.dropout, # Dropout for heads
-    }
-
-    # --- Instantiate Agent ---
-    agent = PPOAgent(
-        env=train_env,
-        batch_size=args.batch_size,
-        save_dir=fold_save_path,
-        # Pass core architecture class and its config
-        transformer_arch_class=transformer_arch_class,
-        transformer_core_config=transformer_core_config,
-        # Pass wrapper config
-        wrapper_config=wrapper_config,
-        # Pass other PPO hyperparameters
-        lr=args.lr,
-        gamma=args.gamma,
-        gae_lambda=args.gae_lambda,
-        policy_clip=args.policy_clip,
-        n_epochs=args.n_epochs,
-        entropy_coef=args.entropy_coef,
-        value_coef=args.value_coef,
-        max_grad_norm=args.max_grad_norm,
-        device=args.device,
-        use_gae=args.use_gae,
-        normalize_advantage=args.normalize_advantage,
-        weight_decay=args.weight_decay,
-    )
-
-    # --- Training Loop ---
-    logger.info(f"Fold {fold_num}: Starting training for {args.episodes} episodes...")
-    max_steps_train = len(train_df) - window_size  # Max steps per episode in training env
-    best_val_score = -float('inf')  # Use a relevant metric, e.g., avg reward
-    best_val_episode = -1
-    training_info = {"train_rewards": [], "val_rewards": [], "policy_loss": [], "value_loss": [], "entropy": []}
-    model_saved_for_fold = False  # Flag to check if any model was saved
-
-    pbar_episodes = tqdm(range(episodes), desc=f"Fold {fold_num} Training", leave=False)
-    for episode in pbar_episodes:
-        state, _ = train_env.reset()
-        done = False
-        truncated = False
-        episode_reward = 0
-        steps_in_episode = 0
-
-        while not (done or truncated):
-            if steps_in_episode >= max_steps_train:
-                logger.warning(f"Fold {fold_num} Ep {episode+1}: Truncating episode at max steps {max_steps_train}")
-                truncated = True
-
-            action, prob, val = agent.choose_action(state)
-            next_state, reward, done, truncated, info = train_env.step(action)
-
-            agent.memory.store(state, action, prob, val, reward, done or truncated)
-            state = next_state
-            episode_reward += reward
-            steps_in_episode += 1
-
-            if len(agent.memory.states) >= agent.batch_size:
-                update_metrics = agent.update()
-                if update_metrics:
-                    training_info["policy_loss"].append(update_metrics["policy_loss"])
-                    training_info["value_loss"].append(update_metrics["value_loss"])
-                    training_info["entropy"].append(update_metrics["entropy"])
-
-            if done or truncated:
-                break
-
-        training_info["train_rewards"].append(episode_reward)
-
-        # --- Periodic Validation & Conditional Saving ---
-        if (episode + 1) % eval_freq == 0 or episode == episodes - 1:
-            original_env = agent.env
-            agent.env = val_env
-            num_val_episodes = 5
-            val_reward = agent.evaluate(num_episodes=num_val_episodes)
-            agent.env = original_env
-            training_info["val_rewards"].append(val_reward)
-            avg_train_reward_log = np.mean(training_info["train_rewards"][-(eval_freq):])
-            avg_policy_loss_log = np.mean(training_info["policy_loss"][-(eval_freq * agent.batch_size // update_freq):]) if training_info["policy_loss"] else np.nan
-            avg_value_loss_log = np.mean(training_info["value_loss"][-(eval_freq * agent.batch_size // update_freq):]) if training_info["value_loss"] else np.nan
-            avg_entropy_log = np.mean(training_info["entropy"][-(eval_freq * agent.batch_size // update_freq):]) if training_info["entropy"] else np.nan
-
-            logger.info(f"Fold {fold_num} | Ep {episode + 1}/{episodes} | Train R(Ep): {episode_reward:.2f} | Train R(Avg {eval_freq}): {avg_train_reward_log:.2f} | Val R(Avg {num_val_episodes}): {val_reward:.2f}")
-
-            MIN_ACCEPTABLE_VAL_SCORE = -140.0
-            if val_reward > best_val_score and val_reward >= MIN_ACCEPTABLE_VAL_SCORE:
-                best_val_score = val_reward
-                best_val_episode = episode + 1
-                agent.save(best_model_path)
-                logger.info(f"    -> New best model saved! Val Score: {best_val_score:.2f} at Ep {best_val_episode}")
-                model_saved_for_fold = True
-            pbar_episodes.set_description(f"Fold {fold_num} Training | Best Val R: {best_val_score:.2f} @ Ep {best_val_episode}")
-
-    pbar_episodes.close()
-    logger.info(f"--- Finished Training for Fold {fold_num} ---")
-    if not model_saved_for_fold:
-        logger.warning(f"Fold {fold_num}: No model met the saving criteria during training.")
-        return {"avg_reward": np.nan, "avg_sharpe": np.nan}, training_info
-
-    logger.info(f"Fold {fold_num}: Loading best model from {best_model_path} for testing...")
-    try:
-        agent.load(best_model_path)
-    except FileNotFoundError:
-        logger.error(f"Fold {fold_num}: Best model file not found at {best_model_path}. Cannot perform testing.")
-        return {"avg_reward": np.nan, "avg_sharpe": np.nan}, training_info
-
-    logger.info(f"Fold {fold_num}: Creating test environment...")
-    test_env = create_environment(
-        df=test_df,
-        symbol=symbol,
-        window_size=window_size,
-        mode="test",
-        leverage=leverage,
-        max_position=max_position,
-        initial_balance=initial_balance,
-        risk_reward_ratio=risk_reward_ratio,
-        stop_loss_percent=stop_loss_percent,
-        dynamic_leverage=dynamic_leverage,
-        use_risk_adjusted_rewards=use_risk_adjusted_rewards,
-        trade_fee_percent=trade_fee_percent,
-    )
-
-    logger.info(f"Fold {fold_num}: Evaluating best model on test set...")
-    original_env = agent.env
-    agent.env = test_env
-    num_test_episodes = 20
-    test_rewards = []
-    test_sharpes = []
-    for _ in range(num_test_episodes):
-        test_reward = agent.evaluate(num_episodes=1)
-        test_rewards.append(test_reward)
-        test_sharpes.append(np.random.rand())
-
-    agent.env = original_env
-
-    avg_test_reward = np.mean(test_rewards)
-    avg_test_sharpe = np.mean(test_sharpes)
-    logger.info(f"Fold {fold_num}: Test Set Avg Reward: {avg_test_reward:.2f}")
-    logger.info(f"Fold {fold_num}: Test Set Avg Sharpe: {avg_test_sharpe:.2f}")
-
-    test_metrics = {
-        "avg_reward": avg_test_reward,
-        "avg_sharpe": avg_test_sharpe,
-    }
-
-    return test_metrics, training_info
+# --- Removed create_environment function (logic moved to Trainer) ---
+# --- Removed train_evaluate_fold function (logic moved to Trainer) ---
 
 
 if __name__ == "__main__":
@@ -468,28 +134,25 @@ if __name__ == "__main__":
     parser.add_argument("--normalize_advantage", type=bool, default=True, help="Normalize advantages")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Adam weight decay")
 
-    # --- Core Transformer Architecture Selection ---
-    parser.add_argument("--transformer_arch", type=str, default="EncoderOnlyTransformer", choices=TRANSFORMER_ARCH_CLASSES.keys(), help="Core transformer architecture class")
-    parser.add_argument("--embedding_dim", type=int, default=256, help="Embedding dimension size (input to transformer core)")
-    # Args specific to architectures (replace n_layers)
-    parser.add_argument("--n_layers", type=int, default=6, help="Number of layers (used by EncoderOnly/DecoderOnly)")
-    parser.add_argument("--n_encoder_layers", type=int, default=4, help="Number of encoder layers (used by EncoderDecoder)")
-    parser.add_argument("--n_decoder_layers", type=int, default=4, help="Number of decoder layers (used by EncoderDecoder)")
-    parser.add_argument('--no_causal_mask', action='store_false', dest='use_causal_mask', help="Disable causal masking (for EncoderOnly BERT-like behavior)")
-    parser.set_defaults(use_causal_mask=True) # Default to causal mask enabled
-
-    # --- Component Configuration (for within the core) ---
-    parser.add_argument("--n_heads", type=int, default=8, help="Number of attention heads (used in default attention_args)")
-    parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
-    parser.add_argument("--attention_class", type=str, default="MultiHeadAttention", choices=ATTENTION_CLASSES.keys(), help="Attention mechanism class")
-    parser.add_argument("--attention_args", type=str, default='{"n_heads": 8}', help="JSON string of args for attention class")
-    parser.add_argument("--ffn_class", type=str, default="FeedForward", choices=FFN_CLASSES.keys(), help="Feed-forward network class")
-    parser.add_argument("--ffn_args", type=str, default=None, help="JSON string of args for FFN class")
-    parser.add_argument("--norm_class", type=str, default="LayerNorm", choices=NORM_CLASSES.keys(), help="Normalization layer class")
-    parser.add_argument("--norm_args", type=str, default=None, help="JSON string of args for Norm class")
-
-    # --- Wrapper Configuration ---
-    parser.add_argument("--feature_extractor_dim", type=int, default=128, help="Hidden dimension for initial CNN feature extractor")
+    # --- ModelConfig Arguments (used by model_factory) ---
+    model_group = parser.add_argument_group('Model Architecture Configuration (via ModelConfig)')
+    model_group.add_argument("--architecture", type=str, default="encoder_only", choices=["encoder_only", "decoder_only", "encoder_decoder"], help="Core transformer architecture type")
+    model_group.add_argument("--embedding_dim", type=int, default=256, help="Embedding dimension size")
+    model_group.add_argument("--n_encoder_layers", type=int, default=4, help="Number of encoder layers (if applicable)")
+    model_group.add_argument("--n_decoder_layers", type=int, default=4, help="Number of decoder layers (if applicable)")
+    # -- window_size is already defined under Data/Env args --
+    model_group.add_argument("--dropout", type=float, default=0.1, help="Dropout rate for model components")
+    model_group.add_argument("--attention_type", type=str, default="mha", choices=["mha", "mla", "pyr", "mqn", "gqa"], help="Attention mechanism type")
+    model_group.add_argument("--n_heads", type=int, default=8, help="Number of attention heads (used by some attention types)")
+    model_group.add_argument("--n_latents", type=int, default=None, help="Number of latents (for MLA attention)")
+    model_group.add_argument("--n_groups", type=int, default=None, help="Number of groups (for GQA attention)")
+    model_group.add_argument("--ffn_type", type=str, default="standard", choices=["standard", "moe"], help="Feed-forward network type")
+    model_group.add_argument("--ffn_dim", type=int, default=None, help="Feed-forward hidden dimension (defaults based on embedding_dim)")
+    model_group.add_argument("--n_experts", type=int, default=None, help="Number of experts (for MoE FFN)")
+    model_group.add_argument("--top_k", type=int, default=None, help="Top K experts to use (for MoE FFN)")
+    model_group.add_argument("--norm_type", type=str, default="layer_norm", choices=["layer_norm"], help="Normalization layer type")
+    model_group.add_argument("--feature_extractor_dim", type=int, default=128, help="Hidden dimension for ActorCriticWrapper feature extractor head")
+    # -- action_dim is determined by the environment --
 
     args = parser.parse_args()
 
@@ -536,14 +199,39 @@ if __name__ == "__main__":
             logger.info(f"Val period:   {val_df.index.min()} to {val_df.index.max()}")
             logger.info(f"Test period:  {test_df.index.min()} to {test_df.index.max()}")
 
-        # --- Train and Evaluate on this Fold ---
-        test_metrics, training_info = train_evaluate_fold(
+        # --- Create ModelConfig ---
+        # Note: action_dim is set by env, not needed in ModelConfig here
+        model_config = ModelConfig(
+            architecture=args.architecture,
+            embedding_dim=args.embedding_dim,
+            n_encoder_layers=args.n_encoder_layers,
+            n_decoder_layers=args.n_decoder_layers,
+            window_size=args.window, # Get window size from env args
+            dropout=args.dropout,
+            attention_type=args.attention_type,
+            n_heads=args.n_heads,
+            n_latents=args.n_latents,
+            n_groups=args.n_groups,
+            ffn_type=args.ffn_type,
+            ffn_dim=args.ffn_dim,
+            n_experts=args.n_experts,
+            top_k=args.top_k,
+            norm_type=args.norm_type,
+            feature_extractor_dim=args.feature_extractor_dim,
+            # action_dim is determined by env, set within ActorCriticWrapper
+        )
+
+        # --- Instantiate and Run Trainer for this Fold ---
+        # Pass model_config and the remaining args (for trainer/env/ppo)
+        trainer = Trainer(
             fold_num=fold_num,
             train_df=train_df,
             val_df=val_df,
             test_df=test_df,
-            args=args
+            model_config=model_config,
+            trainer_args=args # Pass the full args namespace for now
         )
+        test_metrics, training_info = trainer.train_and_evaluate_fold()
 
         if test_metrics is None:
             logger.warning(f"Fold {fold_num}: Training/evaluation failed or was skipped. Continuing to next fold.")

@@ -58,9 +58,11 @@ class ActorCriticWrapper(nn.Module):
         embedding_dim: int = 256, # Dim expected by transformer_core
         activation_fn: nn.Module = nn.GELU(),
         dropout: float = 0.1, # Dropout for heads
+        temperature: float = 1.0, # Temperature parameter
         device: str = "auto",
     ):
         super(ActorCriticWrapper, self).__init__()
+        self.temperature = temperature
 
         # Determine device
         if device == "auto":
@@ -75,7 +77,7 @@ class ActorCriticWrapper(nn.Module):
                 self.device = torch.device("cpu")
         else:
             self.device = torch.device(device)
-            
+
 
         window_size, n_features = input_shape
 
