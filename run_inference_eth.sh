@@ -18,5 +18,4 @@ python inference.py \
     --stop_loss_percent 0.005 \
     --risk_reward_ratio 2.0 \
     --sleep_time 30 \
-    --device cpu
 echo "Inference script finished."

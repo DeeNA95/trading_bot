@@ -288,23 +288,78 @@ class InferenceAgent:
                 blob.download_to_file(buffer)
                 buffer.seek(0)
 
-                # Load the entire model object from buffer
-                model = torch.load(buffer, map_location=self.device)
-                logger.info(f'Successfully loaded entire model object from GCS: {self.model_path}')
+                # Load the checkpoint dictionary from buffer
+                checkpoint = torch.load(buffer, map_location=self.device)
+                logger.info(f'Successfully loaded checkpoint dictionary from GCS: {self.model_path}')
             else:
-                # Load the entire model object from local file
-                model = torch.load(self.model_path, map_location=self.device)
-                logger.info(f'Successfully loaded entire model object from local file: {self.model_path}')
+                # Load the checkpoint dictionary from local file
+                checkpoint = torch.load(self.model_path, map_location=self.device)
+                logger.info(f'Successfully loaded checkpoint dictionary from local file: {self.model_path}')
+
+            # --- Reconstruct model from saved config ---
+            if 'model_config' not in checkpoint or checkpoint['model_config'] is None:
+                 raise ValueError("Model config not found in checkpoint. Cannot reconstruct model.")
+
+            config_dict = checkpoint['model_config']
+            # Convert ModelConfig dict back to ModelConfig object if needed by factory,
+            # or just use the dict directly if factory accepts it.
+            # Assuming DynamicTransformerCore can be built from config_dict
+
+            # Determine input_dim dynamically or use a reasonable default/saved value if possible
+            # For now, using the previous hardcoded value, but ideally, this should be saved/inferred
+            # Check if n_features was saved in the config
+            input_dim = config_dict.get('n_features', 59)
+            logger.info(f"Reconstructing model with input_dim: {input_dim}")
+
+
+            # --- Use DynamicTransformerCore for reconstruction ---
+            # Ensure necessary args are present in config_dict or provide defaults
+            core_transformer = DynamicTransformerCore(
+                architecture=config_dict.get('architecture', 'encoder_only'),
+                embedding_dim=config_dict.get('embedding_dim', 128),
+                n_encoder_layers=config_dict.get('n_encoder_layers', 4),
+                n_decoder_layers=config_dict.get('n_decoder_layers', 0), # Default 0 if not encoder_decoder
+                window_size=config_dict.get('window_size', self.window_size),
+                dropout=config_dict.get('dropout', 0.1),
+                attention_type=config_dict.get('attention_type', 'mha'),
+                n_heads=config_dict.get('n_heads', 8),
+                n_latents=config_dict.get('n_latents'),
+                n_groups=config_dict.get('n_groups'),
+                ffn_type=config_dict.get('ffn_type', 'standard'),
+                ffn_dim=config_dict.get('ffn_dim'),
+                n_experts=config_dict.get('n_experts'),
+                top_k=config_dict.get('top_k'),
+                norm_type=config_dict.get('norm_type', 'layer_norm')
+                # Add any other args DynamicTransformerCore expects
+            )
+
+            model = ActorCriticWrapper(
+                input_shape=(config_dict.get('window_size', self.window_size), input_dim),
+                action_dim=3, # Assuming 3 actions (Hold, Buy, Sell) - Should ideally be saved/inferred
+                transformer_core=core_transformer,
+                feature_extractor_hidden_dim=config_dict.get('feature_extractor_dim', 64),
+                embedding_dim=config_dict.get('embedding_dim', 128),
+                device=self.device # Pass device here
+            )
+            # --- End Reconstruction ---
+
+            # Load weights into the reconstructed model
+            if 'model_state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['model_state_dict'])
+                logger.info("Successfully loaded model_state_dict into reconstructed model.")
+            else:
+                 raise ValueError("Checkpoint does not contain 'model_state_dict'.")
+
 
             # Ensure the model is on the correct device and in evaluation mode
             model = model.to(self.device) # Ensure model is explicitly moved to the target device
             model.eval()
 
-            logger.info(f"Successfully loaded entire model object and moved to {self.device}.")
+            logger.info(f"Successfully loaded and reconstructed model from checkpoint on {self.device}.")
             return model
 
         except Exception as e:
-            logger.error(f'Failed to load model: {e}')
+            logger.error(f'Failed to load and reconstruct model: {e}')
             raise
 
     def update_market_data(self) -> bool:
