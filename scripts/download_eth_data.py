@@ -14,9 +14,9 @@ def main():
     # Initialize data handler
     data_handler = DataHandler()
 
-    # Calculate dates (ETH started trading on futures around Sept 2019)
+    # Set fixed start date and current end date
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=365 * 6)
+    start_date = datetime(2019, 11, 25)
 
     # Process data with all metrics and features
     logger.info(f"Fetching ETHUSDT data from {start_date} to {end_date}")

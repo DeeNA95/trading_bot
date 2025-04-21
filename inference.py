@@ -3,6 +3,8 @@
 Simplified inference script for running a trained RL agent on Binance Futures.
 Handles model loading, data fetching, and trade execution while focusing on inference.
 """
+import torch
+from rl_agent.agent.models import ActorCriticWrapper
 
 import argparse
 import logging
@@ -22,11 +24,21 @@ from google.cloud import secretmanager, storage
 
 from data import DataHandler
 from rl_agent.agent.models import (ActorCriticWrapper)  # Corrected import
-from rl_agent.environment.execution import BinanceFuturesExecutor
-from rl_agent.agent.transformer.encoder_only import EncoderOnlyTransformer
 from rl_agent.agent.attention.multi_head_attention import MultiHeadAttention
-from rl_agent.agent.feedforward import FeedForward
+from rl_agent.agent.feedforward import FeedForward, MixtureOfExperts
+from rl_agent.agent.embeddings import TimeEmbedding
+from rl_agent.agent.blocks.encoder_block import EncoderBlock
+from rl_agent.agent.blocks.decoder_block import DecoderBlock
+from rl_agent.environment.execution import BinanceFuturesExecutor
 import torch.nn as nn
+from torch.nn import Sequential, Conv1d, GELU, ReLU, Linear, BatchNorm1d, LayerNorm, ModuleList, Dropout
+from training.model_factory import DynamicTransformerCore
+
+torch.serialization.add_safe_globals([
+    ActorCriticWrapper, Sequential, Conv1d, GELU, ReLU, Linear, BatchNorm1d, LayerNorm, DynamicTransformerCore, TimeEmbedding, ModuleList,
+    EncoderBlock, DecoderBlock, MultiHeadAttention, Dropout, MixtureOfExperts, FeedForward
+])
+
 
 # Load environment variables
 load_dotenv()
@@ -285,7 +297,7 @@ class InferenceAgent:
                 logger.info(f'Successfully loaded entire model object from local file: {self.model_path}')
 
             # Ensure the model is on the correct device and in evaluation mode
-            model = model.to(self.device)
+            # model = model.to(self.device)
             model.eval()
 
             logger.info(f"Successfully loaded entire model object.")
@@ -376,16 +388,12 @@ class InferenceAgent:
             # Get the last window_size rows
             data = self.processed_df.iloc[-self.window_size:].copy()
             logger.info(f'Original columns: {data.columns}')
+            data.drop(columns=['close_time','symbol','trade_setup'], inplace=True, errors='ignore')
 
             scaler = StandardScaler()
             data = pd.DataFrame(scaler.fit_transform(data), columns=data.columns, index=data.index)
 
-            # Drop non-numeric columns and Unnamed: 0 if present
-            columns_to_drop = ['symbol']
-            if 'Unnamed: 0' in data.columns:
-                columns_to_drop.append('Unnamed: 0')
-            if columns_to_drop:
-                data = data.drop(columns=columns_to_drop)
+
 
             # Get current position and PnL
             position_info = self.get_current_position()
