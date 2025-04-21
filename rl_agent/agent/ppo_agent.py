@@ -629,18 +629,11 @@ class PPOAgent:
         Args:
             path: Path to save the agent to (local path or gs:// URL)
         """
-        model_state_dict = self.model.state_dict()
-        optimizer_state_dict = self.optimizer.state_dict()
-
-        checkpoint = {
-            'model_state_dict': model_state_dict,
-            'optimizer_state_dict': optimizer_state_dict,
-            'epoch': getattr(self, 'current_epoch', None),
-            'best_reward': self.best_reward,
-            'model_config': asdict(self.model_config) if self.model_config else None, # Save the model config
-            # 'training_args': vars(self.args) if hasattr(self, 'args') else None, # Keep PPO/env args if needed
-            'timestamp': time.strftime("%Y%m%d-%H%M%S"),
-        }
+        # --- Save the entire model object ---
+        # Note: This is generally discouraged for portability/security if the model code changes,
+        # but simplifies loading if the code structure is consistent.
+        # Ensure the model is on CPU before saving for better compatibility
+        model_to_save = self.model.to('cpu')
 
         if path.startswith("gs://"):
             try:
@@ -656,7 +649,7 @@ class PPOAgent:
             blob_path = path_parts[1] if len(path_parts) > 1 else ""
 
             buffer = io.BytesIO()
-            torch.save(checkpoint, buffer)
+            torch.save(model_to_save, buffer) # Save the model object directly
             buffer.seek(0)
 
             try:
@@ -670,9 +663,12 @@ class PPOAgent:
                 raise
         else:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            torch.save(checkpoint, path)
+            torch.save(model_to_save, path) # Save the model object directly
             print(f"Model saved locally: {path}")
-        self.logger.info(f"Model checkpoint saved to: {path}")
+
+        # Move model back to original device after saving
+        self.model.to(self.device)
+        self.logger.info(f"Entire model object saved to: {path}")
 
     def load(self, path: str) -> None:
         """
