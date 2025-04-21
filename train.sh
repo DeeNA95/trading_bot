@@ -9,7 +9,7 @@ python train.py \
   --train_data gs://ctrading/data/eth/ETHUSDT_1m_with_metrics_6y.parquet \
   --symbol ETHUSDT \
   --interval 1m \
-  --window 60 \
+  --window 64 \
   --leverage 20 \
   --balance 10 \
   --architecture encoder_only \
@@ -20,6 +20,5 @@ python train.py \
   --n_experts 2 \
   --ffn_dim 128 \
   --lr 3e-5 \
-  --batch_size 2048 \
   --episodes 2000 \
   --save_path gs://models/large_encoder
