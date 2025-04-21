@@ -113,48 +113,11 @@ def parse_args() -> argparse.Namespace:
         help='Path to the trained model file'
     )
     parser.add_argument(
-        '--model_type',
-        type=str,
-        default='transformer',
-        choices=['cnn', 'lstm', 'transformer'],
-        help='Type of model architecture'
-    )
-    parser.add_argument(
         '--device',
         type=str,
         default='auto',
         choices=['auto', 'cpu', 'cuda'],
         help='Device to run inference on'
-    )
-    parser.add_argument(
-        '--embedding_dim',
-        type=int,
-        default=128,
-        help='Embedding dimension for the transformer model'
-    )
-    parser.add_argument(
-        '--n_layers',
-        type=int,
-        default=4,
-        help='Number of layers in the transformer model'
-    )
-    parser.add_argument(
-        '--n_heads',
-        type=int,
-        default=8,
-        help='Number of attention heads in the transformer model'
-    )
-    parser.add_argument(
-        '--dropout',
-        type=float,
-        default=0.1,
-        help='Dropout rate for the transformer model'
-    )
-    parser.add_argument(
-        '--feature_extractor_dim',
-        type=int,
-        default=64,
-        help='Hidden dimension for the feature extractor'
     )
 
     # Trading parameters
@@ -242,13 +205,10 @@ class InferenceAgent:
         Args:
             args: Parsed command line arguments containing configuration parameters
         """
-        self.args = args  # Store args for use in _load_model
-
         # Check and set up API keys
         api_key, api_secret = check_api_keys()
 
         self.model_path = args.model_path
-        self.model_type = args.model_type.lower()
         self.symbol = args.symbol
         self.interval = args.interval
         self.window_size = args.window_size
@@ -265,7 +225,7 @@ class InferenceAgent:
         else:
             self.device = args.device
 
-        logger.info(f'Initializing InferenceAgent with {self.model_type} model on {self.device}')
+        logger.info(f'Initializing InferenceAgent on {self.device}') # Removed model_type
 
         # Initialize components
         self.model = self._load_model()
@@ -316,65 +276,19 @@ class InferenceAgent:
                 blob.download_to_file(buffer)
                 buffer.seek(0)
 
-                # Load state dict from buffer with weights_only=False
-                state_dict = torch.load(buffer, map_location=self.device, weights_only=False)
-                logger.info(f'Successfully loaded model from GCS: {self.model_path}')
+                # Load the entire model object from buffer
+                model = torch.load(buffer, map_location=self.device)
+                logger.info(f'Successfully loaded entire model object from GCS: {self.model_path}')
             else:
-                # Load from local file
-                state_dict = torch.load(self.model_path, map_location=self.device, weights_only=False)
-                logger.info(f'Successfully loaded model from local file: {self.model_path}')
+                # Load the entire model object from local file
+                model = torch.load(self.model_path, map_location=self.device)
+                logger.info(f'Successfully loaded entire model object from local file: {self.model_path}')
 
-            # --- Reconstruct model based on command-line args ---
-            embedding_dim = self.args.embedding_dim
-            n_layers = self.args.n_layers
-            n_heads = self.args.n_heads
-            dropout = self.args.dropout
-            window_size = self.args.window_size
-            feature_extractor_dim = self.args.feature_extractor_dim
-            input_dim = 59  # Or determine dynamically if needed, matching prepare_state
-
-            core_transformer = EncoderOnlyTransformer(
-                n_embd=embedding_dim,
-                n_layers=n_layers,
-                window_size=window_size,
-                use_causal_mask=True,
-                attention_class=MultiHeadAttention,
-                attention_args={'n_heads': n_heads, 'dropout': dropout},
-                ffn_class=FeedForward,
-                ffn_args=None,
-                norm_class=nn.LayerNorm,
-                norm_args=None,
-                dropout=dropout
-            )
-
-            model = ActorCriticWrapper(  # Corrected class name
-                input_shape=(window_size, input_dim),
-                action_dim=3,
-                transformer_core=core_transformer,
-                feature_extractor_hidden_dim=feature_extractor_dim,
-                embedding_dim=embedding_dim,
-                device=self.device
-            )
-            # --- End Reconstruction ---
-
-            # Load weights into the correctly structured model
-            if 'model_state_dict' in state_dict:
-                model.load_state_dict(state_dict['model_state_dict'])
-            elif 'transformer_core' in state_dict:
-                model.transformer_core.load_state_dict(state_dict['transformer_core'])
-                if 'actor' in state_dict:
-                    model.actor.load_state_dict(state_dict['actor'])
-                if 'critic' in state_dict:
-                    model.critic.load_state_dict(state_dict['critic'])
-                if 'feature_extractor' in state_dict:
-                    model.feature_extractor.load_state_dict(state_dict['feature_extractor'])
-            else:
-                model.load_state_dict(state_dict)
-
+            # Ensure the model is on the correct device and in evaluation mode
             model = model.to(self.device)
             model.eval()
 
-            logger.info(f"Successfully loaded model weights into reconstructed architecture.")
+            logger.info(f"Successfully loaded entire model object.")
             return model
 
         except Exception as e:
@@ -562,7 +476,7 @@ class InferenceAgent:
             allow_scaling: Whether to allow position scaling
         """
         logger.info(
-            f'Starting inference on {self.symbol} with {self.model_type} model\n'
+            f'Starting inference on {self.symbol}\n'
             f'Trading parameters: Leverage={self.leverage}, '
             f'Stop Loss={self.stop_loss_percent*100}%, '
             f'Risk-Reward={self.risk_reward_ratio}, Interval={self.interval}'
