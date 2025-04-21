@@ -26,7 +26,7 @@ class TimeEmbedding(nn.Module):
     def forward(
         self, x: torch.Tensor, time_values: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        
+
         seq_len = x.shape[1]
 
         # Add learnable position embedding (sliced to current seq_len)
@@ -34,7 +34,7 @@ class TimeEmbedding(nn.Module):
 
         # Add temporal encoding if time values are provided
         if time_values is not None:
-            temporal_code = self.temporal_encoder(time_values)
+            temporal_code = self.temporal_encoder(time_values.float().unsqueeze(-1))
             x = x + temporal_code
 
         return x

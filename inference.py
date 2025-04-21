@@ -11,8 +11,8 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple, Union
 
-from networkx import volume
 
+from sklearn.preprocessing import StandardScaler
 import numpy as np
 import pandas as pd
 import torch
@@ -462,6 +462,9 @@ class InferenceAgent:
             # Get the last window_size rows
             data = self.processed_df.iloc[-self.window_size:].copy()
             logger.info(f'Original columns: {data.columns}')
+
+            scaler = StandardScaler()
+            data = pd.DataFrame(scaler.fit_transform(data), columns=data.columns, index=data.index)
 
             # Drop non-numeric columns and Unnamed: 0 if present
             columns_to_drop = ['symbol']

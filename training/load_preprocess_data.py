@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from sklearn.preprocessing import StandardScaler
 
 def load_and_preprocess(file_path: str) -> pd.DataFrame:
     if file_path.endswith('.parquet'):
@@ -33,6 +34,9 @@ def load_and_preprocess(file_path: str) -> pd.DataFrame:
 
     df = df.replace([np.inf, -np.inf], np.nan)
     df = df.ffill()
+
+    scaler = StandardScaler()
+    df = pd.DataFrame(scaler.fit_transform(df), columns=df.columns, index=df.index)
 
     # Finally drop remaining NaN rows
     original_len = len(df)
