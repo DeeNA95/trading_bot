@@ -14,5 +14,5 @@ python3.12 inference.py \
     --leverage 10 \
     --stop_loss_percent 0.005 \
     --risk_reward_ratio 2.0 \
-    --sleep_time 30
+    --sleep_time 30 
 echo "Inference script finished."

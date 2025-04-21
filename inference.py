@@ -18,6 +18,11 @@ from sklearn.preprocessing import StandardScaler
 import numpy as np
 import pandas as pd
 import torch
+try:
+    import torch_xla.core.xla_model as xm
+    _HAS_XLA = True
+except ImportError:
+    _HAS_XLA = False
 from binance.um_futures import UMFutures
 from dotenv import load_dotenv
 from google.cloud import secretmanager, storage
@@ -96,13 +101,7 @@ def check_api_keys() -> Tuple[str, str]:
 
 
 
-    # Set these in environment variables for other components to use
-    os.environ["binance_api"] = BINANCE_KEY
-    os.environ["BINANCE_secret"] = BINANCE_secret
-    os.environ["binance_future_api"] = BINANCE_KEY
-    os.environ["binance_future_secret"] = BINANCE_secret
-    os.environ["binance_api2"] = BINANCE_KEY
-    os.environ["BINANCE_secret2"] = BINANCE_secret
+
 
     return BINANCE_KEY, BINANCE_secret
 
@@ -128,7 +127,7 @@ def parse_args() -> argparse.Namespace:
         '--device',
         type=str,
         default='auto',
-        choices=['auto', 'cpu', 'cuda'],
+        choices=['auto', 'cpu', 'cuda','mps', 'xla'],
         help='Device to run inference on'
     )
 
@@ -231,13 +230,28 @@ class InferenceAgent:
         self.dry_run = args.dry_run
         self.base_url = args.base_url
 
-        # Set device automatically if not specified
+        # Set device automatically if not specified, prioritizing TPU > GPU > MPS > CPU
         if args.device == 'auto':
-            self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            if _HAS_XLA:
+                self.device = xm.xla_device()
+                logger.info("Using TPU (XLA) device.")
+            elif torch.cuda.is_available():
+                self.device = torch.device("cuda")
+                logger.info("Using CUDA (GPU) device.")
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                 self.device = torch.device("mps")
+                 logger.info("Using MPS (Apple Silicon) device.")
+            else:
+                self.device = torch.device("cpu")
+                logger.info("Using CPU device.")
         else:
-            self.device = args.device
+            # Use the device specified by the user argument
+            self.device = torch.device(args.device)
+            if args.device == 'xla' and not _HAS_XLA:
+                 logger.warning("XLA device specified but torch_xla not found. Falling back to CPU.")
+                 self.device = torch.device("cpu")
 
-        logger.info(f'Initializing InferenceAgent on {self.device}') # Removed model_type
+        logger.info(f'Initializing InferenceAgent on device: {self.device}')
 
         # Initialize components
         self.model = self._load_model()
