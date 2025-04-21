@@ -308,33 +308,108 @@ class InferenceAgent:
             # Determine input_dim dynamically or use a reasonable default/saved value if possible
             # For now, using the previous hardcoded value, but ideally, this should be saved/inferred
             # Check if n_features was saved in the config
-            input_dim = config_dict.get('n_features', 59)
-            logger.info(f"Reconstructing model with input_dim: {input_dim}")
+            input_dim = config_dict.get('n_features', 59) # Use n_features from config if available
+            embedding_dim = config_dict.get('embedding_dim', 128)
+            dropout_rate = config_dict.get('dropout', 0.1)
+            window_size = config_dict.get('window_size', self.window_size)
+            architecture = config_dict.get('architecture', 'encoder_only')
+            n_encoder_layers = config_dict.get('n_encoder_layers', 4)
+            n_decoder_layers = config_dict.get('n_decoder_layers', 0) # Default 0 if not encoder_decoder
 
+            logger.info(f"Reconstructing model: arch={architecture}, input_dim={input_dim}, embed_dim={embedding_dim}")
 
-            # --- Use DynamicTransformerCore for reconstruction ---
-            # Ensure necessary args are present in config_dict or provide defaults
+            # --- Replicate component creation from create_model ---
+
+            # Attention
+            attention_mapping = {"mha": MultiHeadAttention} # Add others if needed
+            attention_class = attention_mapping.get(config_dict.get('attention_type', 'mha'))
+            if not attention_class: raise ValueError(f"Unsupported attention type: {config_dict.get('attention_type')}")
+            attention_args = {
+                "n_embd": embedding_dim,
+                "n_heads": config_dict.get('n_heads', 8),
+                "dropout": dropout_rate
+            }
+            # Add specific args like n_latents, n_groups if needed based on attention_type
+
+            # FFN
+            ffn_mapping = {"standard": FeedForward, "moe": MixtureOfExperts} # Add others if needed
+            ffn_class = ffn_mapping.get(config_dict.get('ffn_type', 'standard'))
+            if not ffn_class: raise ValueError(f"Unsupported FFN type: {config_dict.get('ffn_type')}")
+            ffn_args = {"dropout": dropout_rate}
+            if config_dict.get('ffn_dim'): ffn_args["dim_feedforward"] = config_dict['ffn_dim']
+            if config_dict.get('ffn_type') == "moe":
+                 if config_dict.get('n_experts'): ffn_args["num_experts"] = config_dict['n_experts']
+                 if config_dict.get('top_k'): ffn_args["top_k"] = config_dict['top_k']
+
+            # Norm
+            norm_mapping = {"layer_norm": nn.LayerNorm} # Add others if needed
+            norm_class = norm_mapping.get(config_dict.get('norm_type', 'layer_norm'))
+            if not norm_class: raise ValueError(f"Unsupported norm type: {config_dict.get('norm_type')}")
+            norm_args = {} # Add specific args if needed
+
+            # Shared components
+            dropout_emb = nn.Dropout(dropout_rate)
+
+            # Initialize component holders
+            encoder_time_embedding = None
+            encoder_blocks = None
+            encoder_norm = None
+            decoder_time_embedding = None
+            decoder_blocks = None
+            decoder_norm = None
+
+            # Build Encoder components if needed
+            if architecture in ["encoder_only", "encoder_decoder"]:
+                if n_encoder_layers <= 0: raise ValueError("n_encoder_layers must be > 0")
+                encoder_time_embedding = TimeEmbedding(embedding_dim, max_len=window_size)
+                encoder_blocks = nn.ModuleList()
+                for _ in range(n_encoder_layers):
+                    block = EncoderBlock(
+                        n_embd=embedding_dim,
+                        attention_class=attention_class, attention_args=attention_args.copy(),
+                        ffn_class=ffn_class, ffn_args=ffn_args.copy() if ffn_args else None,
+                        norm_class=norm_class, norm_args=norm_args,
+                        dropout=dropout_rate
+                    )
+                    encoder_blocks.append(block)
+                encoder_norm = norm_class(embedding_dim, **norm_args)
+
+            # Build Decoder components if needed
+            if architecture in ["decoder_only", "encoder_decoder"]:
+                if n_decoder_layers <= 0: raise ValueError("n_decoder_layers must be > 0")
+                decoder_time_embedding = TimeEmbedding(embedding_dim, max_len=window_size)
+                decoder_blocks = nn.ModuleList()
+                for _ in range(n_decoder_layers):
+                     block = DecoderBlock(
+                         n_embd=embedding_dim,
+                         self_attention_class=attention_class, self_attention_args=attention_args.copy(),
+                         cross_attention_class=attention_class if architecture == "encoder_decoder" else None,
+                         cross_attention_args=attention_args.copy() if architecture == "encoder_decoder" else None,
+                         ffn_class=ffn_class, ffn_args=ffn_args.copy() if ffn_args else None,
+                         norm_class=norm_class, norm_args=norm_args,
+                         dropout=dropout_rate
+                     )
+                     decoder_blocks.append(block)
+                decoder_norm = norm_class(embedding_dim, **norm_args)
+
+            # Instantiate the dynamic core with built components
             core_transformer = DynamicTransformerCore(
-                architecture=config_dict.get('architecture', 'encoder_only'),
-                embedding_dim=config_dict.get('embedding_dim', 128),
-                n_encoder_layers=config_dict.get('n_encoder_layers', 4),
-                n_decoder_layers=config_dict.get('n_decoder_layers', 0), # Default 0 if not encoder_decoder
-                window_size=config_dict.get('window_size', self.window_size),
-                dropout=config_dict.get('dropout', 0.1),
-                attention_type=config_dict.get('attention_type', 'mha'),
-                n_heads=config_dict.get('n_heads', 8),
-                n_latents=config_dict.get('n_latents'),
-                n_groups=config_dict.get('n_groups'),
-                ffn_type=config_dict.get('ffn_type', 'standard'),
-                ffn_dim=config_dict.get('ffn_dim'),
-                n_experts=config_dict.get('n_experts'),
-                top_k=config_dict.get('top_k'),
-                norm_type=config_dict.get('norm_type', 'layer_norm')
-                # Add any other args DynamicTransformerCore expects
+                architecture=architecture,
+                encoder_time_embedding=encoder_time_embedding,
+                encoder_blocks=encoder_blocks,
+                encoder_norm=encoder_norm,
+                decoder_time_embedding=decoder_time_embedding,
+                decoder_blocks=decoder_blocks,
+                decoder_norm=decoder_norm,
+                dropout_emb=dropout_emb,
+                window_size=window_size,
+                use_causal_mask_encoder=(architecture == "encoder_only"), # Match create_model logic
+                use_causal_mask_decoder=True
             )
 
+            # Create ActorCriticWrapper
             model = ActorCriticWrapper(
-                input_shape=(config_dict.get('window_size', self.window_size), input_dim),
+                input_shape=(window_size, input_dim),
                 action_dim=3, # Assuming 3 actions (Hold, Buy, Sell) - Should ideally be saved/inferred
                 transformer_core=core_transformer,
                 feature_extractor_hidden_dim=config_dict.get('feature_extractor_dim', 64),
