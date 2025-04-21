@@ -297,10 +297,10 @@ class InferenceAgent:
                 logger.info(f'Successfully loaded entire model object from local file: {self.model_path}')
 
             # Ensure the model is on the correct device and in evaluation mode
-            # model = model.to(self.device)
+            model = model.to(self.device) # Ensure model is explicitly moved to the target device
             model.eval()
 
-            logger.info(f"Successfully loaded entire model object.")
+            logger.info(f"Successfully loaded entire model object and moved to {self.device}.")
             return model
 
         except Exception as e:
