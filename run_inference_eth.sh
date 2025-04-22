@@ -6,10 +6,11 @@
 echo "Starting ETHUSDT inference..."
 
 python3.12 inference.py \
-    --model_path gs://btrading/models/large_encoder/20250421_225336/fold_2/best_model.pt   \
+    --model_path gs://btrading/models/large_encoder/20250421_225336/fold_2/best_model.pt \
+    --scaler_path "gs://btrading/models/large_encoder/20250421_225336/fold_2/scaler_fold_2.joblib" \
     --symbol ETHUSDT \
     --interval 1m \
-    --window_size 60 \
+    --window_size 64 \
     --leverage 20 \
     --stop_loss_percent 0.005 \
     --risk_reward_ratio 2.0 \

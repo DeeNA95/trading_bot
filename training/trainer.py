@@ -5,9 +5,12 @@ import pandas as pd
 from typing import Dict, Any, Optional, Tuple, Type
 import logging
 import time
+import io # For GCS saving
 import os
 import json
 from tqdm import tqdm
+import joblib
+from sklearn.preprocessing import StandardScaler
 
 # RL Agent and Environment Imports
 from rl_agent.agent.ppo_agent import PPOAgent
@@ -80,6 +83,7 @@ class Trainer:
         self.fold_save_path = os.path.join(self.base_save_path, f"fold_{self.fold_num}")
         os.makedirs(self.fold_save_path, exist_ok=True)
         self.best_model_path = os.path.join(self.fold_save_path, "best_model.pt")
+        self.scaler_path = os.path.join(self.fold_save_path, f"scaler_fold_{self.fold_num}.joblib") # Define scaler path
 
     def _create_environment(self, df: pd.DataFrame, mode: str) -> BinanceFuturesCryptoEnv:
         """Helper to create environment instance."""
@@ -157,6 +161,63 @@ class Trainer:
         except Exception as e: # Catch broader exceptions during agent init
              logger.error(f"Fold {self.fold_num}: Failed to create agent - {e}", exc_info=True)
              return None, {}
+
+        # --- Fit and Save Scaler ---
+        logger.info(f"Fold {self.fold_num}: Fitting scaler on training data...")
+        try:
+            # Prepare data for scaler (exclude non-feature columns used by env state)
+            # Assuming train_df already has features calculated
+            # Need to identify feature columns consistently
+            # Let's assume features are all numeric columns excluding potential known non-features
+            # This might need refinement based on how train_df is structured
+            numeric_cols = self.train_df.select_dtypes(include=np.number).columns.tolist()
+            # Exclude columns added later in env state if they exist in train_df (e.g., balance, position - though unlikely)
+            cols_to_exclude_from_scaling = ['balance', 'position', 'unrealized_pnl'] # Add others if needed
+            feature_cols = [col for col in numeric_cols if col not in cols_to_exclude_from_scaling]
+
+            if not feature_cols:
+                 raise ValueError("No numeric feature columns found in train_df for scaling.")
+
+            scaler = StandardScaler() # Assumes StandardScaler is imported
+            # Fit only on the identified feature columns of the training data for this fold
+            scaler.fit(self.train_df[feature_cols].fillna(0)) # Fill NaNs before fitting
+
+            # --- Save Scaler (handling GCS) ---
+            if self.scaler_path.startswith("gs://"):
+                try:
+                    from google.cloud import storage # Import here to avoid making it a hard dependency if not used
+                except ImportError:
+                    raise ImportError("google-cloud-storage is required to save scaler to GCS.")
+
+                path_parts = self.scaler_path[5:].split("/", 1)
+                bucket_name = path_parts[0]
+                blob_path = path_parts[1]
+
+                buffer = io.BytesIO()
+                joblib.dump(scaler, buffer)
+                buffer.seek(0)
+
+                try:
+                    storage_client = storage.Client() # Assumes auth is handled (e.g., VM service account)
+                    bucket = storage_client.bucket(bucket_name)
+                    blob = bucket.blob(blob_path)
+                    blob.upload_from_file(buffer, content_type="application/octet-stream")
+                    logger.info(f"Fold {self.fold_num}: Scaler fitted and saved to GCS: {self.scaler_path}")
+                except Exception as gcs_e:
+                    logger.error(f"Fold {self.fold_num}: Error saving scaler to GCS: {gcs_e}", exc_info=True)
+                    raise # Re-raise GCS error
+            else:
+                # Save locally
+                os.makedirs(os.path.dirname(self.scaler_path), exist_ok=True)
+                joblib.dump(scaler, self.scaler_path) # Assumes joblib is imported
+                logger.info(f"Fold {self.fold_num}: Scaler fitted and saved locally: {self.scaler_path}")
+
+        except NameError as e:
+             logger.error(f"Fold {self.fold_num}: Failed to fit/save scaler - Missing import? {e}", exc_info=True)
+             return None, {} # Cannot proceed without scaler
+        except Exception as e:
+            logger.error(f"Fold {self.fold_num}: Failed to fit/save scaler - {e}", exc_info=True)
+            return None, {} # Cannot proceed without scaler
 
         # --- Training Loop ---
         logger.info(f"Fold {self.fold_num}: Starting training for {self.episodes} episodes...")

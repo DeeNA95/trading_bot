@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 
 from sklearn.preprocessing import StandardScaler
+import joblib
 import numpy as np
 import pandas as pd
 import torch
@@ -68,7 +69,7 @@ def check_api_keys() -> Tuple[str, str]:
 
     try:
         gcloud_client = secretmanager.SecretManagerServiceClient()
-        PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "future-linker-456622-f8")
+        PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "zeta-turbine-457610-h4")
 
         BINANCE_KEY_response = gcloud_client.access_secret_version(
             name=f"projects/{PROJECT_ID}/secrets/BINANCE_API/versions/latest"
@@ -90,7 +91,7 @@ def check_api_keys() -> Tuple[str, str]:
         logger.error(f"Could not retrieve from Google Secret Manager: {e}")
         load_dotenv()
         BINANCE_KEY = os.getenv("BINANCE_KEY")
-        BINANCE_secret = os.getenv("BINANCE_secret")
+        BINANCE_secret = os.getenv("BINANCE_SECRET")
         logger.info("Falling back to .env file for Binance credentials")
 
     if not BINANCE_KEY or not BINANCE_secret:
@@ -98,7 +99,6 @@ def check_api_keys() -> Tuple[str, str]:
             "Binance API credentials not found in environment variables. "
             "Ensure that BINANCE_KEY and BINANCE_secret are set in your .env file."
         )
-
 
 
 
@@ -122,6 +122,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         required=True,
         help='Path to the trained model file'
+    )
+    parser.add_argument(
+        '--scaler_path',
+        type=str,
+        required=True,
+        help='Path to the saved scaler file (.joblib)'
     )
     parser.add_argument(
         '--device',
@@ -220,6 +226,7 @@ class InferenceAgent:
         api_key, api_secret = check_api_keys()
 
         self.model_path = args.model_path
+        self.scaler_path = args.scaler_path # Store scaler path
         self.symbol = args.symbol
         self.interval = args.interval
         self.window_size = args.window_size
@@ -255,6 +262,7 @@ class InferenceAgent:
 
         # Initialize components
         self.model = self._load_model()
+        self.scaler = self._load_scaler() # Load the scaler
         self.data_handler = DataHandler()
 
         # Initialize executor with API configuration
@@ -442,16 +450,66 @@ class InferenceAgent:
 
             # Ensure the model is on the correct device and in evaluation mode
             model = model.to(self.device) # Ensure model is explicitly moved to the target device
-            model.eval()
+            model.eval() # MOVED HERE
 
             logger.info(f"Successfully loaded and reconstructed model from checkpoint on {self.device}.")
             return model
 
-        except Exception as e:
+        except Exception as e: # Corrected indentation
             logger.error(f'Failed to load and reconstruct model: {e}')
-            raise
+            raise # Corrected indentation
 
-    def update_market_data(self) -> bool:
+    # --- _load_scaler method definition START ---
+    def _load_scaler(self) -> StandardScaler:
+        """Loads the pre-fitted scaler from the specified path."""
+        logger.info(f"Loading scaler from {self.scaler_path}...")
+        try:
+            # Handle GCS paths for scaler
+            if self.scaler_path.startswith('gs://'):
+                try:
+                    from google.cloud import storage
+                    import io
+                except ImportError:
+                    raise ImportError('google-cloud-storage is required to load scaler from GCS.')
+
+                path_parts = self.scaler_path[5:].split('/', 1)
+                bucket_name = path_parts[0]
+                blob_path = path_parts[1]
+
+                storage_client = storage.Client()
+                bucket = storage_client.bucket(bucket_name)
+                blob = bucket.blob(blob_path)
+
+                buffer = io.BytesIO()
+                blob.download_to_file(buffer)
+                buffer.seek(0)
+                scaler = joblib.load(buffer)
+                logger.info("Scaler loaded successfully from GCS.")
+            else:
+                # Load from local path
+                if not os.path.exists(self.scaler_path):
+                    raise FileNotFoundError(f"Scaler file not found at {self.scaler_path}")
+                scaler = joblib.load(self.scaler_path)
+                logger.info("Scaler loaded successfully from local file.")
+
+            # Basic validation
+            if not hasattr(scaler, 'transform'):
+                 raise TypeError("Loaded object is not a valid scaler (missing transform method).")
+            if not hasattr(scaler, 'mean_') or scaler.mean_ is None:
+                 logger.warning("Loaded scaler does not appear to be fitted (missing mean_). Scaling might be incorrect.")
+
+            return scaler
+        except Exception as e:
+            logger.error(f'Failed to load scaler: {e}. Inference will proceed without scaling!', exc_info=True)
+            # Return an identity scaler or raise error depending on desired behavior
+            class IdentityScaler:
+                 def transform(self, X): return X
+                 def fit(self, X): pass
+                 def fit_transform(self, X): return X
+            return IdentityScaler() # Return dummy scaler that does nothing
+    # --- _load_scaler method definition END ---
+
+    def update_market_data(self) -> bool: # Corrected indentation
         """
         Fetch and process latest market data.
 
@@ -554,12 +612,40 @@ class InferenceAgent:
 
             # Get the last window_size rows
             data = self.processed_df.iloc[-self.window_size:].copy()
-            logger.info(f'Original columns: {data.columns}')
+            # logger.info(f'Original columns: {data.columns}')
             data.drop(columns=['close_time','symbol','trade_setup'], inplace=True, errors='ignore')
 
-            scaler = StandardScaler()
-            data = pd.DataFrame(scaler.fit_transform(data), columns=data.columns, index=data.index)
+            # Use the pre-loaded scaler
+            try:
+                # Ensure columns match the scaler's fitted columns if possible
+                if hasattr(self.scaler, 'feature_names_in_'):
+                    expected_cols = self.scaler.feature_names_in_
+                    # Check if all expected columns are in data, handle missing if necessary
+                    missing_cols = set(expected_cols) - set(data.columns)
+                    if missing_cols:
+                        logger.warning(f"Scaler expected columns {missing_cols} not found in input data. Scaling might be incorrect.")
+                        # Option 1: Proceed with available columns (might error if scaler strict)
+                        # Option 2: Add missing columns with 0s (might be wrong)
+                        # Option 3: Skip scaling (using IdentityScaler fallback from _load_scaler)
+                        # For now, let's try proceeding with available columns that scaler knows
+                        cols_to_scale = [col for col in expected_cols if col in data.columns]
+                    else:
+                        cols_to_scale = expected_cols
+                else:
+                    # Scaler has no feature names, assume order is correct (less robust)
+                    cols_to_scale = data.columns
 
+                if cols_to_scale: # Only scale if we have columns identified
+                    data_to_scale = data[cols_to_scale].fillna(0) # Fill NaNs before transform
+                    data_scaled = self.scaler.transform(data_to_scale)
+                    data_scaled_df = pd.DataFrame(data_scaled, columns=cols_to_scale, index=data.index)
+                    # Update original dataframe with scaled values
+                    data.update(data_scaled_df)
+                else:
+                    logger.warning("No columns identified for scaling. Proceeding with unscaled data.")
+
+            except Exception as scale_err:
+                logger.error(f"Error applying scaler transform: {scale_err}. Proceeding with unscaled data.", exc_info=True)
 
 
             # Get current position and PnL
@@ -572,17 +658,7 @@ class InferenceAgent:
 
             # Convert any remaining string columns to numeric
             for col in data.select_dtypes(include=['object']).columns:
-                if col == 'trade_setup':
-                    setup_map = {
-                        'none': 0.0,
-                        'strong_bullish': 1.0,
-                        'strong_bearish': -1.0,
-                        'bullish_reversal': 0.5,
-                        'bearish_reversal': -0.5,
-                    }
-                    data[col] = data[col].map(setup_map).fillna(0)
-                else:
-                    data[col] = pd.to_numeric(data[col], errors='coerce').fillna(0)
+                data[col] = pd.to_numeric(data[col], errors='coerce').fillna(0)
 
             # --- Drop 'trade_setup' to match training data where it was dropped due to 'none' ---
             if 'trade_setup' in data.columns:
@@ -595,7 +671,6 @@ class InferenceAgent:
             state = np.nan_to_num(state, nan=0.0)  # Replace NaN with 0
 
             # Log feature count for debugging
-            current_features = state.shape[1]
             logger.info(f'State shape: {state.shape}')
 
             return state

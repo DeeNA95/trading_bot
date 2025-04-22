@@ -23,7 +23,7 @@ class DataHandler:
 
         try:
             self.gcloud_client = secretmanager.SecretManagerServiceClient()
-            PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "future-linker-456622-f8")
+            PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "zeta-turbine-457610-h4")
 
             BINANCE_KEY_response = self.gcloud_client.access_secret_version(
                 name=f"projects/{PROJECT_ID}/secrets/BINANCE_API/versions/latest"
@@ -74,7 +74,7 @@ class DataHandler:
 
         try:
             self.storage_client = storage.Client()
-            bucket = self.storage_client.bucket('ctrading') # Replace 'ctrading' if needed
+            bucket = self.storage_client.bucket('btrading') # Replace 'ctrading' if needed
 
             for model_key, model_filename in model_names.items():
                 model_blob_path = f'regressors/{model_filename}'
