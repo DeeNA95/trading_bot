@@ -223,7 +223,7 @@ class PPOAgent:
         self.model.to(self.device)
 
         # Optimizer
-        self.optimizer = optim.Adam(
+        self.optimizer = optim.AdamW( # try AdamW
             self.model.parameters(), lr=lr, weight_decay=self.weight_decay
         )
 
@@ -278,14 +278,14 @@ class PPOAgent:
                 action_probs = action_probs / action_probs.sum(dim=-1, keepdim=True)
 
                 # --- DEBUG: Print state stats ---
-                print(f"DEBUG state_tensor mean: {state_tensor.mean():.4f}, std: {state_tensor.std():.4f}")
+                # print(f"DEBUG state_tensor mean: {state_tensor.mean():.4f}, std: {state_tensor.std():.4f}")
 
                 dist = Categorical(action_probs)
                 action = dist.sample()
 
                 # Get action probability and value as tensors
                 # --- DEBUG: Print raw logits ---
-                print(f"DEBUG action_logits: {logits.detach().cpu().numpy()}")
+                # print(f"DEBUG action_logits: {logits.detach().cpu().numpy()}")
 
                 action_prob_tensor = action_probs.gather(1, action.unsqueeze(-1)).squeeze()
                 value_tensor = value.squeeze()
