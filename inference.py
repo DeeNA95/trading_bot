@@ -504,16 +504,39 @@ class InferenceAgent:
     def get_current_position(self):
         """Get current position and PnL from Binance"""
         try:
-            # Get current position using correct method name
-            position = self.executor.client.get_position_information(symbol=self.symbol)
-            if position and len(position) > 0:
-                position = position[0]
+            # Get account information which includes positions
+            account_info = self.executor.client.account()
+            positions = account_info.get('positions', [])
+
+            # Find the position for the specific symbol
+            position_data = None
+            for p in positions:
+                if p.get('symbol') == self.symbol:
+                    position_data = p
+                    break # Found the symbol, exit loop
+
+            if position_data:
+                # Extract relevant data
+                pos_amt = float(position_data.get('positionAmt', 0.0))
+                unrealized_pnl = float(position_data.get('unrealizedProfit', 0.0))
+                leverage = float(position_data.get('leverage', 1.0)) # Default leverage to 1 if not found
+
+                # Filter out negligible positions often left by Binance
+                # (Adjust threshold if necessary)
+                if abs(pos_amt) < 1e-7: # Example threshold, adjust based on symbol's precision
+                     pos_amt = 0.0
+                     unrealized_pnl = 0.0 # Reset PnL if position is negligible
+
                 return {
-                    'position': float(position['positionAmt']),
-                    'unrealized_pnl': float(position['unRealizedProfit']),
-                    'leverage': float(position['leverage'])
+                    'position': pos_amt,
+                    'unrealized_pnl': unrealized_pnl,
+                    'leverage': leverage
                 }
-            return {'position': 0, 'unrealized_pnl': 0, 'leverage': 1}
+            else:
+                # Symbol not found in positions, assume zero position
+                logger.warning(f"Position data for symbol {self.symbol} not found in account info.")
+                return {'position': 0.0, 'unrealized_pnl': 0.0, 'leverage': 1.0}
+
         except Exception as e:
             logger.error(f'Error getting position: {e}')
             return {'position': 0, 'unrealized_pnl': 0, 'leverage': 1}

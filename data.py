@@ -764,7 +764,7 @@ class DataHandler:
         df = self.normalise_ohlc(df, window=default_window_size)
 
         # 8. Final clean-up: Forward fill and drop NaNs introduced by calculations
-        logger.info(f'Successfully updated market data with {(df.columns.tolist())} features')
+        # logger.info(f'Successfully updated market data with {(df.columns.tolist())} features')
 
         original_len = len(df)
         df = df.ffill().dropna()
