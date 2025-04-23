@@ -289,7 +289,7 @@ class Trainer:
                 # --- Model Saving Logic ---
                 # TODO: Define a better validation metric if possible (e.g., Sharpe from val run)
                 current_val_metric = val_reward
-                MIN_ACCEPTABLE_VAL_SCORE = -140.0 # Example threshold, make configurable?
+                MIN_ACCEPTABLE_VAL_SCORE = 1000 
                 if current_val_metric > best_val_score and current_val_metric >= MIN_ACCEPTABLE_VAL_SCORE:
                     best_val_score = current_val_metric
                     best_val_episode = episode + 1

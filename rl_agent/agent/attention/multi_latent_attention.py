@@ -14,14 +14,14 @@ class MultiLatentAttention(nn.Module):
     into a fixed number of latent representations. Inspired by Set Transformer
     and Perceiver IO concepts.
     """
-    def __init__(self, embedding_dim: int, n_heads: int, num_latents: int, dropout: float = 0.1, bias: bool = False): # Renamed n_embd
+    def __init__(self, embedding_dim: int, n_heads: int, n_latents: int, dropout: float = 0.1, bias: bool = False): # Renamed n_embd
         """
         Initialize the MultiLatentAttention module.
 
         Args:
             embedding_dim: Total dimension of the model (embedding size).
             n_heads: Number of attention heads for the underlying MHA.
-            num_latents: The number of learnable latent vectors to use as queries.
+            n_latents: The number of learnable latent vectors to use as queries.
             dropout: Dropout probability for the underlying MHA.
             bias: Whether to use bias in linear layers for the underlying MHA.
         """
@@ -30,10 +30,10 @@ class MultiLatentAttention(nn.Module):
 
         self.embedding_dim = embedding_dim # Renamed n_embd
         self.n_heads = n_heads
-        self.num_latents = num_latents
+        self.n_latents = n_latents
 
         # Learnable latent vectors, initialized typically with standard normal distribution
-        self.latents = nn.Parameter(torch.randn(1, num_latents, embedding_dim)) # Renamed n_embd
+        self.latents = nn.Parameter(torch.randn(1, n_latents, embedding_dim)) # Renamed n_embd
 
         # Use standard MHA for the core attention calculation
         # Latents will be the query, input sequence will be key/value
@@ -52,19 +52,19 @@ class MultiLatentAttention(nn.Module):
 
         Returns:
             Output tensor corresponding to the updated latent vectors,
-            shape (batch_size, num_latents, embedding_dim).
+            shape (batch_size, n_latents, embedding_dim).
         """
         batch_size = x.shape[0]
 
-        # Expand latents to match batch size: (1, num_latents, C) -> (B, num_latents, C)
+        # Expand latents to match batch size: (1, n_latents, C) -> (B, n_latents, C)
         latent_queries = self.latents.expand(batch_size, -1, -1)
 
         # Apply attention: Latents attend to the input sequence x
-        # Query: latents (B, num_latents, C)
+        # Query: latents (B, n_latents, C)
         # Key:   x       (B, seq_len, C)
         # Value: x       (B, seq_len, C)
         # Mask:  Applied to key/value sequence (seq_len dimension)
         output_latents = self.mha(query=latent_queries, key=x, value=x, mask=mask)
 
-        # Output has shape (batch_size, num_latents, embedding_dim)
+        # Output has shape (batch_size, n_latents, embedding_dim)
         return output_latents

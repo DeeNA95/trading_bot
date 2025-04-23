@@ -2,7 +2,6 @@ from typing import Dict, Any, Optional, Type, Union
 import torch
 import torch.nn as nn
 from dataclasses import dataclass
-# Old architecture imports removed
 from rl_agent.agent.embeddings import TimeEmbedding # Added
 from rl_agent.agent.blocks.encoder_block import EncoderBlock
 from rl_agent.agent.blocks.decoder_block import DecoderBlock
@@ -268,7 +267,7 @@ def create_model(config: ModelConfig, device: str = "auto") -> ActorCriticWrappe
                 attention_args=current_attention_args, # Pass prepared args
                 ffn_class=ffn_class,
                 ffn_args=current_ffn_args, # Pass prepared FFN args
-                ffn_args=ffn_args.copy() if ffn_args else None,
+                # ffn_args=ffn_args.copy() if ffn_args else None,
                 norm_class=norm_class,
                 norm_args=norm_args,
                 dropout=config.dropout

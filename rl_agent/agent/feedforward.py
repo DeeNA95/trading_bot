@@ -5,18 +5,18 @@ from typing import Optional
 
 class FeedForward(nn.Module):
     """ Standard FeedForward network (using nn.Sequential) """
-    def __init__(self, n_embd: int, dim_feedforward: Optional[int] = None, dropout: float = 0.1, activation: str = "gelu", bias: bool = True):
+    def __init__(self, embedding_dim: int, dim_feedforward: Optional[int] = None, dropout: float = 0.1, activation: str = "gelu", bias: bool = True):
         super().__init__()
         if dim_feedforward is None:
-            dim_feedforward = n_embd * 4
+            dim_feedforward = embedding_dim * 4
 
         activation_module = nn.ReLU if activation == "relu" else nn.GELU
 
         self.network = nn.Sequential(
-            nn.Linear(n_embd, dim_feedforward, bias=bias),
+            nn.Linear(embedding_dim, dim_feedforward, bias=bias),
             activation_module(),
             nn.Dropout(dropout),
-            nn.Linear(dim_feedforward, n_embd, bias=bias)
+            nn.Linear(dim_feedforward, embedding_dim, bias=bias)
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -24,21 +24,21 @@ class FeedForward(nn.Module):
 
 class MixtureOfExperts(nn.Module):
     """ Mixture of Experts FeedForward layer """
-    def __init__(self, n_embd: int, num_experts: int, top_k: int = 2, dim_feedforward: Optional[int] = None, dropout: float = 0.1, activation: str = "gelu", bias: bool = True):
+    def __init__(self, embedding_dim: int, num_experts: int, top_k: int = 2, dim_feedforward: Optional[int] = None, dropout: float = 0.1, activation: str = "gelu", bias: bool = True):
         super().__init__()
         assert top_k <= num_experts
         self.num_experts = num_experts
         self.top_k = top_k
-        self.n_embd = n_embd
+        self.embedding_dim = embedding_dim
 
         # Create expert networks (using the standard FeedForward)
         self.experts = nn.ModuleList([
-            FeedForward(n_embd, dim_feedforward, dropout, activation, bias)
+            FeedForward(embedding_dim, dim_feedforward, dropout, activation, bias)
             for _ in range(num_experts)
         ])
 
         # Gating network: projects input to scores for each expert
-        self.gate = nn.Linear(n_embd, num_experts, bias=False)
+        self.gate = nn.Linear(embedding_dim, num_experts, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, seq_len, dim = x.shape
