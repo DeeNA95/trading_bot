@@ -535,7 +535,7 @@ class InferenceAgent:
             # Calculate time range for data fetch
             end_time = current_time
             start_time = end_time - timedelta(
-                seconds=interval_seconds * (self.window_size + 150)  # Add buffer
+                seconds=interval_seconds * (self.window_size + 200)  # Add buffer
             )
 
             logger.info(f'Fetching market data for {self.symbol} from {start_time} to {end_time}')
@@ -615,38 +615,7 @@ class InferenceAgent:
             # logger.info(f'Original columns: {data.columns}')
             data.drop(columns=['close_time','symbol','trade_setup'], inplace=True, errors='ignore')
 
-            # Use the pre-loaded scaler
-            try:
-                # Ensure columns match the scaler's fitted columns if possible
-                if hasattr(self.scaler, 'feature_names_in_'):
-                    expected_cols = self.scaler.feature_names_in_
-                    # Check if all expected columns are in data, handle missing if necessary
-                    missing_cols = set(expected_cols) - set(data.columns)
-                    if missing_cols:
-                        logger.warning(f"Scaler expected columns {missing_cols} not found in input data. Scaling might be incorrect.")
-                        # Option 1: Proceed with available columns (might error if scaler strict)
-                        # Option 2: Add missing columns with 0s (might be wrong)
-                        # Option 3: Skip scaling (using IdentityScaler fallback from _load_scaler)
-                        # For now, let's try proceeding with available columns that scaler knows
-                        cols_to_scale = [col for col in expected_cols if col in data.columns]
-                    else:
-                        cols_to_scale = expected_cols
-                else:
-                    # Scaler has no feature names, assume order is correct (less robust)
-                    cols_to_scale = data.columns
-
-                if cols_to_scale: # Only scale if we have columns identified
-                    data_to_scale = data[cols_to_scale].fillna(0) # Fill NaNs before transform
-                    data_scaled = self.scaler.transform(data_to_scale)
-                    data_scaled_df = pd.DataFrame(data_scaled, columns=cols_to_scale, index=data.index)
-                    # Update original dataframe with scaled values
-                    data.update(data_scaled_df)
-                else:
-                    logger.warning("No columns identified for scaling. Proceeding with unscaled data.")
-
-            except Exception as scale_err:
-                logger.error(f"Error applying scaler transform: {scale_err}. Proceeding with unscaled data.", exc_info=True)
-
+            data = self.scaler.transform(data)
 
             # Get current position and PnL
             position_info = self.get_current_position()
@@ -800,11 +769,11 @@ class InferenceAgent:
             logger.info('Inference stopped by user')
         except Exception as e:
             logger.error(f'Error in inference loop: {e}')
-        finally:
-            # Clean up
-            if not self.dry_run:
-                self.executor.close_position()
-            logger.info('Inference ended')
+        # finally:
+        #     # Clean up
+        #     if not self.dry_run:
+        #         self.executor.close_position()
+        #     logger.info('Inference ended')
 
 def main():
     """Main function to run the inference agent."""

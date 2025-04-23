@@ -192,9 +192,9 @@ def create_model(config: ModelConfig, device: str = "auto") -> ActorCriticWrappe
     }
     attention_class = attention_mapping[config.attention_type]
 
-    # Configure attention arguments
+    # Configure attention arguments - USE embedding_dim CONSISTENTLY
     attention_args = {
-        "n_embd": config.embedding_dim,
+        "embedding_dim": config.embedding_dim, # Changed from n_embd
         "n_heads": config.n_heads,
         "dropout": config.dropout
     }
@@ -204,6 +204,9 @@ def create_model(config: ModelConfig, device: str = "auto") -> ActorCriticWrappe
         attention_args["n_latents"] = config.n_latents
     elif config.attention_type == "gqa" and config.n_groups:
         attention_args["n_groups"] = config.n_groups
+    elif config.attention_type == "pyr":
+        # PyramidalAttention also needs max_seq_len
+        attention_args["max_seq_len"] = config.window_size
 
     # Set up feed-forward network
     ffn_mapping = {
@@ -251,12 +254,20 @@ def create_model(config: ModelConfig, device: str = "auto") -> ActorCriticWrappe
         if config.n_encoder_layers <= 0: raise ValueError("n_encoder_layers must be > 0 for encoder architectures.")
         encoder_time_embedding = TimeEmbedding(config.embedding_dim, max_len=config.window_size)
         encoder_blocks = nn.ModuleList()
+        # Prepare args *before* the loop
+        current_attention_args = attention_args.copy()
+        # FFN args might need embedding_dim too, ensure it's added if needed by FFN class
+        current_ffn_args = ffn_args.copy() if ffn_args else {}
+        if 'embedding_dim' not in current_ffn_args:
+            current_ffn_args['embedding_dim'] = config.embedding_dim
+
         for _ in range(config.n_encoder_layers):
             block = EncoderBlock(
-                n_embd=config.embedding_dim,
+                embedding_dim=config.embedding_dim, # Pass embedding_dim directly
                 attention_class=attention_class,
-                attention_args=attention_args.copy(),
+                attention_args=current_attention_args, # Pass prepared args
                 ffn_class=ffn_class,
+                ffn_args=current_ffn_args, # Pass prepared FFN args
                 ffn_args=ffn_args.copy() if ffn_args else None,
                 norm_class=norm_class,
                 norm_args=norm_args,
@@ -270,16 +281,24 @@ def create_model(config: ModelConfig, device: str = "auto") -> ActorCriticWrappe
         if config.n_decoder_layers <= 0: raise ValueError("n_decoder_layers must be > 0 for decoder architectures.")
         decoder_time_embedding = TimeEmbedding(config.embedding_dim, max_len=config.window_size) # Separate instance
         decoder_blocks = nn.ModuleList()
+        # Prepare args *before* the loop
+        current_attention_args_self = attention_args.copy()
+        current_attention_args_cross = attention_args.copy()
+        # FFN args might need embedding_dim too, ensure it's added if needed by FFN class
+        current_ffn_args = ffn_args.copy() if ffn_args else {}
+        if 'embedding_dim' not in current_ffn_args:
+            current_ffn_args['embedding_dim'] = config.embedding_dim
+
         for _ in range(config.n_decoder_layers):
              block = DecoderBlock(
-                 n_embd=config.embedding_dim,
+                 embedding_dim=config.embedding_dim, # Pass embedding_dim directly
                  self_attention_class=attention_class,
-                 self_attention_args=attention_args.copy(),
+                 self_attention_args=current_attention_args_self, # Pass prepared args
                  # Cross attention only relevant for encoder_decoder
                  cross_attention_class=attention_class if config.architecture == "encoder_decoder" else None,
-                 cross_attention_args=attention_args.copy() if config.architecture == "encoder_decoder" else None,
+                 cross_attention_args=current_attention_args_cross if config.architecture == "encoder_decoder" else None, # Pass prepared args
                  ffn_class=ffn_class,
-                 ffn_args=ffn_args.copy() if ffn_args else None,
+                 ffn_args=current_ffn_args, # Pass prepared FFN args
                  norm_class=norm_class,
                  norm_args=norm_args,
                  dropout=config.dropout

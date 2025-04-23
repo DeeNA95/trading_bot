@@ -14,7 +14,7 @@ class DecoderBlock(nn.Module):
     Defaults to MultiHeadAttention for attention layers.
     """
     def __init__(self,
-                 n_embd: int,
+                 embedding_dim: int, # Renamed from n_embd
                  self_attention_args: Dict[str, Any],
                  cross_attention_args: Optional[Dict[str, Any]] = None, # Made optional
                  self_attention_class: Type[nn.Module] = MultiHeadAttention,
@@ -28,8 +28,8 @@ class DecoderBlock(nn.Module):
         Initializes the DecoderBlock.
 
         Args:
-            n_embd: Embedding dimension.
-            self_attention_args: Args for self_attention_class constructor.
+            embedding_dim: Embedding dimension.
+            self_attention_args: Args for self_attention_class constructor (e.g., {'embedding_dim': 256, ...}).
             cross_attention_args: Args for cross_attention_class constructor. If None,
                                   cross-attention is disabled (decoder-only mode).
             self_attention_class: Class for masked self-attention.
@@ -45,20 +45,23 @@ class DecoderBlock(nn.Module):
         if norm_args is None: norm_args = {}
         if ffn_args is None: ffn_args = {'dropout': dropout}
 
-        # Ensure n_embd is passed if needed
-        if 'n_embd' not in self_attention_args: self_attention_args['n_embd'] = n_embd
-        if cross_attention_args and 'n_embd' not in cross_attention_args: cross_attention_args['n_embd'] = n_embd
-        if 'n_embd' not in ffn_args: ffn_args['n_embd'] = n_embd
+        # Ensure embedding_dim is passed if needed, using the new standard name
+        # Assumes the factory provides args with 'embedding_dim'
+        if 'embedding_dim' not in self_attention_args: self_attention_args['embedding_dim'] = embedding_dim
+        if cross_attention_args and 'embedding_dim' not in cross_attention_args: cross_attention_args['embedding_dim'] = embedding_dim
+        # Ensure FFN args also use the unified name if they expect it
+        # Assuming FFN classes might also expect 'embedding_dim' or similar
+        if 'embedding_dim' not in ffn_args: ffn_args['embedding_dim'] = embedding_dim
 
         # --- Self-Attention Components ---
-        self.norm_self = norm_class(n_embd, **norm_args)
+        self.norm_self = norm_class(embedding_dim, **norm_args) # Use embedding_dim
         self.self_attn = self_attention_class(**self_attention_args)
         self.dropout_self = nn.Dropout(dropout)
 
         # --- Cross-Attention Components (Conditional) ---
         self.has_cross_attention = cross_attention_args is not None
         if self.has_cross_attention:
-            self.norm_cross = norm_class(n_embd, **norm_args)
+            self.norm_cross = norm_class(embedding_dim, **norm_args) # Use embedding_dim
             self.cross_attn = cross_attention_class(**cross_attention_args)
             self.dropout_cross = nn.Dropout(dropout)
         else:
@@ -68,7 +71,7 @@ class DecoderBlock(nn.Module):
 
         # --- Feed-Forward Components ---
         # Use a different norm instance before FFN
-        self.norm_ffn = norm_class(n_embd, **norm_args)
+        self.norm_ffn = norm_class(embedding_dim, **norm_args) # Use embedding_dim
         self.ffn = ffn_class(**ffn_args)
         self.dropout_ffn = nn.Dropout(dropout)
 
@@ -82,14 +85,14 @@ class DecoderBlock(nn.Module):
         Forward pass through the Decoder Block (Pre-Norm).
 
         Args:
-            tgt: Target sequence tensor (batch_size, seq_len_tgt, n_embd).
-            memory: Encoder output tensor (batch_size, seq_len_mem, n_embd).
+            tgt: Target sequence tensor (batch_size, seq_len_tgt, embedding_dim).
+            memory: Encoder output tensor (batch_size, seq_len_mem, embedding_dim).
                     Required if cross-attention is enabled, otherwise ignored.
             tgt_mask: Mask for self-attention (e.g., causal mask).
             memory_mask: Mask for cross-attention (e.g., padding mask for memory).
 
         Returns:
-            Output tensor (batch_size, seq_len_tgt, n_embd).
+            Output tensor (batch_size, seq_len_tgt, embedding_dim).
         """
         # 1. Masked Self-Attention block
         norm_tgt_self = self.norm_self(tgt)

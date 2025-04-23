@@ -10,36 +10,36 @@ class GroupedQueryAttention(nn.Module):
     Query heads are divided into groups, and heads within the same group
     share Key and Value projections/heads. Interpolates between MHA and MQA.
     """
-    def __init__(self, n_embd: int, n_heads: int, n_kv_heads: int, dropout: float = 0.1, bias: bool = False):
+    def __init__(self, embedding_dim: int, n_heads: int, n_kv_heads: int, dropout: float = 0.1, bias: bool = False): # Renamed n_embd
         """
         Initialize the GroupedQueryAttention module.
 
         Args:
-            n_embd: Total dimension of the model (embedding size).
+            embedding_dim: Total dimension of the model (embedding size).
             n_heads: Total number of query heads.
             n_kv_heads: Number of key/value heads. Must be a divisor of n_heads.
             dropout: Dropout probability.
             bias: Whether to use bias in linear layers. Defaults to False.
         """
         super().__init__()
-        assert n_embd % n_heads == 0, "n_embd must be divisible by n_heads"
+        assert embedding_dim % n_heads == 0, "embedding_dim must be divisible by n_heads" # Renamed n_embd
         assert n_heads % n_kv_heads == 0, "n_heads must be divisible by n_kv_heads"
 
-        self.n_embd = n_embd
+        self.embedding_dim = embedding_dim # Renamed n_embd
         self.n_heads = n_heads
         self.n_kv_heads = n_kv_heads
         self.num_q_per_kv = n_heads // n_kv_heads # Number of query heads per key/value head
-        self.head_dim = n_embd // n_heads
+        self.head_dim = embedding_dim // n_heads # Renamed n_embd
         self.dropout = dropout
 
         # Query projection for all heads
-        self.q_proj = nn.Linear(n_embd, n_embd, bias=bias)
+        self.q_proj = nn.Linear(embedding_dim, embedding_dim, bias=bias) # Renamed n_embd
         # Key/Value projections for the reduced number of KV heads
-        self.k_proj = nn.Linear(n_embd, self.n_kv_heads * self.head_dim, bias=bias)
-        self.v_proj = nn.Linear(n_embd, self.n_kv_heads * self.head_dim, bias=bias)
+        self.k_proj = nn.Linear(embedding_dim, self.n_kv_heads * self.head_dim, bias=bias) # Renamed n_embd
+        self.v_proj = nn.Linear(embedding_dim, self.n_kv_heads * self.head_dim, bias=bias) # Renamed n_embd
 
         # Output projection
-        self.out_proj = nn.Linear(n_embd, n_embd, bias=bias)
+        self.out_proj = nn.Linear(embedding_dim, embedding_dim, bias=bias) # Renamed n_embd
 
         # Dropout layers
         self.attn_dropout = nn.Dropout(dropout)
@@ -61,13 +61,13 @@ class GroupedQueryAttention(nn.Module):
         Forward pass for Grouped-Query Attention.
 
         Args:
-            query: Query tensor of shape (batch_size, seq_len_q, n_embd).
-            key: Key tensor of shape (batch_size, seq_len_kv, n_embd).
-            value: Value tensor of shape (batch_size, seq_len_kv, n_embd).
+            query: Query tensor of shape (batch_size, seq_len_q, embedding_dim).
+            key: Key tensor of shape (batch_size, seq_len_kv, embedding_dim).
+            value: Value tensor of shape (batch_size, seq_len_kv, embedding_dim).
             mask: Optional mask tensor. Shape requirements are the same as for MHA.
 
         Returns:
-            Output tensor of shape (batch_size, seq_len_q, n_embd).
+            Output tensor of shape (batch_size, seq_len_q, embedding_dim).
         """
         batch_size, seq_len_q, _ = query.shape
         _, seq_len_kv, _ = key.shape
@@ -109,7 +109,7 @@ class GroupedQueryAttention(nn.Module):
 
         # 8. Concatenate heads and project output
         # (B, nh, T_q, hs) -> (B, T_q, nh, hs) -> (B, T_q, C)
-        context = context.transpose(1, 2).contiguous().view(batch_size, seq_len_q, self.n_embd)
+        context = context.transpose(1, 2).contiguous().view(batch_size, seq_len_q, self.embedding_dim) # Renamed n_embd
         output = self.resid_dropout(self.out_proj(context))
 
         return output

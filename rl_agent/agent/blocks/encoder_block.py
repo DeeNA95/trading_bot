@@ -15,7 +15,7 @@ class EncoderBlock(nn.Module):
     Defaults to MultiHeadAttention.
     """
     def __init__(self,
-                 n_embd: int,
+                 embedding_dim: int, # Renamed from n_embd
                  # attention_class: Type[nn.Module], # Removed required type hint
                  attention_args: Dict[str, Any], # Keep attention_args required
                  attention_class: Type[nn.Module] = MultiHeadAttention, # Set MHA as default
@@ -28,8 +28,8 @@ class EncoderBlock(nn.Module):
         Initializes the EncoderBlock.
 
         Args:
-            n_embd: Embedding dimension.
-            attention_args: Arguments for attention_class constructor (e.g., {'n_heads': 8}).
+            embedding_dim: Embedding dimension.
+            attention_args: Arguments for attention_class constructor (e.g., {'embedding_dim': 256, 'n_heads': 8}).
             attention_class: Class for the self-attention mechanism. Defaults to MultiHeadAttention.
             ffn_class: Class for the feed-forward network. Defaults to FeedForward.
             ffn_args: Arguments for ffn_class constructor.
@@ -44,18 +44,20 @@ class EncoderBlock(nn.Module):
         if ffn_args is None:
             ffn_args = {'dropout': dropout}
 
-        # Ensure n_embd is passed if needed by components
-        if 'n_embd' not in attention_args:
-             attention_args['n_embd'] = n_embd
-        if 'n_embd' not in ffn_args:
-             ffn_args['n_embd'] = n_embd
+        # Ensure embedding_dim is passed if needed by components, using the new standard name
+        # Note: The factory should now be primarily responsible for ensuring args are correct before passing them.
+        # This block now assumes 'embedding_dim' is the standard.
+        if 'embedding_dim' not in attention_args:
+             attention_args['embedding_dim'] = embedding_dim
+        if 'embedding_dim' not in ffn_args: # FFN classes might expect embedding_dim or similar
+             ffn_args['embedding_dim'] = embedding_dim # Assuming FFN also standardizes
 
         # Instantiate components
-        self.norm1 = norm_class(n_embd, **norm_args)
+        self.norm1 = norm_class(embedding_dim, **norm_args) # Use embedding_dim
         self.self_attn = attention_class(**attention_args) # Instantiate using provided or default class
         self.dropout1 = nn.Dropout(dropout)
 
-        self.norm2 = norm_class(n_embd, **norm_args)
+        self.norm2 = norm_class(embedding_dim, **norm_args) # Use embedding_dim
         self.ffn = ffn_class(**ffn_args)
         self.dropout2 = nn.Dropout(dropout)
 
@@ -64,11 +66,11 @@ class EncoderBlock(nn.Module):
         Forward pass through the Encoder Block (Pre-Norm).
 
         Args:
-            src: Input tensor (batch_size, seq_len, n_embd).
+            src: Input tensor (batch_size, seq_len, embedding_dim).
             src_mask: Optional mask for self-attention.
 
         Returns:
-            Output tensor (batch_size, seq_len, n_embd).
+            Output tensor (batch_size, seq_len, embedding_dim).
         """
         # 1. Self-Attention block (LayerNorm -> Attention -> Dropout -> Residual)
         norm_src = self.norm1(src)

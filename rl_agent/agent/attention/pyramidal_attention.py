@@ -14,7 +14,7 @@ class PyramidalAttention(nn.Module):
 
     def __init__(
         self,
-        hidden_dim: int,
+        embedding_dim: int, # Renamed from hidden_dim
         n_heads: int = 8,
         dropout: float = 0.25,
         max_seq_len: int = 512,
@@ -23,19 +23,19 @@ class PyramidalAttention(nn.Module):
         Initialize the Pyramidal Attention module.
 
         Args:
-            hidden_dim: Size of the hidden dimension
+            embedding_dim: Size of the embedding dimension (and hidden dimension)
             n_heads: Number of attention heads
             dropout: Dropout probability
             max_seq_len: Maximum sequence length supported
         """
         super(PyramidalAttention, self).__init__()
 
-        self.hidden_dim = hidden_dim
+        self.embedding_dim = embedding_dim # Renamed internal attribute
         self.n_heads = n_heads
-        self.head_dim = hidden_dim // n_heads
+        self.head_dim = embedding_dim // n_heads
 
-        # Ensure hidden_dim is divisible by n_heads
-        assert hidden_dim % n_heads == 0, "hidden_dim must be divisible by n_heads"
+        # Ensure embedding_dim is divisible by n_heads
+        assert embedding_dim % n_heads == 0, "embedding_dim must be divisible by n_heads"
 
         # Multi-scale attention layers with different dilation rates
         # 2^0, 2^1, 2^2, etc.
@@ -43,17 +43,17 @@ class PyramidalAttention(nn.Module):
 
         # Projections for Q, K, V for each attention head
         self.query_projections = nn.ModuleList(
-            [nn.Linear(hidden_dim, self.head_dim) for _ in range(n_heads)]
+            [nn.Linear(embedding_dim, self.head_dim) for _ in range(n_heads)]
         )
         self.key_projections = nn.ModuleList(
-            [nn.Linear(hidden_dim, self.head_dim) for _ in range(n_heads)]
+            [nn.Linear(embedding_dim, self.head_dim) for _ in range(n_heads)]
         )
         self.value_projections = nn.ModuleList(
-            [nn.Linear(hidden_dim, self.head_dim) for _ in range(n_heads)]
+            [nn.Linear(embedding_dim, self.head_dim) for _ in range(n_heads)]
         )
 
         # Output projection
-        self.output_projection = nn.Linear(hidden_dim, hidden_dim)
+        self.output_projection = nn.Linear(embedding_dim, embedding_dim)
 
         # Dropout
         self.dropout = nn.Dropout(dropout)
@@ -97,10 +97,10 @@ class PyramidalAttention(nn.Module):
         Forward pass through the pyramidal attention module.
 
         Args:
-            x: Input tensor of shape (batch_size, seq_len, hidden_dim)
+            x: Input tensor of shape (batch_size, seq_len, embedding_dim)
 
         Returns:
-            Attended tensor of shape (batch_size, seq_len, hidden_dim)
+            Attended tensor of shape (batch_size, seq_len, embedding_dim)
         """
         batch_size, seq_len, _ = x.shape
         device = x.device
