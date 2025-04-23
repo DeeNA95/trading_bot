@@ -14,44 +14,45 @@ class MultiLatentAttention(nn.Module):
     into a fixed number of latent representations. Inspired by Set Transformer
     and Perceiver IO concepts.
     """
-    def __init__(self, n_embd: int, n_heads: int, num_latents: int, dropout: float = 0.1, bias: bool = False):
+    def __init__(self, embedding_dim: int, n_heads: int, num_latents: int, dropout: float = 0.1, bias: bool = False): # Renamed n_embd
         """
         Initialize the MultiLatentAttention module.
 
         Args:
-            n_embd: Total dimension of the model (embedding size).
+            embedding_dim: Total dimension of the model (embedding size).
             n_heads: Number of attention heads for the underlying MHA.
             num_latents: The number of learnable latent vectors to use as queries.
             dropout: Dropout probability for the underlying MHA.
             bias: Whether to use bias in linear layers for the underlying MHA.
         """
         super().__init__()
-        assert n_embd % n_heads == 0, "n_embd must be divisible by n_heads"
+        assert embedding_dim % n_heads == 0, "embedding_dim must be divisible by n_heads" # Renamed n_embd
 
-        self.n_embd = n_embd
+        self.embedding_dim = embedding_dim # Renamed n_embd
         self.n_heads = n_heads
         self.num_latents = num_latents
 
         # Learnable latent vectors, initialized typically with standard normal distribution
-        self.latents = nn.Parameter(torch.randn(1, num_latents, n_embd))
+        self.latents = nn.Parameter(torch.randn(1, num_latents, embedding_dim)) # Renamed n_embd
 
         # Use standard MHA for the core attention calculation
         # Latents will be the query, input sequence will be key/value
-        self.mha = MultiHeadAttention(n_embd, n_heads, dropout, bias)
+        # Assuming MHA has also been updated to use embedding_dim
+        self.mha = MultiHeadAttention(embedding_dim, n_heads, dropout, bias) # Renamed n_embd
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
         """
         Forward pass for Multi-Latent Attention.
 
         Args:
-            x: Input tensor (used as key and value) of shape (batch_size, seq_len, n_embd).
+            x: Input tensor (used as key and value) of shape (batch_size, seq_len, embedding_dim).
             mask: Optional mask tensor for the input sequence `x`.
                   Typically a padding mask of shape (batch_size, 1, 1, seq_len)
                   or (batch_size, seq_len).
 
         Returns:
             Output tensor corresponding to the updated latent vectors,
-            shape (batch_size, num_latents, n_embd).
+            shape (batch_size, num_latents, embedding_dim).
         """
         batch_size = x.shape[0]
 
@@ -65,5 +66,5 @@ class MultiLatentAttention(nn.Module):
         # Mask:  Applied to key/value sequence (seq_len dimension)
         output_latents = self.mha(query=latent_queries, key=x, value=x, mask=mask)
 
-        # Output has shape (batch_size, num_latents, n_embd)
+        # Output has shape (batch_size, num_latents, embedding_dim)
         return output_latents
