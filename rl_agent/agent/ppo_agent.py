@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Categorical
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
 from rl_agent.environment.trading_env import BinanceFuturesCryptoEnv
@@ -144,6 +145,10 @@ class PPOAgent:
         use_gae: bool = True,
         normalize_advantage: bool = True,
         weight_decay: float = 0.01,
+        # --- Learning Rate Scheduler ---
+        use_lr_scheduler: bool = True,
+        min_lr: float = 1e-5,
+        lr_scheduler_max_steps: int = 100000,
         # --- Core Model Configuration (Removed - handled by factory) ---
 
         # --- Wrapper/Head Configuration (Removed - handled by factory) ---
@@ -168,6 +173,9 @@ class PPOAgent:
             use_gae: Whether to use Generalized Advantage Estimation
             normalize_advantage: Whether to normalize advantages
             weight_decay: L2 regularization parameter
+            use_lr_scheduler: Whether to use a learning rate scheduler
+            min_lr: Minimum learning rate for the scheduler
+            lr_scheduler_max_steps: Number of steps for the scheduler to reach min_lr
             model: Pre-instantiated ActorCriticWrapper model instance.
             model_config: The ModelConfig instance used to create the model.
             device: Device to run on ('cpu', 'cuda', 'mps', or 'auto')
@@ -194,6 +202,12 @@ class PPOAgent:
         self.use_gae = use_gae
         self.normalize_advantage = normalize_advantage
         self.weight_decay = weight_decay
+
+        # Learning rate scheduler parameters
+        self.use_lr_scheduler = use_lr_scheduler
+        self.min_lr = min_lr
+        self.lr_scheduler_max_steps = lr_scheduler_max_steps
+        self.total_steps = 0  # Track total steps for scheduler
 
         # Save path
         self.save_dir = save_dir
@@ -226,6 +240,16 @@ class PPOAgent:
         self.optimizer = optim.AdamW( # try AdamW
             self.model.parameters(), lr=lr, weight_decay=self.weight_decay
         )
+
+        # Learning rate scheduler
+        if self.use_lr_scheduler:
+            self.scheduler = CosineAnnealingLR(
+                self.optimizer,
+                T_max=self.lr_scheduler_max_steps,
+                eta_min=self.min_lr
+            )
+        else:
+            self.scheduler = None
 
         # Memory buffer
         self.memory = PPOMemory(batch_size, self.device)
@@ -474,7 +498,6 @@ class PPOAgent:
         """
         start_time = time.time()
 
-        total_steps = 0
         best_eval_reward = -float("inf")
         episode_rewards = []
 
@@ -507,13 +530,20 @@ class PPOAgent:
 
                 state_np = next_state_np
                 episode_reward += reward_item
-                total_steps += 1
+                self.total_steps += 1
                 step += 1
+
+                # Step the learning rate scheduler if enabled
+                if self.use_lr_scheduler and self.scheduler is not None:
+                    self.scheduler.step()
+                    current_lr = self.scheduler.get_last_lr()[0]
+                    if self.total_steps % 1000 == 0:  # Log LR periodically
+                        self.logger.info(f"Current learning rate: {current_lr:.6f}")
 
                 episode_pbar.update(1)
                 episode_pbar.set_postfix({"reward": f"{episode_reward:.2f}", "action": action_item})
 
-                if total_steps % update_freq == 0 and len(self.memory.states) >= self.memory.batch_size:
+                if self.total_steps % update_freq == 0 and len(self.memory.states) >= self.memory.batch_size:
                     update_metrics = self.update()
                     self.logger.info(
                         f"Episode {episode}, "
@@ -540,11 +570,11 @@ class PPOAgent:
                 self.logger.info(
                     f"Episode {episode}/{num_episodes}, "
                     f"Avg Reward: {avg_reward:.2f}, "
-                    f"Steps: {total_steps}, "
+                    f"Steps: {self.total_steps}, "
                     f"Time: {elapsed_time:.2f}s"
                 )
                 pbar.set_postfix(
-                    {"avg_reward": f"{avg_reward:.2f}", "steps": total_steps}
+                    {"avg_reward": f"{avg_reward:.2f}", "steps": self.total_steps}
                 )
 
             if episode % eval_freq == 0:
@@ -635,6 +665,8 @@ class PPOAgent:
         checkpoint = {
             'model_state_dict': model_state_dict,
             'optimizer_state_dict': optimizer_state_dict,
+            'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler is not None else None,
+            'total_steps': self.total_steps,
             'epoch': getattr(self, 'current_epoch', None),
             'best_reward': self.best_reward,
             'model_config': asdict(self.model_config) if self.model_config else None, # Save the model config
@@ -741,6 +773,17 @@ class PPOAgent:
                 self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
             except Exception as e:
                 print(f"Warning: Could not load optimizer state: {e}")
+
+        # Load scheduler state if available
+        if "scheduler_state_dict" in checkpoint and self.scheduler is not None:
+            try:
+                self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+            except Exception as e:
+                print(f"Warning: Could not load scheduler state: {e}")
+
+        # Load total steps for scheduler
+        if "total_steps" in checkpoint:
+            self.total_steps = checkpoint["total_steps"]
 
         # Load history if available
         self.reward_history = checkpoint.get("reward_history", [])

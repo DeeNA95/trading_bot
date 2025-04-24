@@ -347,7 +347,7 @@ class InferenceAgent:
             attention_class = attention_mapping.get(config_dict.get('attention_type', 'mha'))
             if not attention_class: raise ValueError(f"Unsupported attention type: {config_dict.get('attention_type')}")
             attention_args = {
-                "n_embd": embedding_dim,
+                "embedding_dim": embedding_dim,
                 "n_heads": config_dict.get('n_heads', 8),
                 "dropout": dropout_rate
             }
@@ -387,7 +387,7 @@ class InferenceAgent:
                 encoder_blocks = nn.ModuleList()
                 for _ in range(n_encoder_layers):
                     block = EncoderBlock(
-                        n_embd=embedding_dim,
+                        embedding_dim=embedding_dim,
                         attention_class=attention_class, attention_args=attention_args.copy(),
                         ffn_class=ffn_class, ffn_args=ffn_args.copy() if ffn_args else None,
                         norm_class=norm_class, norm_args=norm_args,
@@ -403,7 +403,7 @@ class InferenceAgent:
                 decoder_blocks = nn.ModuleList()
                 for _ in range(n_decoder_layers):
                      block = DecoderBlock(
-                         n_embd=embedding_dim,
+                         embedding_dim=embedding_dim,
                          self_attention_class=attention_class, self_attention_args=attention_args.copy(),
                          cross_attention_class=attention_class if architecture == "encoder_decoder" else None,
                          cross_attention_args=attention_args.copy() if architecture == "encoder_decoder" else None,
@@ -613,30 +613,38 @@ class InferenceAgent:
             # Get the last window_size rows
             data = self.processed_df.iloc[-self.window_size:].copy()
             # logger.info(f'Original columns: {data.columns}')
-            data.drop(columns=['close_time','symbol','trade_setup'], inplace=True, errors='ignore')
+            data_cleaned = data.drop(columns=['close_time','symbol','trade_setup'], errors='ignore').copy()
 
-            data = self.scaler.transform(data)
+            # Store index and columns before scaling
+            original_index = data_cleaned.index
+            original_columns = data_cleaned.columns
+
+            # Scale the data (returns numpy array)
+            scaled_np_data = self.scaler.transform(data_cleaned)
+
+            # Convert scaled numpy array back to DataFrame
+            scaled_data_df = pd.DataFrame(scaled_np_data, index=original_index, columns=original_columns)
 
             # Get current position and PnL
             position_info = self.get_current_position()
 
-            # Add environment features
-            data['balance'] = self.initial_balance # Use initial balance for now
-            data['position'] = position_info['position']
-            data['unrealized_pnl'] = position_info['unrealized_pnl']
+            # Add environment features to the DataFrame
+            scaled_data_df['balance'] = self.initial_balance # Use initial balance for now
+            scaled_data_df['position'] = position_info['position']
+            scaled_data_df['unrealized_pnl'] = position_info['unrealized_pnl']
 
-            # Convert any remaining string columns to numeric
-            for col in data.select_dtypes(include=['object']).columns:
-                data[col] = pd.to_numeric(data[col], errors='coerce').fillna(0)
+            # Convert any remaining string columns to numeric (should ideally not happen after scaling)
+            for col in scaled_data_df.select_dtypes(include=['object']).columns:
+                 logger.warning(f"Column '{col}' has object type after scaling, converting to numeric.")
+                 scaled_data_df[col] = pd.to_numeric(scaled_data_df[col], errors='coerce').fillna(0)
 
-            # --- Drop 'trade_setup' to match training data where it was dropped due to 'none' ---
-            if 'trade_setup' in data.columns:
-                logger.info("Dropping 'trade_setup' column to match model's expected input features (54).")
-                data = data.drop(columns=['trade_setup'])
-            # --- End Drop ---
+            # --- Ensure final feature set matches expectation (no 'trade_setup' etc.) ---
+            # This check is now less critical as we dropped before scaling, but good practice.
+            final_columns = scaled_data_df.columns # Keep track of final columns
+            # logger.info(f"Final columns before converting to numpy: {final_columns.tolist()}")
 
-            # Convert to numpy array and handle any remaining NaN values
-            state = data.values.astype(np.float32)
+            # Convert final DataFrame to numpy array and handle any remaining NaN values
+            state = scaled_data_df.values.astype(np.float32)
             state = np.nan_to_num(state, nan=0.0)  # Replace NaN with 0
 
             # Log feature count for debugging

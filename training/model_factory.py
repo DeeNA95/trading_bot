@@ -40,10 +40,30 @@ class ModelConfig:
     # Normalization
     norm_type: str = "layer_norm"
 
+    # Residual connection configuration
+    residual_scale: float = 1.0      # Scaling factor for residual connections
+    use_gated_residual: bool = False # Whether to use learnable gates for residual connections
+    use_final_norm: bool = False     # Whether to apply a final layer normalization
+
+    # Feature Extraction Configuration
+    feature_extractor_type: str = "basic"  # basic, resnet, inception
+    feature_extractor_dim: int = 128       # Hidden dimension for feature extractor
+    feature_extractor_layers: int = 2      # Number of layers in feature extractor
+    use_skip_connections: bool = False     # Whether to use skip connections in feature extractor
+    use_layer_norm: bool = False           # Whether to use layer normalization instead of batch norm
+    use_instance_norm: bool = False        # Whether to use instance normalization
+    feature_dropout: float = 0.0           # Dropout rate for feature extractor
+
+    # Actor-Critic Head Configuration
+    head_hidden_dim: int = 128             # Hidden dimension for actor-critic heads
+    head_n_layers: int = 2                 # Number of layers in actor-critic heads
+    head_use_layer_norm: bool = False      # Whether to use layer normalization in actor-critic heads
+    head_use_residual: bool = False        # Whether to use residual connections in actor-critic heads
+    head_dropout: Optional[float] = None   # Dropout rate for actor-critic heads (None = use model dropout)
+
     # ActorCritic specific
-    feature_extractor_dim: int = 128
     action_dim: int = 3  # HOLD, LONG, SHORT
-    n_features: int = 59 # <<< ADDED: Number of input features from data
+    n_features: int = 59 # Number of input features from data
 
 # --- Dynamically Assembled Transformer Core ---
 class DynamicTransformerCore(nn.Module):
@@ -98,7 +118,7 @@ class DynamicTransformerCore(nn.Module):
         if self.architecture == "encoder_only":
             if src is None: raise ValueError("Input `src` must be provided for encoder_only.")
             # --- Encoder Processing ---
-            batch_size_src, seq_len_src, _ = src.shape
+            _, seq_len_src, _ = src.shape  # We don't need batch_size_src
             assert seq_len_src <= self.window_size, f"Encoder input sequence {seq_len_src} longer than window size {self.window_size}"
             time_indices_src = torch.arange(seq_len_src, dtype=torch.long, device=src.device)
             memory = self.encoder_time_embedding(src, time_indices_src)
@@ -114,7 +134,7 @@ class DynamicTransformerCore(nn.Module):
         elif self.architecture == "decoder_only":
             if tgt is None: raise ValueError("Input `tgt` must be provided for decoder_only.")
             # --- Decoder Processing ---
-            batch_size_tgt, seq_len_tgt, _ = tgt.shape
+            _, seq_len_tgt, _ = tgt.shape  # We don't need batch_size_tgt
             assert seq_len_tgt <= self.window_size, f"Decoder input sequence {seq_len_tgt} longer than window size {self.window_size}"
             time_indices_tgt = torch.arange(seq_len_tgt, dtype=torch.long, device=tgt.device)
             output = self.decoder_time_embedding(tgt, time_indices_tgt)
@@ -123,16 +143,23 @@ class DynamicTransformerCore(nn.Module):
             if self.use_causal_mask_decoder: decoder_self_mask = self._generate_causal_mask(seq_len_tgt, tgt.device)
             # TODO: Combine causal and padding if needed
             # if tgt_padding_mask is not None: ...
+
+            # Process through decoder blocks
             for block in self.decoder_blocks:
-                 # DecoderBlock expects memory=None for self-attention only mode
-                 output = block(tgt=output, memory=None, tgt_mask=decoder_self_mask, memory_mask=None)
+                output = block(
+                    input_tensor=output,  # Use input_tensor instead of tgt
+                    memory=None,
+                    tgt_mask=decoder_self_mask,
+                    memory_mask=None
+                )
+
             output = self.decoder_norm(output)
             return output
 
         elif self.architecture == "encoder_decoder":
             if src is None or tgt is None: raise ValueError("Inputs `src` and `tgt` must be provided for encoder_decoder.")
             # --- Encoder Processing ---
-            batch_size_src, seq_len_src, _ = src.shape
+            _, seq_len_src, _ = src.shape  # We don't need batch_size_src
             assert seq_len_src <= self.window_size, f"Encoder input sequence {seq_len_src} longer than window size {self.window_size}"
             time_indices_src = torch.arange(seq_len_src, dtype=torch.long, device=src.device)
             memory = self.encoder_time_embedding(src, time_indices_src)
@@ -144,7 +171,7 @@ class DynamicTransformerCore(nn.Module):
             memory = self.encoder_norm(memory)
 
             # --- Decoder Processing ---
-            batch_size_tgt, seq_len_tgt, _ = tgt.shape
+            _, seq_len_tgt, _ = tgt.shape  # We don't need batch_size_tgt
             assert seq_len_tgt <= self.window_size, f"Decoder input sequence {seq_len_tgt} longer than window size {self.window_size}"
             time_indices_tgt = torch.arange(seq_len_tgt, dtype=torch.long, device=tgt.device)
             output = self.decoder_time_embedding(tgt, time_indices_tgt)
@@ -156,10 +183,10 @@ class DynamicTransformerCore(nn.Module):
             decoder_memory_mask = src_padding_mask # Cross-attention uses encoder padding mask
             for block in self.decoder_blocks:
                 output = block(
-                    tgt=output,
+                    input_tensor=output,  # Use input_tensor instead of tgt
                     memory=memory,
                     tgt_mask=decoder_self_mask,      # Causal mask for self-attention
-                    memory_mask=decoder_memory_mask # Encoder padding mask for cross-attention
+                    memory_mask=decoder_memory_mask  # Encoder padding mask for cross-attention
                 )
             output = self.decoder_norm(output)
             return output
@@ -270,7 +297,10 @@ def create_model(config: ModelConfig, device: str = "auto") -> ActorCriticWrappe
                 # ffn_args=ffn_args.copy() if ffn_args else None,
                 norm_class=norm_class,
                 norm_args=norm_args,
-                dropout=config.dropout
+                dropout=config.dropout,
+                residual_scale=config.residual_scale,
+                use_gated_residual=config.use_gated_residual,
+                use_final_norm=config.use_final_norm
             )
             encoder_blocks.append(block)
         encoder_norm = norm_class(config.embedding_dim, **norm_args)
@@ -300,7 +330,10 @@ def create_model(config: ModelConfig, device: str = "auto") -> ActorCriticWrappe
                  ffn_args=current_ffn_args, # Pass prepared FFN args
                  norm_class=norm_class,
                  norm_args=norm_args,
-                 dropout=config.dropout
+                 dropout=config.dropout,
+                 residual_scale=config.residual_scale,
+                 use_gated_residual=config.use_gated_residual,
+                 use_final_norm=config.use_final_norm
              )
              decoder_blocks.append(block)
         decoder_norm = norm_class(config.embedding_dim, **norm_args)
@@ -323,13 +356,26 @@ def create_model(config: ModelConfig, device: str = "auto") -> ActorCriticWrappe
 
     # Create ActorCriticWrapper with the core transformer
     model = ActorCriticWrapper(
-        input_shape=(config.window_size, config.n_features), # <<< CHANGED: Use actual n_features
+        input_shape=(config.window_size, config.n_features), # Use actual n_features
         action_dim=config.action_dim,
         transformer_core=core_transformer,
         feature_extractor_hidden_dim=config.feature_extractor_dim,
         embedding_dim=config.embedding_dim,
         dropout=config.dropout,
-        device=device
+        device=device,
+        # Feature extractor parameters
+        feature_extractor_type=config.feature_extractor_type,
+        feature_extractor_layers=config.feature_extractor_layers,
+        use_skip_connections=config.use_skip_connections,
+        use_layer_norm=config.use_layer_norm,
+        use_instance_norm=config.use_instance_norm,
+        feature_dropout=config.feature_dropout,
+        # Actor-Critic head parameters
+        head_hidden_dim=config.head_hidden_dim,
+        head_n_layers=config.head_n_layers,
+        head_use_layer_norm=config.head_use_layer_norm,
+        head_use_residual=config.head_use_residual,
+        head_dropout=config.head_dropout
     )
 
     return model

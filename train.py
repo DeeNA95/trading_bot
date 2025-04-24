@@ -108,7 +108,34 @@ if __name__ == "__main__":
     model_group.add_argument("--n_experts", type=int, default=None, help="Number of experts (for MoE FFN)")
     model_group.add_argument("--top_k", type=int, default=None, help="Top K experts to use (for MoE FFN)")
     model_group.add_argument("--norm_type", type=str, default="layer_norm", choices=["layer_norm"], help="Normalization layer type")
-    model_group.add_argument("--feature_extractor_dim", type=int, default=128, help="Hidden dimension for ActorCriticWrapper feature extractor head")
+
+    # Feature Extractor Configuration
+    model_group.add_argument("--feature_extractor_type", type=str, default="basic", choices=["basic", "resnet", "inception"],
+                            help="Type of feature extractor architecture")
+    model_group.add_argument("--feature_extractor_dim", type=int, default=128,
+                            help="Hidden dimension for feature extractor")
+    model_group.add_argument("--feature_extractor_layers", type=int, default=2,
+                            help="Number of layers in feature extractor")
+    model_group.add_argument("--use_skip_connections", action="store_true",
+                            help="Use skip connections in feature extractor")
+    model_group.add_argument("--use_layer_norm", action="store_true",
+                            help="Use layer normalization instead of batch norm in feature extractor")
+    model_group.add_argument("--use_instance_norm", action="store_true",
+                            help="Use instance normalization in feature extractor")
+    model_group.add_argument("--feature_dropout", type=float, default=0.0,
+                            help="Dropout rate for feature extractor")
+
+    # Actor-Critic Head Configuration
+    model_group.add_argument("--head_hidden_dim", type=int, default=128,
+                            help="Hidden dimension for actor-critic heads")
+    model_group.add_argument("--head_n_layers", type=int, default=2,
+                            help="Number of layers in actor-critic heads")
+    model_group.add_argument("--head_use_layer_norm", action="store_true",
+                            help="Use layer normalization in actor-critic heads")
+    model_group.add_argument("--head_use_residual", action="store_true",
+                            help="Use residual connections in actor-critic heads")
+    model_group.add_argument("--head_dropout", type=float, default=None,
+                            help="Dropout rate for actor-critic heads (None = use model dropout)")
     # -- action_dim is determined by the environment --
 
     args = parser.parse_args()
@@ -159,23 +186,52 @@ if __name__ == "__main__":
         # --- Create ModelConfig ---
         # Note: action_dim is set by env, not needed in ModelConfig here
         model_config = ModelConfig(
+            # Core architecture
             architecture=args.architecture,
             embedding_dim=args.embedding_dim,
             n_encoder_layers=args.n_encoder_layers,
             n_decoder_layers=args.n_decoder_layers,
             window_size=args.window, # Get window size from env args
             dropout=args.dropout,
+
+            # Attention configuration
             attention_type=args.attention_type,
             n_heads=args.n_heads,
             n_latents=args.n_latents,
             n_groups=args.n_groups,
+
+            # Feed-forward configuration
             ffn_type=args.ffn_type,
             ffn_dim=args.ffn_dim,
             n_experts=args.n_experts,
             top_k=args.top_k,
+
+            # Normalization
             norm_type=args.norm_type,
+
+            # Residual connections (defaults to False)
+            residual_scale=1.0,
+            use_gated_residual=False,
+            use_final_norm=False,
+
+            # Feature extraction configuration
+            feature_extractor_type=args.feature_extractor_type,
             feature_extractor_dim=args.feature_extractor_dim,
-            n_features=train_df.shape[1]+3, # <<< ADDED: Get actual feature count from data
+            feature_extractor_layers=args.feature_extractor_layers,
+            use_skip_connections=args.use_skip_connections,
+            use_layer_norm=args.use_layer_norm,
+            use_instance_norm=args.use_instance_norm,
+            feature_dropout=args.feature_dropout,
+
+            # Actor-Critic head configuration
+            head_hidden_dim=args.head_hidden_dim,
+            head_n_layers=args.head_n_layers,
+            head_use_layer_norm=args.head_use_layer_norm,
+            head_use_residual=args.head_use_residual,
+            head_dropout=args.head_dropout,
+
+            # Data-specific
+            n_features=train_df.shape[1]+3, # Get actual feature count from data
             # action_dim is determined by env, set within ActorCriticWrapper
         )
 

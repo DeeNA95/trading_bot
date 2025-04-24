@@ -34,7 +34,28 @@ This list covers arguments needed based on the structure in `train.py`, `trainin
 *   `n_experts` (int, optional): Number of experts (for MoE). *(From `train.py` argparse)*
 *   `top_k` (int, optional): Top K experts to use (for MoE). *(From `train.py` argparse)*
 *   `norm_type` (str): Normalization layer type ("layer\_norm"). *(From `train.py` argparse)*
-*   `feature_extractor_dim` (int): Hidden dimension for ActorCriticWrapper feature extractor head. *(From `train.py` argparse)*
+
+*   **Residual Connection Configuration:**
+    *   `residual_scale` (float): Scaling factor for residual connections (default: 1.0). *(From `ModelConfig`)*
+    *   `use_gated_residual` (bool): Whether to use learnable gates for residual connections. *(From `ModelConfig`)*
+    *   `use_final_norm` (bool): Whether to apply a final layer normalization after all residual connections. *(From `ModelConfig`)*
+
+*   **Feature Extraction Configuration:**
+    *   `feature_extractor_type` (str): Type of feature extractor architecture ("basic", "resnet", "inception"). *(From `train.py` argparse)*
+    *   `feature_extractor_dim` (int): Hidden dimension for feature extractor. *(From `train.py` argparse)*
+    *   `feature_extractor_layers` (int): Number of layers in feature extractor. *(From `train.py` argparse)*
+    *   `use_skip_connections` (bool): Whether to use skip connections in feature extractor. *(From `train.py` argparse)*
+    *   `use_layer_norm` (bool): Whether to use layer normalization instead of batch norm in feature extractor. *(From `train.py` argparse)*
+    *   `use_instance_norm` (bool): Whether to use instance normalization in feature extractor. *(From `train.py` argparse)*
+    *   `feature_dropout` (float): Dropout rate for feature extractor. *(From `train.py` argparse)*
+
+*   **Actor-Critic Head Configuration:**
+    *   `head_hidden_dim` (int): Hidden dimension for actor-critic heads. *(From `train.py` argparse)*
+    *   `head_n_layers` (int): Number of layers in actor-critic heads. *(From `train.py` argparse)*
+    *   `head_use_layer_norm` (bool): Whether to use layer normalization in actor-critic heads. *(From `train.py` argparse)*
+    *   `head_use_residual` (bool): Whether to use residual connections in actor-critic heads. *(From `train.py` argparse)*
+    *   `head_dropout` (float, optional): Dropout rate for actor-critic heads (None = use model dropout). *(From `train.py` argparse)*
+
 *   *(Note): `window_size` is also part of `ModelConfig` but is typically derived from the environment arg (`--window`).*
 *   *(Note): `action_dim` is part of `ModelConfig` but is determined by the environment's action space, not set via args.*
 

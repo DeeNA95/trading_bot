@@ -206,7 +206,7 @@ class BinanceFuturesExecutor:
             return 0.0
 
         # Binance minimum order value of 20 USD
-        MIN_ORDER_VALUE = 20.0
+        MIN_ORDER_VALUE = 22.0
 
         max_allocation_amount = usdt_amount * self.max_trade_allocation
 
@@ -788,7 +788,7 @@ class BinanceFuturesExecutor:
                 quantity = float(f"{{:.{self.qty_precision}f}}".format(10 ** (-self.qty_precision)))
 
             # Check if it's too small for the exchange
-            MIN_ORDER_VALUE = 20.0  # Binance minimum order value (20 USDT)
+            MIN_ORDER_VALUE = 22.0
             order_value = quantity * current_price
             if order_value < MIN_ORDER_VALUE:
                 # Adjust quantity to meet minimum order value

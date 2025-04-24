@@ -1,23 +1,35 @@
 #!/bin/bash
 
-
+# Complex Pyramidal Attention Decoder-Only Model with ResNet Feature Extraction
+# and Enhanced Actor-Critic Heads
 
 nohup python train.py \
   --train_data gs://btrading/data/eth/ETHUSDT_1m_with_metrics_6y.parquet \
   --symbol ETHUSDT \
   --interval 1m \
-  --window 80 \
+  --window 256 \
   --leverage 20 \
   --balance 10 \
-  --architecture encoder_only \
-  --n_encoder_layers 16 \
-  --dropout 0.15 \
+  --architecture decoder_only \
+  --n_decoder_layers 16 \
+  --dropout 0.2 \
   --n_heads 16 \
+  --attention_type pyr \
   --ffn_type moe \
   --n_experts 16 \
-  --ffn_dim 256 \
-  --lr 1e-5 \
+  --top_k 5 \
+  --ffn_dim 512 \
+  --lr 3e-4 \
   --episodes 200 \
-  --save_path gs://btrading/models/large_encoder/mha_16l_16h_moe16$(date +%Y%m%d_%H%M%S) \
   --embedding_dim 320 \
-  --attention_type mha
+  --feature_extractor_type resnet \
+  --feature_extractor_dim 128 \
+  --feature_extractor_layers 3 \
+  --use_skip_connections \
+  --head_hidden_dim 256 \
+  --head_n_layers 3 \
+  --head_use_layer_norm \
+  --head_use_residual \
+  --residual_scale 1.2 \
+  --use_gated_residual \
+  --save_path gs://btrading/models/pyramidal_decoder/pyr_16l_16h_moe16_resnet$(date +%Y%m%d_%H%M%S)
