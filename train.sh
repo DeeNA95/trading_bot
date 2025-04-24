@@ -32,4 +32,5 @@ nohup python train.py \
   --head_use_residual \
   --residual_scale 1.2 \
   --use_gated_residual \
+  --use_final_norm \
   --save_path gs://btrading/models/pyramidal_decoder/pyr_16l_16h_moe16_resnet$(date +%Y%m%d_%H%M%S)

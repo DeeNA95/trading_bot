@@ -109,6 +109,14 @@ if __name__ == "__main__":
     model_group.add_argument("--top_k", type=int, default=None, help="Top K experts to use (for MoE FFN)")
     model_group.add_argument("--norm_type", type=str, default="layer_norm", choices=["layer_norm"], help="Normalization layer type")
 
+    # Residual Connection Configuration
+    model_group.add_argument("--residual_scale", type=float, default=1.0,
+                            help="Scaling factor for residual connections")
+    model_group.add_argument("--use_gated_residual", action="store_true",
+                            help="Use learnable gates for residual connections")
+    model_group.add_argument("--use_final_norm", action="store_true",
+                            help="Apply a final layer normalization after all residual connections")
+
     # Feature Extractor Configuration
     model_group.add_argument("--feature_extractor_type", type=str, default="basic", choices=["basic", "resnet", "inception"],
                             help="Type of feature extractor architecture")
@@ -209,10 +217,10 @@ if __name__ == "__main__":
             # Normalization
             norm_type=args.norm_type,
 
-            # Residual connections (defaults to False)
-            residual_scale=1.0,
-            use_gated_residual=False,
-            use_final_norm=False,
+            # Residual connections
+            residual_scale=args.residual_scale,
+            use_gated_residual=args.use_gated_residual,
+            use_final_norm=args.use_final_norm,
 
             # Feature extraction configuration
             feature_extractor_type=args.feature_extractor_type,
