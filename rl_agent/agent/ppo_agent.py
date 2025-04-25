@@ -439,7 +439,7 @@ class PPOAgent:
 
                 # Use torch.cuda.amp.autocast() to reduce memory usage if available
                 try:
-                    with torch.cuda.amp.autocast(enabled=self.device.type=='cuda'):
+                    with torch.amp.autocast('cuda',enabled=self.device.type=='cuda'):
                         new_log_probs, new_values, entropy = self.evaluate_actions(
                             batch_states, batch_actions
                         )

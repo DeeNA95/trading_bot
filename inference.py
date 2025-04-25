@@ -30,19 +30,34 @@ from google.cloud import secretmanager, storage
 
 from data import DataHandler
 from rl_agent.agent.models import (ActorCriticWrapper)  # Corrected import
+# Import all attention mechanisms
 from rl_agent.agent.attention.multi_head_attention import MultiHeadAttention
+from rl_agent.agent.attention.multi_latent_attention import MultiLatentAttention
+from rl_agent.agent.attention.pyramidal_attention import PyramidalAttention
+from rl_agent.agent.attention.multi_query_attention import MultiQueryAttention
+from rl_agent.agent.attention.grouped_query_attention import GroupedQueryAttention
 from rl_agent.agent.feedforward import FeedForward, MixtureOfExperts
 from rl_agent.agent.embeddings import TimeEmbedding
 from rl_agent.agent.blocks.encoder_block import EncoderBlock
 from rl_agent.agent.blocks.decoder_block import DecoderBlock
+# Import feature extractors
+from rl_agent.agent.feature_extractors import create_feature_extractor
 from rl_agent.environment.execution import BinanceFuturesExecutor
 import torch.nn as nn
 from torch.nn import Sequential, Conv1d, GELU, ReLU, Linear, BatchNorm1d, LayerNorm, ModuleList, Dropout
 from training.model_factory import DynamicTransformerCore
 
 torch.serialization.add_safe_globals([
-    ActorCriticWrapper, Sequential, Conv1d, GELU, ReLU, Linear, BatchNorm1d, LayerNorm, DynamicTransformerCore, TimeEmbedding, ModuleList,
-    EncoderBlock, DecoderBlock, MultiHeadAttention, Dropout, MixtureOfExperts, FeedForward
+    # Core model components
+    ActorCriticWrapper, DynamicTransformerCore, TimeEmbedding,
+    EncoderBlock, DecoderBlock,
+    # Attention mechanisms
+    MultiHeadAttention, MultiLatentAttention, PyramidalAttention,
+    MultiQueryAttention, GroupedQueryAttention,
+    # Feed-forward networks
+    FeedForward, MixtureOfExperts,
+    # PyTorch components
+    Sequential, Conv1d, GELU, ReLU, Linear, BatchNorm1d, LayerNorm, ModuleList, Dropout
 ])
 
 
@@ -343,15 +358,32 @@ class InferenceAgent:
             # --- Replicate component creation from create_model ---
 
             # Attention
-            attention_mapping = {"mha": MultiHeadAttention} # Add others if needed
-            attention_class = attention_mapping.get(config_dict.get('attention_type', 'mha'))
-            if not attention_class: raise ValueError(f"Unsupported attention type: {config_dict.get('attention_type')}")
+            attention_mapping = {
+                "mha": MultiHeadAttention,
+                "mla": MultiLatentAttention,
+                "pyr": PyramidalAttention,
+                "mqn": MultiQueryAttention,
+                "gqa": GroupedQueryAttention
+            }
+            attention_type = config_dict.get('attention_type', 'mha')
+            attention_class = attention_mapping.get(attention_type)
+            if not attention_class:
+                raise ValueError(f"Unsupported attention type: {attention_type}")
+
+            # Base attention arguments
             attention_args = {
                 "embedding_dim": embedding_dim,
                 "n_heads": config_dict.get('n_heads', 8),
                 "dropout": dropout_rate
             }
-            # Add specific args like n_latents, n_groups if needed based on attention_type
+
+            # Add specific arguments based on attention type
+            if attention_type == "mla" and config_dict.get('n_latents'):
+                attention_args["n_latents"] = config_dict.get('n_latents')
+            elif attention_type == "gqa" and config_dict.get('n_groups'):
+                attention_args["n_kv_heads"] = config_dict.get('n_groups')
+            elif attention_type == "pyr":
+                attention_args["max_seq_len"] = window_size
 
             # FFN
             ffn_mapping = {"standard": FeedForward, "moe": MixtureOfExperts} # Add others if needed
@@ -391,7 +423,11 @@ class InferenceAgent:
                         attention_class=attention_class, attention_args=attention_args.copy(),
                         ffn_class=ffn_class, ffn_args=ffn_args.copy() if ffn_args else None,
                         norm_class=norm_class, norm_args=norm_args,
-                        dropout=dropout_rate
+                        dropout=dropout_rate,
+                        # Residual connection parameters
+                        residual_scale=config_dict.get('residual_scale', 1.0),
+                        use_gated_residual=config_dict.get('use_gated_residual', False),
+                        use_final_norm=config_dict.get('use_final_norm', False)
                     )
                     encoder_blocks.append(block)
                 encoder_norm = norm_class(embedding_dim, **norm_args)
@@ -409,7 +445,11 @@ class InferenceAgent:
                          cross_attention_args=attention_args.copy() if architecture == "encoder_decoder" else None,
                          ffn_class=ffn_class, ffn_args=ffn_args.copy() if ffn_args else None,
                          norm_class=norm_class, norm_args=norm_args,
-                         dropout=dropout_rate
+                         dropout=dropout_rate,
+                         # Residual connection parameters
+                         residual_scale=config_dict.get('residual_scale', 1.0),
+                         use_gated_residual=config_dict.get('use_gated_residual', False),
+                         use_final_norm=config_dict.get('use_final_norm', False)
                      )
                      decoder_blocks.append(block)
                 decoder_norm = norm_class(embedding_dim, **norm_args)
@@ -434,8 +474,24 @@ class InferenceAgent:
                 input_shape=(window_size, input_dim),
                 action_dim=3, # Assuming 3 actions (Hold, Buy, Sell) - Should ideally be saved/inferred
                 transformer_core=core_transformer,
+                # Feature extractor parameters
                 feature_extractor_hidden_dim=config_dict.get('feature_extractor_dim', 64),
+                feature_extractor_type=config_dict.get('feature_extractor_type', 'basic'),
+                feature_extractor_layers=config_dict.get('feature_extractor_layers', 2),
+                use_skip_connections=config_dict.get('use_skip_connections', False),
+                use_layer_norm=config_dict.get('use_layer_norm', False),
+                use_instance_norm=config_dict.get('use_instance_norm', False),
+                feature_dropout=config_dict.get('feature_dropout', 0.0),
+                # Actor-Critic head parameters
+                head_hidden_dim=config_dict.get('head_hidden_dim', 128),
+                head_n_layers=config_dict.get('head_n_layers', 2),
+                head_use_layer_norm=config_dict.get('head_use_layer_norm', False),
+                head_use_residual=config_dict.get('head_use_residual', False),
+                head_dropout=config_dict.get('head_dropout', None),
+                # Core parameters
                 embedding_dim=config_dict.get('embedding_dim', 128),
+                dropout=config_dict.get('dropout', 0.1),
+                temperature=config_dict.get('temperature', 1.0),
                 device=self.device # Pass device here
             )
             # --- End Reconstruction ---
