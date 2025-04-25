@@ -132,15 +132,19 @@ class DynamicTransformerCore(nn.Module):
             return memory
 
         elif self.architecture == "decoder_only":
-            if tgt is None: raise ValueError("Input `tgt` must be provided for decoder_only.")
+            # For decoder-only models, use src as tgt if tgt is not provided
+            input_tensor = tgt if tgt is not None else src
+            if input_tensor is None:
+                raise ValueError("Either `src` or `tgt` must be provided for decoder_only.")
+
             # --- Decoder Processing ---
-            _, seq_len_tgt, _ = tgt.shape  # We don't need batch_size_tgt
-            assert seq_len_tgt <= self.window_size, f"Decoder input sequence {seq_len_tgt} longer than window size {self.window_size}"
-            time_indices_tgt = torch.arange(seq_len_tgt, dtype=torch.long, device=tgt.device)
-            output = self.decoder_time_embedding(tgt, time_indices_tgt)
+            _, seq_len_input, _ = input_tensor.shape
+            assert seq_len_input <= self.window_size, f"Decoder input sequence {seq_len_input} longer than window size {self.window_size}"
+            time_indices_input = torch.arange(seq_len_input, dtype=torch.long, device=input_tensor.device)
+            output = self.decoder_time_embedding(input_tensor, time_indices_input)
             output = self.dropout_emb(output)
             decoder_self_mask = None
-            if self.use_causal_mask_decoder: decoder_self_mask = self._generate_causal_mask(seq_len_tgt, tgt.device)
+            if self.use_causal_mask_decoder: decoder_self_mask = self._generate_causal_mask(seq_len_input, input_tensor.device)
             # TODO: Combine causal and padding if needed
             # if tgt_padding_mask is not None: ...
 

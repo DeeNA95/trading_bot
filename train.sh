@@ -3,6 +3,8 @@
 # Complex Pyramidal Attention Decoder-Only Model with ResNet Feature Extraction
 # and Enhanced Actor-Critic Heads
 
+# Run with nohup to handle disconnections and redirect output
+# The '&' at the end allows the shell to continue being used
 nohup python train.py \
   --train_data gs://btrading/data/eth/ETHUSDT_1m_with_metrics_6y.parquet \
   --symbol ETHUSDT \
@@ -33,4 +35,8 @@ nohup python train.py \
   --residual_scale 1.2 \
   --use_gated_residual \
   --use_final_norm \
-  --save_path gs://btrading/models/pyramidal_decoder/pyr_16l_16h_moe16_resnet$(date +%Y%m%d_%H%M%S)
+  --save_path gs://btrading/models/pyramidal_decoder/pyr_16l_16h_moe16_resnet$(date +%Y%m%d_%H%M%S) > nohup.out 2>&1 &
+
+# Print a message with the process ID
+echo "Training started in background with PID $!"
+echo "You can monitor the progress with: tail -f nohup.out"
