@@ -23,7 +23,7 @@ nohup python train.py \
   --ffn_dim 512 \
   --lr 3e-4 \
   --episodes 200 \
-  --batch_size 128 \
+  --batch_size 256 \
   --embedding_dim 320 \
   --feature_extractor_type resnet \
   --feature_extractor_dim 128 \
@@ -36,6 +36,7 @@ nohup python train.py \
   --residual_scale 1.2 \
   --use_gated_residual \
   --use_final_norm \
+  --gradient_accumulation_steps 8 \
   --save_path gs://btrading/models/pyramidal_decoder/pyr_16l_16h_moe16_resnet$(date +%Y%m%d_%H%M%S) > nohup.out 2>&1 &
 
 # Print a message with the process ID
