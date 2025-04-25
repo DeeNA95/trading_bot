@@ -48,8 +48,9 @@ class PPOMemory:
     """
     Memory buffer for PPO using PyTorch tensors.
     """
-    def __init__(self, batch_size: int, device: torch.device):
+    def __init__(self, batch_size: int, device: torch.device, mini_batch_size: int = None):
         self.batch_size = batch_size
+        self.mini_batch_size = mini_batch_size if mini_batch_size is not None else batch_size
         self.device = device
         self.clear()  # Initialize lists
 
@@ -106,7 +107,9 @@ class PPOMemory:
 
         # Generate random indices for batches using torch
         indices = torch.randperm(n_states).to(self.device)
-        batches = [indices[i: i + self.batch_size] for i in range(0, n_states, self.batch_size)]
+
+        # Use mini_batch_size for actual processing to reduce memory usage
+        batches = [indices[i: i + self.mini_batch_size] for i in range(0, n_states, self.mini_batch_size)]
 
         return (
             states_tensor,
@@ -149,6 +152,9 @@ class PPOAgent:
         use_lr_scheduler: bool = True,
         min_lr: float = 1e-5,
         lr_scheduler_max_steps: int = 100000,
+        # --- Memory Optimization ---
+        gradient_accumulation_steps: int = 4,  # Number of steps to accumulate gradients
+        mini_batch_size: int = None,  # Size of mini-batches for processing (defaults to batch_size/gradient_accumulation_steps)
         # --- Core Model Configuration (Removed - handled by factory) ---
 
         # --- Wrapper/Head Configuration (Removed - handled by factory) ---
@@ -203,6 +209,10 @@ class PPOAgent:
         self.normalize_advantage = normalize_advantage
         self.weight_decay = weight_decay
 
+        # Memory optimization parameters
+        self.gradient_accumulation_steps = gradient_accumulation_steps
+        self.mini_batch_size = mini_batch_size if mini_batch_size is not None else max(1, batch_size // gradient_accumulation_steps)
+
         # Learning rate scheduler parameters
         self.use_lr_scheduler = use_lr_scheduler
         self.min_lr = min_lr
@@ -252,7 +262,7 @@ class PPOAgent:
             self.scheduler = None
 
         # Memory buffer
-        self.memory = PPOMemory(batch_size, self.device)
+        self.memory = PPOMemory(batch_size, self.device, self.mini_batch_size)
 
         # Training metrics
         self.policy_loss_history = []
@@ -414,48 +424,84 @@ class PPOAgent:
             batch_entropy = 0
             batch_pbar = tqdm(batches, desc="Batches", leave=False)
 
-            for batch_indices in batch_pbar:
+            # Zero gradients at the beginning of each epoch
+            self.optimizer.zero_grad()
+
+            # Track accumulated batches for gradient accumulation
+            accumulated_batches = 0
+
+            for batch_idx, batch_indices in enumerate(batch_pbar):
                 batch_states = states[batch_indices]
                 batch_actions = actions[batch_indices]
                 batch_old_probs = old_probs[batch_indices]
                 batch_advantages = advantages[batch_indices]
                 batch_values = values[batch_indices]
 
-                new_log_probs, new_values, entropy = self.evaluate_actions(
-                    batch_states, batch_actions
-                )
+                # Use torch.cuda.amp.autocast() to reduce memory usage if available
+                try:
+                    with torch.cuda.amp.autocast(enabled=self.device.type=='cuda'):
+                        new_log_probs, new_values, entropy = self.evaluate_actions(
+                            batch_states, batch_actions
+                        )
 
-                prob_ratio = torch.exp(new_log_probs - torch.log(batch_old_probs + 1e-8))
-                weighted_probs = batch_advantages * prob_ratio
-                weighted_clipped_probs = batch_advantages * torch.clamp(
-                    prob_ratio, 1.0 - self.policy_clip, 1.0 + self.policy_clip
-                )
-                policy_loss = -torch.min(weighted_probs, weighted_clipped_probs).mean()
+                        prob_ratio = torch.exp(new_log_probs - torch.log(batch_old_probs + 1e-8))
+                        weighted_probs = batch_advantages * prob_ratio
+                        weighted_clipped_probs = batch_advantages * torch.clamp(
+                            prob_ratio, 1.0 - self.policy_clip, 1.0 + self.policy_clip
+                        )
+                        policy_loss = -torch.min(weighted_probs, weighted_clipped_probs).mean()
 
-                returns = batch_advantages + batch_values
-                value_loss = torch.nn.functional.mse_loss(new_values, returns)
+                        returns = batch_advantages + batch_values
+                        value_loss = torch.nn.functional.mse_loss(new_values, returns)
 
-                entropy_loss = entropy.mean()
+                        entropy_loss = entropy.mean()
 
-                loss = (
-                    policy_loss
-                    + self.value_coef * value_loss
-                    - self.entropy_coef * entropy_loss
-                )
+                        # Scale the loss by 1/gradient_accumulation_steps for proper scaling
+                        loss = (
+                            policy_loss
+                            + self.value_coef * value_loss
+                            - self.entropy_coef * entropy_loss
+                        ) / self.gradient_accumulation_steps
+                except RuntimeError as e:
+                    if "CUDA out of memory" in str(e):
+                        print(f"CUDA OOM in batch {batch_idx}. Skipping batch and clearing memory.")
+                        # Try to free memory
+                        if self.device.type == 'cuda':
+                            torch.cuda.empty_cache()
+                        continue
+                    else:
+                        raise e
 
-                self.optimizer.zero_grad()
+                # Backward pass
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
 
-                if self.device.type == 'xla':
-                    xm.optimizer_step(self.optimizer)
-                else:
-                    self.optimizer.step()
-
+                # Track metrics
                 batch_policy_loss += policy_loss.item()
                 batch_value_loss += value_loss.item()
                 batch_entropy += entropy_loss.item()
-                batch_pbar.set_postfix({"policy_loss": f"{policy_loss.item():.4f}", "value_loss": f"{value_loss.item():.4f}"})
+                batch_pbar.set_postfix({
+                    "policy_loss": f"{policy_loss.item():.4f}",
+                    "value_loss": f"{value_loss.item():.4f}",
+                    "acc_batch": f"{accumulated_batches+1}/{self.gradient_accumulation_steps}"
+                })
+
+                # Increment accumulated batches counter
+                accumulated_batches += 1
+
+                # Only update weights after accumulating gradients from multiple batches
+                if (batch_idx + 1) % self.gradient_accumulation_steps == 0 or batch_idx == len(batches) - 1:
+                    # Clip gradients
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+
+                    # Update weights
+                    if self.device.type == 'xla':
+                        xm.optimizer_step(self.optimizer)
+                    else:
+                        self.optimizer.step()
+
+                    # Zero gradients for next accumulation cycle
+                    self.optimizer.zero_grad()
+                    accumulated_batches = 0
 
             avg_policy_loss_epoch = batch_policy_loss / len(batches)
             avg_value_loss_epoch = batch_value_loss / len(batches)

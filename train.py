@@ -90,6 +90,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_gae", type=bool, default=True, help="Use Generalized Advantage Estimation")
     parser.add_argument("--normalize_advantage", type=bool, default=True, help="Normalize advantages")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Adam weight decay")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=4, help="Number of steps to accumulate gradients (reduces memory usage)")
 
     # --- ModelConfig Arguments (used by model_factory) ---
     model_group = parser.add_argument_group('Model Architecture Configuration (via ModelConfig)')

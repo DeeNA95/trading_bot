@@ -23,6 +23,7 @@ nohup python train.py \
   --ffn_dim 512 \
   --lr 3e-4 \
   --episodes 200 \
+  --batch_size 128 \
   --embedding_dim 320 \
   --feature_extractor_type resnet \
   --feature_extractor_dim 128 \
