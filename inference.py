@@ -9,6 +9,7 @@ from rl_agent.agent.models import ActorCriticWrapper
 import argparse
 import logging
 import os
+import random
 import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple, Union
@@ -131,6 +132,14 @@ def parse_args() -> argparse.Namespace:
         description='Run inference with a trained RL agent on Binance Futures'
     )
 
+    # Add exploration parameter
+    parser.add_argument(
+        '--exploration_rate',
+        type=float,
+        default=0.0,
+        help='Probability of taking a random action (0.0-1.0). Default: 0.0 (no exploration)'
+    )
+
     # Model parameters
     parser.add_argument(
         '--model_path',
@@ -251,6 +260,13 @@ class InferenceAgent:
         self.initial_balance = args.initial_balance
         self.dry_run = args.dry_run
         self.base_url = args.base_url
+
+        # Exploration settings
+        self.exploration_rate = args.exploration_rate
+        if self.exploration_rate > 0:
+            logger.info(f"Using exploration rate of {self.exploration_rate:.2f}")
+            if self.exploration_rate > 0.5:
+                logger.warning(f"High exploration rate ({self.exploration_rate}) may lead to random trading!")
 
         # Set device automatically if not specified, prioritizing TPU > GPU > MPS > CPU
         if args.device == 'auto':
@@ -706,6 +722,16 @@ class InferenceAgent:
             # Log feature count for debugging
             logger.info(f'State shape: {state.shape}')
 
+            # Debug: Log state statistics to help identify if states are too similar
+            state_mean = np.mean(state)
+            state_std = np.std(state)
+            state_min = np.min(state)
+            state_max = np.max(state)
+            state_hash = hash(state.tobytes()) % 10000  # Simple hash for tracking state changes
+
+            logger.info(f'State stats: mean={state_mean:.4f}, std={state_std:.4f}, '
+                        f'min={state_min:.4f}, max={state_max:.4f}, hash={state_hash}')
+
             return state
 
         except Exception as e:
@@ -731,15 +757,35 @@ class InferenceAgent:
 
                 # Get model predictions
                 logits, value = self.model(state_tensor)  # Model returns 2 values
-                action_probs = torch.softmax(logits, dim=-1)
 
-                # Select action with highest probability
-                action = int(torch.argmax(action_probs, dim=-1).item())
+                # Apply temperature scaling to logits (important for exploration/exploitation balance)
+                temperature = getattr(self.model, 'temperature', 1.0)
+                scaled_logits = logits / temperature
+
+                # Clamp logits to prevent numerical instability
+                scaled_logits = torch.clamp(scaled_logits, min=-20.0, max=20.0)
+
+                # Apply softmax to get probabilities
+                action_probs = torch.softmax(scaled_logits, dim=-1)
+
+                # Ensure probabilities sum to 1
+                action_probs = action_probs + 1e-8
+                action_probs = action_probs / action_probs.sum(dim=-1, keepdim=True)
+
+                # Add small random noise to break ties and prevent getting stuck
+                # This helps when probabilities are very close to each other
+                noise_level = 1e-4  # Very small noise to break ties but not change clear decisions
+                noisy_probs = action_probs + torch.rand_like(action_probs) * noise_level
+
+                # Select action with highest probability (after adding noise)
+                action = int(torch.argmax(noisy_probs, dim=-1).item())
 
                 return {
                     'action': action,
                     'action_probs': action_probs.cpu().numpy(),
-                    'value': value.item()
+                    'raw_logits': logits.cpu().numpy()[0],  # Store raw logits for debugging
+                    'value': value.item(),
+                    'temperature': temperature  # Include temperature for reference
                 }
 
             except Exception as e:
@@ -788,13 +834,30 @@ class InferenceAgent:
                 action = prediction['action']
                 action_probs = prediction['action_probs']
 
-                # Log action probabilities
+                # Apply exploration if enabled (randomly select action with probability exploration_rate)
+                if self.exploration_rate > 0 and random.random() < self.exploration_rate:
+                    # Choose a random action (0=HOLD, 1=BUY, 2=SELL)
+                    random_action = random.randint(0, 2)
+                    logger.info(f"EXPLORATION: Overriding action {action} with random action {random_action}")
+                    action = random_action
+
+                # Log action probabilities with more detail
                 action_names = ['HOLD', 'BUY/LONG', 'SELL/SHORT']
                 probs_str = ', '.join(
-                    f'{name}: {prob:.4f}'
+                    f'{name}: {prob:.6f}'  # More decimal places for better comparison
                     for name, prob in zip(action_names, action_probs[0])
                 )
+
+                # Log raw logits to see if they're changing
+                raw_logits = prediction.get('raw_logits', [0, 0, 0])
+                logits_str = ', '.join(f'{name}: {logit:.4f}' for name, logit in zip(action_names, raw_logits))
+
+                # Log value estimate as well
+                value = prediction.get('value', 0.0)
+
                 logger.info(f'Action probabilities: {probs_str}')
+                logger.info(f'Raw logits: {logits_str}')
+                logger.info(f'Value estimate: {value:.6f}')
                 logger.info(f'Selected action: {action_names[action]}')
 
                 # Check position status

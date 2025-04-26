@@ -1,17 +1,12 @@
 #!/bin/bash
 
-# Complex Pyramidal Attention Decoder-Only Model with ResNet Feature Extraction
-# and Enhanced Actor-Critic Heads
-
-# Run with nohup to handle disconnections and redirect output
-# The '&' at the end allows the shell to continue being used
 nohup python train.py \
   --train_data gs://btrading/data/eth/ETHUSDT_1m_with_metrics_6y.parquet \
   --symbol ETHUSDT \
   --interval 1m \
   --window 256 \
   --leverage 20 \
-  --balance 10 \
+  --balance 10000 \
   --architecture decoder_only \
   --n_decoder_layers 16 \
   --dropout 0.2 \
@@ -22,8 +17,9 @@ nohup python train.py \
   --top_k 5 \
   --ffn_dim 512 \
   --lr 3e-4 \
+  --policy_clip 0.1 \
   --episodes 200 \
-  --batch_size 256 \
+  --batch_size 1024 \
   --embedding_dim 320 \
   --feature_extractor_type resnet \
   --feature_extractor_dim 128 \
