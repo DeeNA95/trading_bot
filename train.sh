@@ -29,10 +29,11 @@ nohup python train.py \
   --head_n_layers 3 \
   --head_use_layer_norm \
   --head_use_residual \
-  --residual_scale 1.2 \
+  --residual_scale 0.9 \
   --use_gated_residual \
   --use_final_norm \
   --gradient_accumulation_steps 8 \
+  --entropy_coef 0.05 \
   --save_path gs://btrading/models/pyramidal_decoder/pyr_16l_16h_moe16_resnet$(date +%Y%m%d_%H%M%S) > nohup.out 2>&1 &
 
 # Print a message with the process ID
