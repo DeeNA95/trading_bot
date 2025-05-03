@@ -64,6 +64,7 @@ class ModelConfig:
     # ActorCritic specific
     action_dim: int = 3  # HOLD, LONG, SHORT
     n_features: int = 59 # Number of input features from data
+    temperature: float = 0.5  # Temperature for action selection (lower = more deterministic)
 
 # --- Dynamically Assembled Transformer Core ---
 class DynamicTransformerCore(nn.Module):
@@ -366,6 +367,7 @@ def create_model(config: ModelConfig, device: str = "auto") -> ActorCriticWrappe
         feature_extractor_hidden_dim=config.feature_extractor_dim,
         embedding_dim=config.embedding_dim,
         dropout=config.dropout,
+        temperature=config.temperature,  # Pass the temperature parameter
         device=device,
         # Feature extractor parameters
         feature_extractor_type=config.feature_extractor_type,

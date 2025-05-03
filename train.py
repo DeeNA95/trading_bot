@@ -145,6 +145,8 @@ if __name__ == "__main__":
                             help="Use residual connections in actor-critic heads")
     model_group.add_argument("--head_dropout", type=float, default=None,
                             help="Dropout rate for actor-critic heads (None = use model dropout)")
+    model_group.add_argument("--temperature", type=float, default=0.5,
+                            help="Temperature for action selection (lower = more deterministic)")
     # -- action_dim is determined by the environment --
 
     args = parser.parse_args()
@@ -238,6 +240,9 @@ if __name__ == "__main__":
             head_use_layer_norm=args.head_use_layer_norm,
             head_use_residual=args.head_use_residual,
             head_dropout=args.head_dropout,
+
+            # Temperature for action selection
+            temperature=args.temperature,
 
             # Data-specific
             n_features=train_df.shape[1]+3, # Get actual feature count from data
