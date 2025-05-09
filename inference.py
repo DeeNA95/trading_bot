@@ -607,7 +607,7 @@ class InferenceAgent:
             # Calculate time range for data fetch
             end_time = current_time
             start_time = end_time - timedelta(
-                seconds=interval_seconds * (self.window_size + 200)  # Add buffer
+                seconds=interval_seconds * (self.window_size * 2)  # Add buffer
             )
 
             logger.info(f'Fetching market data for {self.symbol} from {start_time} to {end_time}')
