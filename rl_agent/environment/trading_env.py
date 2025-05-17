@@ -228,7 +228,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
 
         # State space: OHLCV + indicators + account features (position, equity, etc.)
         if df is not None:
-            state_dim = df.shape[1] + 3  # +3 for balance, position, unrealized_pnl
+            state_dim = df.shape[1]  # Features from df only
         else:
             # If no df provided (like in live mode), use default dimension
             state_dim = 25  # OHLCV + common indicators + account features
@@ -273,9 +273,9 @@ class BinanceFuturesCryptoEnv(gym.Env):
             combined_data = np.column_stack(
                 (
                     price_features,
-                    balance.reshape(-1, 1),
-                    position.reshape(-1, 1),
-                    unrealized_pnl.reshape(-1, 1),
+                    # balance.reshape(-1, 1),
+                    # position.reshape(-1, 1),
+                    # unrealized_pnl.reshape(-1, 1),
                 )
             )
             # Attempt conversion, drop problematic columns if it fails

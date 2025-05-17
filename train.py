@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 # Agent, Env, Data Imports (Keep)
 # from rl_agent.agent.ppo_agent import PPOAgent # PPOAgent is used within Trainer now
-from rl_agent.environment.trading_env import BinanceFuturesCryptoEnv # Env creation still happens here conceptually before Trainer
+from rl_agent.environment.trading_env import BinanceFuturesCryptoEnv 
 # from data import DataHandler # Assuming DataHandler is used in load_and_preprocess
 
 # --- New Imports ---
