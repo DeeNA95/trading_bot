@@ -94,8 +94,9 @@ if __name__ == "__main__":
 
     # --- ModelConfig Arguments (used by model_factory) ---
     model_group = parser.add_argument_group('Model Architecture Configuration (via ModelConfig)')
-    model_group.add_argument("--architecture", type=str, default="encoder_only", choices=["encoder_only", "decoder_only", "encoder_decoder"], help="Core transformer architecture type")
-    model_group.add_argument("--embedding_dim", type=int, default=256, help="Embedding dimension size")
+    model_group.add_argument("--core_model_type", type=str, default="transformer", choices=["transformer", "lstm", "hybrid"], help="Core model type to use (transformer, lstm, or hybrid)") # Added
+    model_group.add_argument("--architecture", type=str, default="encoder_only", choices=["encoder_only", "decoder_only", "encoder_decoder"], help="Core transformer architecture type (if core_model_type is transformer or hybrid)")
+    model_group.add_argument("--embedding_dim", type=int, default=256, help="Embedding dimension size (used by transformer and LSTM if applicable)")
     model_group.add_argument("--n_encoder_layers", type=int, default=4, help="Number of encoder layers (if applicable)")
     model_group.add_argument("--n_decoder_layers", type=int, default=4, help="Number of decoder layers (if applicable)")
     # -- window_size is already defined under Data/Env args --
@@ -149,6 +150,13 @@ if __name__ == "__main__":
                             help="Temperature for action selection (lower = more deterministic)")
     # -- action_dim is determined by the environment --
 
+    # LSTM Specific Arguments (if core_model_type is 'lstm' or 'hybrid')
+    lstm_group = parser.add_argument_group('LSTM Configuration (if core_model_type is lstm or hybrid)')
+    lstm_group.add_argument("--lstm_hidden_dim", type=int, default=128, help="Hidden dimension for LSTM layers")
+    lstm_group.add_argument("--lstm_num_layers", type=int, default=2, help="Number of LSTM layers")
+    lstm_group.add_argument("--lstm_dropout", type=float, default=0.1, help="Dropout rate for LSTM layers")
+
+
     args = parser.parse_args()
 
     set_seeds()
@@ -197,33 +205,41 @@ if __name__ == "__main__":
         # --- Create ModelConfig ---
         # Note: action_dim is set by env, not needed in ModelConfig here
         model_config = ModelConfig(
-            # Core architecture
+            # Core model type
+            core_model_type=args.core_model_type,
+
+            # Core transformer architecture (if applicable)
             architecture=args.architecture,
-            embedding_dim=args.embedding_dim,
+            embedding_dim=args.embedding_dim, # Used by both
             n_encoder_layers=args.n_encoder_layers,
             n_decoder_layers=args.n_decoder_layers,
             window_size=args.window, # Get window size from env args
-            dropout=args.dropout,
+            dropout=args.dropout, # General dropout
 
-            # Attention configuration
+            # Attention configuration (Transformer specific)
             attention_type=args.attention_type,
             n_heads=args.n_heads,
             n_latents=args.n_latents,
             n_groups=args.n_groups,
 
-            # Feed-forward configuration
+            # Feed-forward configuration (Transformer specific)
             ffn_type=args.ffn_type,
             ffn_dim=args.ffn_dim,
             n_experts=args.n_experts,
             top_k=args.top_k,
 
-            # Normalization
+            # Normalization (Transformer specific)
             norm_type=args.norm_type,
 
-            # Residual connections
+            # Residual connections (Transformer specific)
             residual_scale=args.residual_scale,
             use_gated_residual=args.use_gated_residual,
             use_final_norm=args.use_final_norm,
+
+            # LSTM specific configuration
+            lstm_hidden_dim=args.lstm_hidden_dim,
+            lstm_num_layers=args.lstm_num_layers,
+            lstm_dropout=args.lstm_dropout,
 
             # Feature extraction configuration
             feature_extractor_type=args.feature_extractor_type,
