@@ -24,12 +24,13 @@ class FeedForward(nn.Module):
 
 class MixtureOfExperts(nn.Module):
     """ Mixture of Experts FeedForward layer """
-    def __init__(self, embedding_dim: int, num_experts: int, top_k: int = 2, dim_feedforward: Optional[int] = None, dropout: float = 0.1, activation: str = "gelu", bias: bool = True):
+    def __init__(self, embedding_dim: int, num_experts: int, top_k: int = 2, dim_feedforward: Optional[int] = None, dropout: float = 0.1, activation: str = "gelu", bias: bool = True, noisy_gating_std: Optional[float] = None):
         super().__init__()
         assert top_k <= num_experts
         self.num_experts = num_experts
         self.top_k = top_k
         self.embedding_dim = embedding_dim
+        self.noisy_gating_std = noisy_gating_std
 
         # Create expert networks (using the standard FeedForward)
         self.experts = nn.ModuleList([
@@ -45,7 +46,14 @@ class MixtureOfExperts(nn.Module):
         x_flat = x.view(-1, dim)
 
         gate_logits = self.gate(x_flat)
-        weights, indices = torch.topk(gate_logits, self.top_k, dim=-1)
+
+        if self.training and self.noisy_gating_std is not None and self.noisy_gating_std > 0:
+            noise = torch.randn_like(gate_logits) * self.noisy_gating_std
+            effective_gate_logits = gate_logits + noise
+        else:
+            effective_gate_logits = gate_logits
+
+        weights, indices = torch.topk(effective_gate_logits, self.top_k, dim=-1)
         weights = F.softmax(weights, dim=-1, dtype=torch.float).to(x.dtype)
 
         final_output = torch.zeros_like(x_flat)

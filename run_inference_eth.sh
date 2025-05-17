@@ -6,8 +6,8 @@
 echo "Starting ETHUSDT inference..."
 
 python3.12 inference.py \
-    --model_path gs://btrading/models/pyramidal_decoder/pyr_16l_16h_moe16_resnet20250504_204019/fold_3/best_model.pt \
-    --scaler_path gs://btrading/models/pyramidal_decoder/pyr_16l_16h_moe16_resnet20250504_204019/fold_3/scaler_fold_3.joblib \
+    --model_path best_model.pt \
+    --scaler_path scaler_fold_3.joblib \
     --symbol ETHUSDT \
     --interval 1m \
     --window_size 512 \
