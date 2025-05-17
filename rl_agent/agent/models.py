@@ -54,9 +54,9 @@ class ActorCriticWrapper(nn.Module):
         self,
         input_shape: Tuple[int, int],
         action_dim: int,
-        transformer_core: nn.Module, # Accepts an instantiated core model
+        core_model: nn.Module, # Accepts an instantiated core model (Transformer or LSTM)
         feature_extractor_hidden_dim: int = 128, # Dim for initial CNN
-        embedding_dim: int = 256, # Dim expected by transformer_core
+        embedding_dim: int = 256, # Dim expected as output from core_model and input to heads
         activation_fn: nn.Module = nn.GELU(),
         dropout: float = 0.1, # Dropout for heads
         temperature: float = 1.0, # Temperature parameter
@@ -110,8 +110,8 @@ class ActorCriticWrapper(nn.Module):
             dropout=feature_dropout,
         )
 
-        # --- Core Transformer Model ---
-        self.transformer_core = transformer_core
+        # --- Core Model (Transformer or LSTM) ---
+        self.core_model = core_model
 
         # --- Actor and Critic Heads ---
         # Use provided head parameters or defaults
@@ -243,7 +243,9 @@ class ActorCriticWrapper(nn.Module):
         # The core model should handle time embedding internally
         # Masking logic might need to be handled based on core model type
         # For now, assume core handles its own masking or doesn't need it here
-        core_output = self.transformer_core(embedded_input) # Shape: (B, T, C)
+        # The core_model could be a Transformer or an LSTM.
+        # Both are expected to take (B, T, Features) and output (B, T, HiddenDim)
+        core_output = self.core_model(embedded_input) # Shape: (B, T, C)
 
         # Use last time step output for actor/critic
         last_output = core_output[:, -1]

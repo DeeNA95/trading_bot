@@ -47,10 +47,11 @@ from rl_agent.environment.execution import BinanceFuturesExecutor
 import torch.nn as nn
 from torch.nn import Sequential, Conv1d, GELU, ReLU, Linear, BatchNorm1d, LayerNorm, ModuleList, Dropout
 from training.model_factory import DynamicTransformerCore
+from rl_agent.agent.lstm_core import LSTMCore # Added for LSTM support
 
 torch.serialization.add_safe_globals([
     # Core model components
-    ActorCriticWrapper, DynamicTransformerCore, TimeEmbedding,
+    ActorCriticWrapper, DynamicTransformerCore, LSTMCore, TimeEmbedding, # Added LSTMCore
     EncoderBlock, DecoderBlock,
     # Attention mechanisms
     MultiHeadAttention, MultiLatentAttention, PyramidalAttention,
@@ -356,24 +357,27 @@ class InferenceAgent:
             config_dict = checkpoint['model_config']
             # Convert ModelConfig dict back to ModelConfig object if needed by factory,
             # or just use the dict directly if factory accepts it.
-            # Assuming DynamicTransformerCore can be built from config_dict
 
-            # Determine input_dim dynamically or use a reasonable default/saved value if possible
-            # For now, using the previous hardcoded value, but ideally, this should be saved/inferred
-            # Check if n_features was saved in the config
-            input_dim = config_dict.get('n_features', 59) # Use n_features from config if available
-            embedding_dim = config_dict.get('embedding_dim', 128)
-            dropout_rate = config_dict.get('dropout', 0.1)
-            window_size = config_dict.get('window_size', self.window_size)
-            architecture = config_dict.get('architecture', 'encoder_only')
-            n_encoder_layers = config_dict.get('n_encoder_layers', 4)
-            n_decoder_layers = config_dict.get('n_decoder_layers', 0) # Default 0 if not encoder_decoder
+            input_dim = config_dict.get('n_features', 59) # n_features from data
+            window_size = config_dict.get('window_size', self.window_size) # sequence length
+            dropout_rate = config_dict.get('dropout', 0.1) # General dropout
 
-            logger.info(f"Reconstructing model: arch={architecture}, input_dim={input_dim}, embed_dim={embedding_dim}")
+            core_model_type = config_dict.get('core_model_type', 'transformer') # Default to transformer
+            logger.info(f"Reconstructing core model of type: {core_model_type}")
 
-            # --- Replicate component creation from create_model ---
+            core_model: nn.Module
+            actor_critic_embedding_dim: int # This will be the output dim of the core model
 
-            # Attention
+            if core_model_type == "transformer":
+                # --- Transformer Core Reconstruction ---
+                embedding_dim_transformer = config_dict.get('embedding_dim', 128) # Transformer's internal embedding
+                actor_critic_embedding_dim = embedding_dim_transformer
+                architecture = config_dict.get('architecture', 'encoder_only')
+                n_encoder_layers = config_dict.get('n_encoder_layers', 4)
+                n_decoder_layers = config_dict.get('n_decoder_layers', 0)
+                logger.info(f"Reconstructing Transformer: arch={architecture}, input_dim={input_dim}, embed_dim={embedding_dim_transformer}")
+
+                # Attention
             attention_mapping = {
                 "mha": MultiHeadAttention,
                 "mla": MultiLatentAttention,
@@ -388,7 +392,7 @@ class InferenceAgent:
 
             # Base attention arguments
             attention_args = {
-                "embedding_dim": embedding_dim,
+                "embedding_dim": embedding_dim_transformer, # Use transformer's embedding_dim
                 "n_heads": config_dict.get('n_heads', 8),
                 "dropout": dropout_rate
             }
@@ -430,14 +434,14 @@ class InferenceAgent:
 
             # Build Encoder components if needed
             if architecture in ["encoder_only", "encoder_decoder"]:
-                if n_encoder_layers <= 0: raise ValueError("n_encoder_layers must be > 0")
-                encoder_time_embedding = TimeEmbedding(embedding_dim, max_len=window_size)
+                if n_encoder_layers <= 0: raise ValueError("n_encoder_layers must be > 0 for Transformer encoder")
+                encoder_time_embedding = TimeEmbedding(embedding_dim_transformer, max_len=window_size)
                 encoder_blocks = nn.ModuleList()
                 for _ in range(n_encoder_layers):
                     block = EncoderBlock(
-                        embedding_dim=embedding_dim,
+                        embedding_dim=embedding_dim_transformer,
                         attention_class=attention_class, attention_args=attention_args.copy(),
-                        ffn_class=ffn_class, ffn_args=ffn_args.copy() if ffn_args else None,
+                        ffn_class=ffn_class, ffn_args=ffn_args.copy() if ffn_args else {}, # Ensure ffn_args is a dict
                         norm_class=norm_class, norm_args=norm_args,
                         dropout=dropout_rate,
                         # Residual connection parameters
@@ -446,20 +450,20 @@ class InferenceAgent:
                         use_final_norm=config_dict.get('use_final_norm', False)
                     )
                     encoder_blocks.append(block)
-                encoder_norm = norm_class(embedding_dim, **norm_args)
+                encoder_norm = norm_class(embedding_dim_transformer, **norm_args)
 
-            # Build Decoder components if needed
+            # Build Decoder components if needed (for Transformer)
             if architecture in ["decoder_only", "encoder_decoder"]:
-                if n_decoder_layers <= 0: raise ValueError("n_decoder_layers must be > 0")
-                decoder_time_embedding = TimeEmbedding(embedding_dim, max_len=window_size)
+                if n_decoder_layers <= 0: raise ValueError("n_decoder_layers must be > 0 for Transformer decoder")
+                decoder_time_embedding = TimeEmbedding(embedding_dim_transformer, max_len=window_size) # Separate instance
                 decoder_blocks = nn.ModuleList()
                 for _ in range(n_decoder_layers):
                      block = DecoderBlock(
-                         embedding_dim=embedding_dim,
+                         embedding_dim=embedding_dim_transformer,
                          self_attention_class=attention_class, self_attention_args=attention_args.copy(),
                          cross_attention_class=attention_class if architecture == "encoder_decoder" else None,
                          cross_attention_args=attention_args.copy() if architecture == "encoder_decoder" else None,
-                         ffn_class=ffn_class, ffn_args=ffn_args.copy() if ffn_args else None,
+                         ffn_class=ffn_class, ffn_args=ffn_args.copy() if ffn_args else {}, # Ensure ffn_args is a dict
                          norm_class=norm_class, norm_args=norm_args,
                          dropout=dropout_rate,
                          # Residual connection parameters
@@ -468,28 +472,46 @@ class InferenceAgent:
                          use_final_norm=config_dict.get('use_final_norm', False)
                      )
                      decoder_blocks.append(block)
-                decoder_norm = norm_class(embedding_dim, **norm_args)
+                decoder_norm = norm_class(embedding_dim_transformer, **norm_args)
 
-            # Instantiate the dynamic core with built components
-            core_transformer = DynamicTransformerCore(
-                architecture=architecture,
-                encoder_time_embedding=encoder_time_embedding,
-                encoder_blocks=encoder_blocks,
-                encoder_norm=encoder_norm,
-                decoder_time_embedding=decoder_time_embedding,
-                decoder_blocks=decoder_blocks,
-                decoder_norm=decoder_norm,
-                dropout_emb=dropout_emb,
-                window_size=window_size,
-                use_causal_mask_encoder=(architecture == "encoder_only"), # Match create_model logic
-                use_causal_mask_decoder=True
-            )
+                # Instantiate the dynamic Transformer core
+                core_model = DynamicTransformerCore(
+                    architecture=architecture,
+                    encoder_time_embedding=encoder_time_embedding,
+                    encoder_blocks=encoder_blocks,
+                    encoder_norm=encoder_norm,
+                    decoder_time_embedding=decoder_time_embedding,
+                    decoder_blocks=decoder_blocks,
+                    decoder_norm=decoder_norm,
+                    dropout_emb=dropout_emb,
+                    window_size=window_size,
+                    use_causal_mask_encoder=(architecture == "encoder_only"),
+                    use_causal_mask_decoder=True
+                )
+            elif core_model_type == "lstm":
+                # --- LSTM Core Reconstruction ---
+                lstm_hidden_dim = config_dict.get('lstm_hidden_dim', 128)
+                actor_critic_embedding_dim = lstm_hidden_dim # Output of LSTM is its hidden_dim
+                lstm_num_layers = config_dict.get('lstm_num_layers', 2)
+                # Use general dropout for LSTM if lstm_dropout is not specifically saved
+                lstm_dropout = config_dict.get('lstm_dropout', dropout_rate)
+                logger.info(f"Reconstructing LSTM: input_dim={input_dim}, hidden_dim={lstm_hidden_dim}, layers={lstm_num_layers}")
 
-            # Create ActorCriticWrapper
+                core_model = LSTMCore(
+                    input_dim=input_dim, # n_features from data
+                    hidden_dim=lstm_hidden_dim,
+                    num_layers=lstm_num_layers,
+                    dropout=lstm_dropout,
+                    device=self.device
+                )
+            else:
+                raise ValueError(f"Unsupported core_model_type in saved config: {core_model_type}")
+
+            # Create ActorCriticWrapper with the reconstructed core_model
             model = ActorCriticWrapper(
-                input_shape=(window_size, input_dim),
-                action_dim=3, # Assuming 3 actions (Hold, Buy, Sell) - Should ideally be saved/inferred
-                transformer_core=core_transformer,
+                input_shape=(window_size, input_dim), # (seq_len, n_features)
+                action_dim=config_dict.get('action_dim', 3), # Default to 3 if not in config
+                core_model=core_model,
                 # Feature extractor parameters
                 feature_extractor_hidden_dim=config_dict.get('feature_extractor_dim', 64),
                 feature_extractor_type=config_dict.get('feature_extractor_type', 'basic'),
@@ -503,12 +525,12 @@ class InferenceAgent:
                 head_n_layers=config_dict.get('head_n_layers', 2),
                 head_use_layer_norm=config_dict.get('head_use_layer_norm', False),
                 head_use_residual=config_dict.get('head_use_residual', False),
-                head_dropout=config_dict.get('head_dropout', None),
-                # Core parameters
-                embedding_dim=config_dict.get('embedding_dim', 128),
-                dropout=config_dict.get('dropout', 0.1),
+                head_dropout=config_dict.get('head_dropout', dropout_rate), # Use general dropout if specific not set
+                # Core parameters for ActorCriticWrapper
+                embedding_dim=actor_critic_embedding_dim, # This is the output dim of the core model
+                dropout=dropout_rate, # General dropout for heads if not overridden
                 temperature=config_dict.get('temperature', 1.0),
-                device=self.device # Pass device here
+                device=self.device
             )
             # --- End Reconstruction ---
 

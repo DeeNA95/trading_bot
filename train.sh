@@ -7,21 +7,17 @@ nohup python train.py \
   --window 256 \
   --leverage 20 \
   --balance 10000 \
-  --architecture decoder_only \
-  --n_decoder_layers 16 \
+  --core_model_type lstm \
+  --lstm_hidden_dim 128 \
+  --lstm_num_layers 2 \
+  --lstm_dropout 0.1 \
   --dropout 0.2 \
-  --n_heads 16 \
-  --attention_type pyr \
-  --ffn_type moe \
-  --n_experts 16 \
-  --top_k 5 \
-  --ffn_dim 512 \
   --lr 3e-4 \
   --use_lr_scheduler \
   --policy_clip 0.3 \
   --episodes 200 \
   --batch_size 1024 \
-  --embedding_dim 320 \
+  --embedding_dim 128 \
   --feature_extractor_type resnet \
   --feature_extractor_dim 128 \
   --feature_extractor_layers 3 \
@@ -37,7 +33,7 @@ nohup python train.py \
   --entropy_coef 0.1 \
   --n_epochs 4 \
   --weight_decay 0.001 \
-  --save_path gs://btrading/models/pyramidal_decoder/pyr_16l_16h_moe16_resnet$(date +%Y%m%d_%H%M%S) > nohup.out 2>&1 &
+  --save_path gs://btrading/models/lstm_core/lstm_h128_l2_$(date +%Y%m%d_%H%M%S) > nohup.out 2>&1 &
 
 # Print a message with the process ID
 echo "Training started in background with PID $!"

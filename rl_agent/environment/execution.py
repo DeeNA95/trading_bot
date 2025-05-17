@@ -85,12 +85,14 @@ class BinanceFuturesExecutor:
         self.take_profit_order_id = None
 
         # Price precision info
-        self.price_precision = None
-        self.qty_precision = None
+        self.price_precision = None # Will be updated by _update_trading_precision
+        self.qty_precision = None   # Will be updated by _update_trading_precision
 
-        # Initialize
+        # Always update trading precision, as it's needed for calculations even in dry run
+        self._update_trading_precision()
+
+        # Initialize account settings and check positions only if not in dry run
         if not dry_run:
-            self._update_trading_precision()
             self._initialize_account_settings()
             self._check_existing_positions()
 
@@ -205,7 +207,6 @@ class BinanceFuturesExecutor:
             self.logger.error("Cannot calculate quantity with price = 0")
             return 0.0
 
-        # Binance minimum order value of 20 USD
         MIN_ORDER_VALUE = 22.0
 
         max_allocation_amount = usdt_amount * self.max_trade_allocation

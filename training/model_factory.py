@@ -12,13 +12,17 @@ from rl_agent.agent.attention.multi_query_attention import MultiQueryAttention
 from rl_agent.agent.attention.grouped_query_attention import GroupedQueryAttention
 from rl_agent.agent.feedforward import FeedForward, MixtureOfExperts
 from rl_agent.agent.models import ActorCriticWrapper
+from rl_agent.agent.lstm_core import LSTMCore # Added for LSTM support
 
 @dataclass
 class ModelConfig:
-    # Architecture type
+    # Core model selection
+    core_model_type: str = "transformer" # "transformer" or "lstm"
+
+    # Architecture type (for Transformer)
     architecture: str = "encoder_only"  # encoder_only, encoder_decoder, decoder_only
 
-    # Core model dimensions
+    # Core Transformer model dimensions
     embedding_dim: int = 256
     n_encoder_layers: int = 4 # Used for encoder_only, encoder_decoder
     n_decoder_layers: int = 4 # Used for encoder_decoder, decoder_only
@@ -65,6 +69,12 @@ class ModelConfig:
     action_dim: int = 3  # HOLD, LONG, SHORT
     n_features: int = 59 # Number of input features from data
     temperature: float = 0.5  # Temperature for action selection (lower = more deterministic)
+
+    # LSTM Core Configuration (if core_model_type is "lstm")
+    lstm_hidden_dim: Optional[int] = 128
+    lstm_num_layers: Optional[int] = 2
+    lstm_dropout: Optional[float] = 0.0
+
 
 # --- Dynamically Assembled Transformer Core ---
 class DynamicTransformerCore(nn.Module):
@@ -201,7 +211,7 @@ class DynamicTransformerCore(nn.Module):
 
 # --- Model Factory Function ---
 def create_model(config: ModelConfig, device: str = "auto") -> ActorCriticWrapper:
-    """Creates a transformer model based on the provided configuration."""
+    """Creates a core model (Transformer or LSTM) and wraps it in ActorCriticWrapper."""
 
     if device == "auto":
         if torch.cuda.is_available():
@@ -343,29 +353,49 @@ def create_model(config: ModelConfig, device: str = "auto") -> ActorCriticWrappe
              decoder_blocks.append(block)
         decoder_norm = norm_class(config.embedding_dim, **norm_args)
 
-    # Instantiate the dynamic core
-    core_transformer = DynamicTransformerCore(
-        architecture=config.architecture,
-        encoder_time_embedding=encoder_time_embedding,
-        encoder_blocks=encoder_blocks,
-        encoder_norm=encoder_norm,
-        decoder_time_embedding=decoder_time_embedding,
-        decoder_blocks=decoder_blocks,
-        decoder_norm=decoder_norm,
-        dropout_emb=dropout_emb,
-        window_size=config.window_size,
-        # Causal mask defaults - adjust if needed via config
-        use_causal_mask_encoder=(config.architecture == "encoder_only"), # Often True for enc-only if causal
-        use_causal_mask_decoder=True # Always True for dec self-attn
-    )
+    # Instantiate the dynamic core based on core_model_type
+    core_model: nn.Module
 
-    # Create ActorCriticWrapper with the core transformer
+    if config.core_model_type == "transformer":
+        # Instantiate the dynamic transformer core
+        core_model = DynamicTransformerCore(
+            architecture=config.architecture,
+            encoder_time_embedding=encoder_time_embedding,
+            encoder_blocks=encoder_blocks,
+            encoder_norm=encoder_norm,
+            decoder_time_embedding=decoder_time_embedding,
+            decoder_blocks=decoder_blocks,
+            decoder_norm=decoder_norm,
+            dropout_emb=dropout_emb,
+            window_size=config.window_size,
+            # Causal mask defaults - adjust if needed via config
+            use_causal_mask_encoder=(config.architecture == "encoder_only"), # Often True for enc-only if causal
+            use_causal_mask_decoder=True # Always True for dec self-attn
+        )
+    elif config.core_model_type == "lstm":
+        if config.lstm_hidden_dim is None or config.lstm_num_layers is None or config.lstm_dropout is None:
+            raise ValueError("LSTM parameters (hidden_dim, num_layers, dropout) must be specified in ModelConfig for LSTM core.")
+        core_model = LSTMCore(
+            input_dim=config.n_features, # LSTM input_dim is n_features directly from data
+            hidden_dim=config.lstm_hidden_dim,
+            num_layers=config.lstm_num_layers,
+            dropout=config.lstm_dropout,
+            device=device # Pass the determined device
+        )
+    else:
+        raise ValueError(f"Unsupported core_model_type: {config.core_model_type}")
+
+
+    # Create ActorCriticWrapper with the chosen core model
     model = ActorCriticWrapper(
         input_shape=(config.window_size, config.n_features), # Use actual n_features
         action_dim=config.action_dim,
-        transformer_core=core_transformer,
+        core_model=core_model, # Pass the generic core_model
         feature_extractor_hidden_dim=config.feature_extractor_dim,
-        embedding_dim=config.embedding_dim,
+        # embedding_dim is specific to Transformer's TimeEmbedding,
+        # LSTM directly uses n_features as input_dim.
+        # ActorCriticWrapper might need to know the output dim of the core_model.
+        embedding_dim=config.embedding_dim if config.core_model_type == "transformer" else config.lstm_hidden_dim, # This might need adjustment based on ActorCriticWrapper
         dropout=config.dropout,
         temperature=config.temperature,  # Pass the temperature parameter
         device=device,
