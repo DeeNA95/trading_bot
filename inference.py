@@ -365,6 +365,16 @@ class InferenceAgent:
             core_model_type = config_dict.get('core_model_type', 'transformer') # Default to transformer
             logger.info(f"Reconstructing core model of type: {core_model_type}")
 
+            # Check for MPS + LSTM incompatibility for orthogonal initialization
+            effective_device = self.device
+            if core_model_type == "lstm" and str(self.device) == "mps":
+                logger.warning(
+                    "LSTM model with orthogonal initialization is not fully compatible with MPS. "
+                    "Falling back to CPU for model loading to avoid 'linalg_qr' error. "
+                    "Set PYTORCH_ENABLE_MPS_FALLBACK=1 for a potential MPS workaround (slower)."
+                )
+                effective_device = torch.device("cpu")
+
             core_model: nn.Module
             actor_critic_embedding_dim: int # This will be the output dim of the core model
 
@@ -378,116 +388,116 @@ class InferenceAgent:
                 logger.info(f"Reconstructing Transformer: arch={architecture}, input_dim={input_dim}, embed_dim={embedding_dim_transformer}")
 
                 # Attention
-            attention_mapping = {
-                "mha": MultiHeadAttention,
-                "mla": MultiLatentAttention,
-                "pyr": PyramidalAttention,
-                "mqn": MultiQueryAttention,
-                "gqa": GroupedQueryAttention
-            }
-            attention_type = config_dict.get('attention_type', 'mha')
-            attention_class = attention_mapping.get(attention_type)
-            if not attention_class:
-                raise ValueError(f"Unsupported attention type: {attention_type}")
+                attention_mapping = {
+                    "mha": MultiHeadAttention,
+                    "mla": MultiLatentAttention,
+                    "pyr": PyramidalAttention,
+                    "mqn": MultiQueryAttention,
+                    "gqa": GroupedQueryAttention
+                }
+                attention_type = config_dict.get('attention_type', 'mha')
+                attention_class = attention_mapping.get(attention_type)
+                if not attention_class:
+                    raise ValueError(f"Unsupported attention type: {attention_type}")
 
-            # Base attention arguments
-            attention_args = {
-                "embedding_dim": embedding_dim_transformer, # Use transformer's embedding_dim
-                "n_heads": config_dict.get('n_heads', 8),
-                "dropout": dropout_rate
-            }
+                # Base attention arguments
+                attention_args = {
+                    "embedding_dim": embedding_dim_transformer, # Use transformer's embedding_dim
+                    "n_heads": config_dict.get('n_heads', 8),
+                    "dropout": dropout_rate
+                }
 
-            # Add specific arguments based on attention type
-            if attention_type == "mla" and config_dict.get('n_latents'):
-                attention_args["n_latents"] = config_dict.get('n_latents')
-            elif attention_type == "gqa" and config_dict.get('n_groups'):
-                attention_args["n_kv_heads"] = config_dict.get('n_groups')
-            elif attention_type == "pyr":
-                attention_args["max_seq_len"] = window_size
+                # Add specific arguments based on attention type
+                if attention_type == "mla" and config_dict.get('n_latents'):
+                    attention_args["n_latents"] = config_dict.get('n_latents')
+                elif attention_type == "gqa" and config_dict.get('n_groups'):
+                    attention_args["n_kv_heads"] = config_dict.get('n_groups')
+                elif attention_type == "pyr":
+                    attention_args["max_seq_len"] = window_size
 
-            # FFN
-            ffn_mapping = {"standard": FeedForward, "moe": MixtureOfExperts} # Add others if needed
-            ffn_class = ffn_mapping.get(config_dict.get('ffn_type', 'standard'))
-            if not ffn_class: raise ValueError(f"Unsupported FFN type: {config_dict.get('ffn_type')}")
-            ffn_args = {"dropout": dropout_rate}
-            if config_dict.get('ffn_dim'): ffn_args["dim_feedforward"] = config_dict['ffn_dim']
-            if config_dict.get('ffn_type') == "moe":
-                 if config_dict.get('n_experts'): ffn_args["num_experts"] = config_dict['n_experts']
-                 if config_dict.get('top_k'): ffn_args["top_k"] = config_dict['top_k']
+                # FFN
+                ffn_mapping = {"standard": FeedForward, "moe": MixtureOfExperts} # Add others if needed
+                ffn_class = ffn_mapping.get(config_dict.get('ffn_type', 'standard'))
+                if not ffn_class: raise ValueError(f"Unsupported FFN type: {config_dict.get('ffn_type')}")
+                ffn_args = {"dropout": dropout_rate}
+                if config_dict.get('ffn_dim'): ffn_args["dim_feedforward"] = config_dict['ffn_dim']
+                if config_dict.get('ffn_type') == "moe":
+                    if config_dict.get('n_experts'): ffn_args["num_experts"] = config_dict['n_experts']
+                    if config_dict.get('top_k'): ffn_args["top_k"] = config_dict['top_k']
 
-            # Norm
-            norm_mapping = {"layer_norm": nn.LayerNorm} # Add others if needed
-            norm_class = norm_mapping.get(config_dict.get('norm_type', 'layer_norm'))
-            if not norm_class: raise ValueError(f"Unsupported norm type: {config_dict.get('norm_type')}")
-            norm_args = {} # Add specific args if needed
+                # Norm
+                norm_mapping = {"layer_norm": nn.LayerNorm} # Add others if needed
+                norm_class = norm_mapping.get(config_dict.get('norm_type', 'layer_norm'))
+                if not norm_class: raise ValueError(f"Unsupported norm type: {config_dict.get('norm_type')}")
+                norm_args = {} # Add specific args if needed
 
-            # Shared components
-            dropout_emb = nn.Dropout(dropout_rate)
+                # Shared components
+                dropout_emb = nn.Dropout(dropout_rate)
 
-            # Initialize component holders
-            encoder_time_embedding = None
-            encoder_blocks = None
-            encoder_norm = None
-            decoder_time_embedding = None
-            decoder_blocks = None
-            decoder_norm = None
+                # Initialize component holders
+                encoder_time_embedding = None
+                encoder_blocks = None
+                encoder_norm = None
+                decoder_time_embedding = None
+                decoder_blocks = None
+                decoder_norm = None
 
-            # Build Encoder components if needed
-            if architecture in ["encoder_only", "encoder_decoder"]:
-                if n_encoder_layers <= 0: raise ValueError("n_encoder_layers must be > 0 for Transformer encoder")
-                encoder_time_embedding = TimeEmbedding(embedding_dim_transformer, max_len=window_size)
-                encoder_blocks = nn.ModuleList()
-                for _ in range(n_encoder_layers):
-                    block = EncoderBlock(
-                        embedding_dim=embedding_dim_transformer,
-                        attention_class=attention_class, attention_args=attention_args.copy(),
-                        ffn_class=ffn_class, ffn_args=ffn_args.copy() if ffn_args else {}, # Ensure ffn_args is a dict
-                        norm_class=norm_class, norm_args=norm_args,
-                        dropout=dropout_rate,
-                        # Residual connection parameters
-                        residual_scale=config_dict.get('residual_scale', 1.0),
-                        use_gated_residual=config_dict.get('use_gated_residual', False),
-                        use_final_norm=config_dict.get('use_final_norm', False)
+                # Build Encoder components if needed
+                if architecture in ["encoder_only", "encoder_decoder"]:
+                    if n_encoder_layers <= 0: raise ValueError("n_encoder_layers must be > 0 for Transformer encoder")
+                    encoder_time_embedding = TimeEmbedding(embedding_dim_transformer, max_len=window_size)
+                    encoder_blocks = nn.ModuleList()
+                    for _ in range(n_encoder_layers):
+                        block = EncoderBlock(
+                            embedding_dim=embedding_dim_transformer,
+                            attention_class=attention_class, attention_args=attention_args.copy(),
+                            ffn_class=ffn_class, ffn_args=ffn_args.copy() if ffn_args else {}, # Ensure ffn_args is a dict
+                            norm_class=norm_class, norm_args=norm_args,
+                            dropout=dropout_rate,
+                            # Residual connection parameters
+                            residual_scale=config_dict.get('residual_scale', 1.0),
+                            use_gated_residual=config_dict.get('use_gated_residual', False),
+                            use_final_norm=config_dict.get('use_final_norm', False)
+                        )
+                        encoder_blocks.append(block)
+                    encoder_norm = norm_class(embedding_dim_transformer, **norm_args)
+
+                # Build Decoder components if needed (for Transformer)
+                if architecture in ["decoder_only", "encoder_decoder"]:
+                    if n_decoder_layers <= 0: raise ValueError("n_decoder_layers must be > 0 for Transformer decoder")
+                    decoder_time_embedding = TimeEmbedding(embedding_dim_transformer, max_len=window_size) # Separate instance
+                    decoder_blocks = nn.ModuleList()
+                    for _ in range(n_decoder_layers):
+                         block = DecoderBlock(
+                             embedding_dim=embedding_dim_transformer,
+                             self_attention_class=attention_class, self_attention_args=attention_args.copy(),
+                             cross_attention_class=attention_class if architecture == "encoder_decoder" else None,
+                             cross_attention_args=attention_args.copy() if architecture == "encoder_decoder" else None,
+                             ffn_class=ffn_class, ffn_args=ffn_args.copy() if ffn_args else {}, # Ensure ffn_args is a dict
+                             norm_class=norm_class, norm_args=norm_args,
+                             dropout=dropout_rate,
+                             # Residual connection parameters
+                             residual_scale=config_dict.get('residual_scale', 1.0),
+                             use_gated_residual=config_dict.get('use_gated_residual', False),
+                             use_final_norm=config_dict.get('use_final_norm', False)
+                         )
+                         decoder_blocks.append(block)
+                    decoder_norm = norm_class(embedding_dim_transformer, **norm_args)
+
+                    # Instantiate the dynamic Transformer core
+                    core_model = DynamicTransformerCore(
+                        architecture=architecture,
+                        encoder_time_embedding=encoder_time_embedding,
+                        encoder_blocks=encoder_blocks,
+                        encoder_norm=encoder_norm,
+                        decoder_time_embedding=decoder_time_embedding,
+                        decoder_blocks=decoder_blocks,
+                        decoder_norm=decoder_norm,
+                        dropout_emb=dropout_emb,
+                        window_size=window_size,
+                        use_causal_mask_encoder=(architecture == "encoder_only"),
+                        use_causal_mask_decoder=True
                     )
-                    encoder_blocks.append(block)
-                encoder_norm = norm_class(embedding_dim_transformer, **norm_args)
-
-            # Build Decoder components if needed (for Transformer)
-            if architecture in ["decoder_only", "encoder_decoder"]:
-                if n_decoder_layers <= 0: raise ValueError("n_decoder_layers must be > 0 for Transformer decoder")
-                decoder_time_embedding = TimeEmbedding(embedding_dim_transformer, max_len=window_size) # Separate instance
-                decoder_blocks = nn.ModuleList()
-                for _ in range(n_decoder_layers):
-                     block = DecoderBlock(
-                         embedding_dim=embedding_dim_transformer,
-                         self_attention_class=attention_class, self_attention_args=attention_args.copy(),
-                         cross_attention_class=attention_class if architecture == "encoder_decoder" else None,
-                         cross_attention_args=attention_args.copy() if architecture == "encoder_decoder" else None,
-                         ffn_class=ffn_class, ffn_args=ffn_args.copy() if ffn_args else {}, # Ensure ffn_args is a dict
-                         norm_class=norm_class, norm_args=norm_args,
-                         dropout=dropout_rate,
-                         # Residual connection parameters
-                         residual_scale=config_dict.get('residual_scale', 1.0),
-                         use_gated_residual=config_dict.get('use_gated_residual', False),
-                         use_final_norm=config_dict.get('use_final_norm', False)
-                     )
-                     decoder_blocks.append(block)
-                decoder_norm = norm_class(embedding_dim_transformer, **norm_args)
-
-                # Instantiate the dynamic Transformer core
-                core_model = DynamicTransformerCore(
-                    architecture=architecture,
-                    encoder_time_embedding=encoder_time_embedding,
-                    encoder_blocks=encoder_blocks,
-                    encoder_norm=encoder_norm,
-                    decoder_time_embedding=decoder_time_embedding,
-                    decoder_blocks=decoder_blocks,
-                    decoder_norm=decoder_norm,
-                    dropout_emb=dropout_emb,
-                    window_size=window_size,
-                    use_causal_mask_encoder=(architecture == "encoder_only"),
-                    use_causal_mask_decoder=True
-                )
             elif core_model_type == "lstm":
                 # --- LSTM Core Reconstruction ---
                 lstm_hidden_dim = config_dict.get('lstm_hidden_dim', 128)
@@ -495,21 +505,34 @@ class InferenceAgent:
                 lstm_num_layers = config_dict.get('lstm_num_layers', 2)
                 # Use general dropout for LSTM if lstm_dropout is not specifically saved
                 lstm_dropout = config_dict.get('lstm_dropout', dropout_rate)
-                logger.info(f"Reconstructing LSTM: input_dim={input_dim}, hidden_dim={lstm_hidden_dim}, layers={lstm_num_layers}")
+
+                # Determine the correct input dimension for LSTM core
+                # It should be the output dimension of the feature extractor, or n_features if no FE.
+                feature_extractor_type = config_dict.get('feature_extractor_type', 'basic')
+                feature_extractor_dim = config_dict.get('feature_extractor_dim', 64) # Default from ActorCriticWrapper
+
+                if feature_extractor_type in ['none', 'passthrough']:
+                    lstm_input_dim = input_dim # n_features from data
+                else:
+                    lstm_input_dim = feature_extractor_dim
+
+                logger.info(f"Reconstructing LSTM: lstm_input_dim={lstm_input_dim}, hidden_dim={lstm_hidden_dim}, layers={lstm_num_layers}")
 
                 core_model = LSTMCore(
-                    input_dim=input_dim, # n_features from data
+                    input_dim=lstm_input_dim, # Corrected input_dim for LSTM
                     hidden_dim=lstm_hidden_dim,
                     num_layers=lstm_num_layers,
                     dropout=lstm_dropout,
-                    device=self.device
+                    device=effective_device # Use effective_device here
                 )
             else:
                 raise ValueError(f"Unsupported core_model_type in saved config: {core_model_type}")
 
             # Create ActorCriticWrapper with the reconstructed core_model
+            # The input_shape for ActorCriticWrapper should still use the raw n_features (input_dim)
+            # as it handles the feature extraction internally before passing to the core_model.
             model = ActorCriticWrapper(
-                input_shape=(window_size, input_dim), # (seq_len, n_features)
+                input_shape=(window_size, input_dim), # (seq_len, n_features) - This is correct for the wrapper
                 action_dim=config_dict.get('action_dim', 3), # Default to 3 if not in config
                 core_model=core_model,
                 # Feature extractor parameters
@@ -530,23 +553,25 @@ class InferenceAgent:
                 embedding_dim=actor_critic_embedding_dim, # This is the output dim of the core model
                 dropout=dropout_rate, # General dropout for heads if not overridden
                 temperature=config_dict.get('temperature', 1.0),
-                device=self.device
+                device=effective_device # Use effective_device here
             )
             # --- End Reconstruction ---
 
             # Load weights into the reconstructed model
             if 'model_state_dict' in checkpoint:
+                # Ensure model is on the effective_device before loading state_dict
+                model.to(effective_device)
                 model.load_state_dict(checkpoint['model_state_dict'])
-                logger.info("Successfully loaded model_state_dict into reconstructed model.")
+                logger.info(f"Successfully loaded model_state_dict into reconstructed model on {effective_device}.")
             else:
                  raise ValueError("Checkpoint does not contain 'model_state_dict'.")
 
 
-            # Ensure the model is on the correct device and in evaluation mode
-            model = model.to(self.device) # Ensure model is explicitly moved to the target device
-            model.eval() # MOVED HERE
+            # Ensure the model is on the original target device (self.device) and in evaluation mode
+            model = model.to(self.device)
+            model.eval()
 
-            logger.info(f"Successfully loaded and reconstructed model from checkpoint on {self.device}.")
+            logger.info(f"Successfully loaded and reconstructed model. Final device: {self.device}.")
             return model
 
         except Exception as e: # Corrected indentation
@@ -723,9 +748,9 @@ class InferenceAgent:
             position_info = self.get_current_position()
 
             # Add environment features to the DataFrame
-            scaled_data_df['balance'] = self.initial_balance # Use initial balance for now
-            scaled_data_df['position'] = position_info['position']
-            scaled_data_df['unrealized_pnl'] = position_info['unrealized_pnl']
+            # scaled_data_df['balance'] = self.initial_balance # Use initial balance for now
+            # scaled_data_df['position'] = position_info['position']
+            # scaled_data_df['unrealized_pnl'] = position_info['unrealized_pnl']
 
             # Convert any remaining string columns to numeric (should ideally not happen after scaling)
             for col in scaled_data_df.select_dtypes(include=['object']).columns:
