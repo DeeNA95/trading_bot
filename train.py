@@ -245,7 +245,7 @@ if __name__ == "__main__":
             temperature=args.temperature,
 
             # Data-specific
-            n_features=train_df.shape[1]+3, # Get actual feature count from data
+            n_features=train_df.shape[1], # Get actual feature count from data
             # action_dim is determined by env, set within ActorCriticWrapper
         )
 
