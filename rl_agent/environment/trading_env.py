@@ -270,14 +270,15 @@ class BinanceFuturesCryptoEnv(gym.Env):
             unrealized_pnl = np.zeros(self.window_size)
 
             # Combine into state and ensure it's float32
-            combined_data = np.column_stack(
-                (
-                    price_features,
-                    # balance.reshape(-1, 1),
-                    # position.reshape(-1, 1),
-                    # unrealized_pnl.reshape(-1, 1),
-                )
-            )
+            # combined_data = np.column_stack(
+            #     (
+            #         price_features,
+            #         # balance.reshape(-1, 1),
+            #         # position.reshape(-1, 1),
+            #         # unrealized_pnl.reshape(-1, 1),
+            #     )
+            # )
+            combine_data = price_features
             # Attempt conversion, drop problematic columns if it fails
             try:
                 self.state = combined_data.astype(np.float32)
