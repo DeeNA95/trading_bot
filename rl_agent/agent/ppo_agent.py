@@ -297,13 +297,14 @@ class PPOAgent:
 
         # Convert state to tensor ON THE CORRECT DEVICE
         state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        print(f'state_tensor: {state_tensor.mean():.4f}, {state_tensor.std():.4f}')
 
         # Get action probabilities and value from model
         with torch.no_grad():
             try:
 
                 logits, value = self.model(state_tensor)
-                print(f'logits: {logits}')
+                # print(f'logits: {logits}')
 
                 # Apply temperature scaling to logits
                 logits = logits / self.model.temperature
@@ -312,7 +313,7 @@ class PPOAgent:
                 action_probs = torch.softmax(logits, dim=-1)
                 action_probs = action_probs + 1e-8
                 action_probs = action_probs / action_probs.sum(dim=-1, keepdim=True)
-                print(f'action_probs: {action_probs}')
+                # print(f'action_probs: {action_probs}')
 
                 # --- DEBUG: Print state stats ---
                 # print(f"DEBUG state_tensor mean: {state_tensor.mean():.4f}, std: {state_tensor.std():.4f}")
