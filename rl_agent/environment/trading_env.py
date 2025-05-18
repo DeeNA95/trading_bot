@@ -278,7 +278,7 @@ class BinanceFuturesCryptoEnv(gym.Env):
             #         # unrealized_pnl.reshape(-1, 1),
             #     )
             # )
-            combine_data = price_features
+            combined_data = price_features
             # Attempt conversion, drop problematic columns if it fails
             try:
                 self.state = combined_data.astype(np.float32)
@@ -1280,22 +1280,12 @@ class BinanceFuturesCryptoEnv(gym.Env):
             # Extract features
             price_features = data.values
 
-            # Add account information
-            balance = np.ones(self.window_size) * self.balance
-            position = np.ones(self.window_size) * self.current_position
-            unrealized_pnl = np.ones(self.window_size) * self.unrealized_pnl
+            # Account information (balance, position, unrealized_pnl) is no longer part of the model's state.
+            # It can still be tracked by the environment for reward calculation or logging if needed.
 
-            # Combine into state and ensure it's float32
-            combined_data = np.column_stack(
-                (
-                    price_features,
-                    balance.reshape(-1, 1),
-                    position.reshape(-1, 1),
-                    unrealized_pnl.reshape(-1, 1),
-                )
-            )
+            # The state now consists only of price_features.
             try:
-                self.state = combined_data.astype(np.float32)
+                self.state = price_features.astype(np.float32)
             except ValueError as e:
                 logger.warning(f"Initial state conversion failed: {e}. Attempting to drop problematic columns...")
                 # TODO: Fix root cause of non-numeric data (e.g., 'none' string in 'trade_setup') upstream.
