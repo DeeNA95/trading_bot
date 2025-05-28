@@ -36,13 +36,14 @@ class BinanceFuturesExecutor:
             secret = SECRET
 
             ),
-        symbol: str = "BTCUSDT",
+        symbol: str = "ETHUSDT",
         leverage: int = 2,
         margin_type: str = "ISOLATED",
         risk_reward_ratio: float = 1.5,
-        stop_loss_percent: float = 0.01,
+        stop_loss_percent: float = 0.1,
         recv_window: int = 6000,
         dry_run: bool = False,
+        max_trade_allocation: float = 1.0,
     ):
         """
         Initialize the Binance Futures trade executor.
@@ -65,6 +66,7 @@ class BinanceFuturesExecutor:
         self.stop_loss_percent = stop_loss_percent
         self.recv_window = recv_window
         self.dry_run = dry_run
+        self.max_trade_allocation = max_trade_allocation
 
         # Logger
         self.logger = logging.getLogger("BinanceFuturesExecutor")
@@ -83,12 +85,14 @@ class BinanceFuturesExecutor:
         self.take_profit_order_id = None
 
         # Price precision info
-        self.price_precision = None
-        self.qty_precision = None
+        self.price_precision = None # Will be updated by _update_trading_precision
+        self.qty_precision = None   # Will be updated by _update_trading_precision
 
-        # Initialize
+        # Always update trading precision, as it's needed for calculations even in dry run
+        self._update_trading_precision()
+
+        # Initialize account settings and check positions only if not in dry run
         if not dry_run:
-            self._update_trading_precision()
             self._initialize_account_settings()
             self._check_existing_positions()
 
@@ -203,11 +207,9 @@ class BinanceFuturesExecutor:
             self.logger.error("Cannot calculate quantity with price = 0")
             return 0.0
 
-        # Binance minimum order value of 20 USD
-        MIN_ORDER_VALUE = 20.0
+        MIN_ORDER_VALUE = 22.0
 
-        max_trade_allocation = 0.5
-        max_allocation_amount = usdt_amount * max_trade_allocation
+        max_allocation_amount = usdt_amount * self.max_trade_allocation
 
         # Calculate quantity based on allocation
         quantity = min(
@@ -218,12 +220,9 @@ class BinanceFuturesExecutor:
         order_value = quantity * current_price
         if order_value < MIN_ORDER_VALUE:
             # Adjust quantity to meet minimum order value
-            quantity = (MIN_ORDER_VALUE * 1.01) / current_price
+            quantity = round((MIN_ORDER_VALUE * 1.01) / current_price, self.qty_precision)
             self.logger.info(f"Adjusted order size to meet minimum value requirement of {MIN_ORDER_VALUE} USD")
 
-        # Round to appropriate precision
-        if self.qty_precision is not None:
-            quantity = round(quantity, self.qty_precision)
 
         # Double-check after rounding
         if quantity * current_price < MIN_ORDER_VALUE:
@@ -232,7 +231,17 @@ class BinanceFuturesExecutor:
             # Round up to the allowed precision
             quantity = math.ceil(min_quantity * (10 ** self.qty_precision)) / (10 ** self.qty_precision)
 
-        return quantity
+        # Always round the final quantity to the allowed precision
+        final_quantity = round(quantity, self.qty_precision)
+        self.logger.debug(f"Calculated quantity: {quantity}, Rounded quantity: {final_quantity} (Precision: {self.qty_precision})")
+
+        # Ensure quantity is not zero after rounding, set to minimum possible value if it is
+        if final_quantity <= 0:
+            min_val = 1 / (10**self.qty_precision)
+            self.logger.warning(f"Quantity {quantity} rounded to zero or less ({final_quantity}). Setting to minimum possible value: {min_val}")
+            final_quantity = min_val
+
+        return final_quantity
 
     def cancel_all_orders(self) -> bool:
         """Cancel all open orders for the symbol."""
@@ -443,6 +452,15 @@ class BinanceFuturesExecutor:
 
         # Execute real trade
         try:
+            # Ensure quantity is properly rounded *before* placing any orders
+            rounded_quantity = round(quantity, self.qty_precision)
+            if rounded_quantity <= 0:
+                min_val = 1 / (10**self.qty_precision)
+                self.logger.warning(f"Initial quantity {quantity} rounded to {rounded_quantity}. Adjusting to minimum: {min_val}")
+                rounded_quantity = min_val
+                if rounded_quantity <= 0: # Should not happen if qty_precision > 0 but check anyway
+                     raise ValueError(f"Minimum quantity {rounded_quantity} is still invalid after adjustment.")
+
             # Step 1: Place the main market order
             entry_order = self.client.new_order(
                 symbol=self.symbol,
@@ -500,9 +518,9 @@ class BinanceFuturesExecutor:
                 side=opposite_side,
                 type="STOP_MARKET",
                 timeInForce="GTC",
-                quantity=quantity,
+                quantity=rounded_quantity, # Use rounded quantity
                 stopPrice=sl_price,
-                stopPx=sl_price,
+                # stopPx=sl_price, # Redundant if stopPrice is used
                 recvWindow=self.recv_window,
                 closePosition=True,
             )
@@ -513,7 +531,7 @@ class BinanceFuturesExecutor:
                 side=opposite_side,
                 type="TAKE_PROFIT_MARKET",
                 timeInForce="GTC",
-                quantity=quantity,
+                quantity=rounded_quantity, # Use rounded quantity
                 stopPrice=tp_price,
                 recvWindow=self.recv_window,
                 closePosition=True,
@@ -522,7 +540,7 @@ class BinanceFuturesExecutor:
             # Update position tracking
             self.position_open = True
             self.position_direction = 1 if side == "BUY" else -1
-            self.position_size = quantity
+            self.position_size = rounded_quantity # Store the actual rounded quantity traded
             self.entry_price = execution_price
             self.entry_time = datetime.now()
 
@@ -532,13 +550,13 @@ class BinanceFuturesExecutor:
             self.take_profit_order_id = tp_order["orderId"]
 
             self.logger.info(
-                f"Opened {side} position: {quantity} {self.symbol} @ {execution_price} "
+                f"Opened {side} position: {rounded_quantity} {self.symbol} @ {execution_price} " # Log rounded quantity
                 f"with SL @ {sl_price}, TP @ {tp_price}"
             )
 
             return {
                 "action": side.lower(),
-                "quantity": quantity,
+                "quantity": rounded_quantity, # Return rounded quantity
                 "price": execution_price,
                 "stop_loss": sl_price,
                 "take_profit": tp_price,
@@ -664,11 +682,11 @@ class BinanceFuturesExecutor:
                 # Close part of the position with a market order
                 order = self.client.new_order(
                     symbol=self.symbol,
-                    side=side,
-                    type="MARKET",
-                    quantity=quantity,
-                    recvWindow=self.recv_window,
-                )
+                side=side,
+                type="MARKET",
+                quantity=rounded_quantity, # Use rounded quantity
+                recvWindow=self.recv_window,
+            )
 
                 # Update position tracking
                 self.position_size -= quantity
@@ -681,53 +699,54 @@ class BinanceFuturesExecutor:
 
                     # Cancel any remaining orders
                     self.cancel_all_orders()
-                else:
-                    # We need to update SL/TP orders for the new position size
-                    self.cancel_all_orders()
+                # else:
+                #     # We need to update SL/TP orders for the new position size
+                #     self.cancel_all_orders()
 
-                    # Recalculate SL/TP with current values but new position size
-                    opposite_side = "SELL" if position_is_long else "BUY"
+                #     # Recalculate SL/TP with current values but new position size
+                #     opposite_side = "SELL" if position_is_long else "BUY"
 
-                    # Get current SL and TP levels (estimated)
-                    sl_percent = custom_sl_percent if custom_sl_percent is not None else self.stop_loss_percent
-                    tp_ratio = custom_tp_ratio if custom_tp_ratio is not None else self.risk_reward_ratio
+                #     # Get current SL and TP levels (estimated)
+                #     sl_percent = custom_sl_percent if custom_sl_percent is not None else self.stop_loss_percent
+                #     tp_ratio = custom_tp_ratio if custom_tp_ratio is not None else self.risk_reward_ratio
 
-                    sl_price = self.entry_price * (1 - sl_percent if position_is_long else 1 + sl_percent)
-                    tp_price = self.entry_price * (1 + sl_percent * tp_ratio if position_is_long else 1 - sl_percent * tp_ratio)
+                #     sl_price = self.entry_price * (1 - sl_percent if position_is_long else 1 + sl_percent)
+                #     tp_price = self.entry_price * (1 + sl_percent * tp_ratio if position_is_long else 1 - sl_percent * tp_ratio)
 
-                    # Round to the appropriate price precision
-                    if self.price_precision is not None:
-                        sl_price = round(sl_price, self.price_precision)
-                        tp_price = round(tp_price, self.price_precision)
+                #     # Round to the appropriate price precision
+                #     if self.price_precision is not None:
+                #         sl_price = round(sl_price, self.price_precision)
+                #         tp_price = round(tp_price, self.price_precision)
 
-                    # Place new SL order for remaining position
-                    sl_order = self.client.new_order(
-                        symbol=self.symbol,
-                        side=opposite_side,
-                        type="STOP_MARKET",
-                        timeInForce="GTC",
-                        quantity=self.position_size,
-                        stopPrice=sl_price,
-                        stopPx=sl_price,
-                        recvWindow=self.recv_window,
-                        closePosition=True,
-                    )
+                #     # Place new SL order for remaining position
+                #     sl_order = self.client.new_order(
+                #         symbol=self.symbol,
+                #         side=opposite_side,
+                #         type="STOP_MARKET",
+                #         timeInForce="GTC",
+                #         quantity=self.position_size,
+                #         stopPrice=sl_price,
+                #         stopPx=sl_price,
+                #         recvWindow=self.recv_window,
+                #         closePosition=True,
+                #     )
 
-                    # Place new TP order for remaining position
-                    tp_order = self.client.new_order(
-                        symbol=self.symbol,
-                        side=opposite_side,
-                        type="TAKE_PROFIT_MARKET",
-                        timeInForce="GTC",
-                        quantity=self.position_size,
-                        stopPrice=tp_price,
-                        recvWindow=self.recv_window,
-                        closePosition=True,
-                    )
+                #     # Place new TP order for remaining position
+                #     tp_order = self.client.new_order(
+                #         symbol=self.symbol,
+                #         side=opposite_side,
+                #         type="TAKE_PROFIT_MARKET",
+                #         timeInForce="GTC",
+                #         quantity=self.position_size,
+                #         stopPrice=tp_price,
+                #         recvWindow=self.recv_window,
+                #         closePosition=True,
+                #     )
+                #  scaling without changing SL/TP orders for now
 
-                    # Update order tracking
-                    self.stop_loss_order_id = sl_order["orderId"]
-                    self.take_profit_order_id = tp_order["orderId"]
+                #     # Update order tracking
+                #     self.stop_loss_order_id = sl_order["orderId"]
+                #     self.take_profit_order_id = tp_order["orderId"]
 
                 self.logger.info(
                     f"Scaled out of {'long' if position_is_long else 'short'} position: "
@@ -770,7 +789,7 @@ class BinanceFuturesExecutor:
                 quantity = float(f"{{:.{self.qty_precision}f}}".format(10 ** (-self.qty_precision)))
 
             # Check if it's too small for the exchange
-            MIN_ORDER_VALUE = 20.0  # Binance minimum order value (20 USDT)
+            MIN_ORDER_VALUE = 22.0
             order_value = quantity * current_price
             if order_value < MIN_ORDER_VALUE:
                 # Adjust quantity to meet minimum order value
@@ -812,7 +831,7 @@ class BinanceFuturesExecutor:
             # Execute real scale-in with market order
             try:
                 # First cancel existing SL/TP orders
-                self.cancel_all_orders()
+                # self.cancel_all_orders()
 
                 # Place the market order to add to position
                 order = self.client.new_order(
@@ -850,34 +869,34 @@ class BinanceFuturesExecutor:
                     sl_price = round(self.entry_price * (1 + sl_percent), self.price_precision)
                     tp_price = round(self.entry_price * (1 - sl_percent * tp_ratio), self.price_precision)
 
-                # Place new SL order for entire position
-                sl_order = self.client.new_order(
-                    symbol=self.symbol,
-                    side=opposite_side,
-                    type="STOP_MARKET",
-                    timeInForce="GTC",
-                    quantity=self.position_size,
-                    stopPrice=sl_price,
-                    stopPx=sl_price,
-                    recvWindow=self.recv_window,
-                    closePosition=True,
-                )
+                # # Place new SL order for entire position
+                # sl_order = self.client.new_order(
+                #     symbol=self.symbol,
+                #     side=opposite_side,
+                #     type="STOP_MARKET",
+                #     timeInForce="GTC",
+                #     quantity=self.position_size,
+                #     stopPrice=sl_price,
+                #     stopPx=sl_price,
+                #     recvWindow=self.recv_window,
+                #     closePosition=True,
+                # )
 
-                # Place new TP order for entire position
-                tp_order = self.client.new_order(
-                    symbol=self.symbol,
-                    side=opposite_side,
-                    type="TAKE_PROFIT_MARKET",
-                    timeInForce="GTC",
-                    quantity=self.position_size,
-                    stopPrice=tp_price,
-                    recvWindow=self.recv_window,
-                    closePosition=True,
-                )
+                # # Place new TP order for entire position
+                # tp_order = self.client.new_order(
+                #     symbol=self.symbol,
+                #     side=opposite_side,
+                #     type="TAKE_PROFIT_MARKET",
+                #     timeInForce="GTC",
+                #     quantity=self.position_size,
+                #     stopPrice=tp_price,
+                #     recvWindow=self.recv_window,
+                #     closePosition=True,
+                # )
 
-                # Update order tracking
-                self.stop_loss_order_id = sl_order["orderId"]
-                self.take_profit_order_id = tp_order["orderId"]
+                # # Update order tracking
+                # self.stop_loss_order_id = sl_order["orderId"]
+                # self.take_profit_order_id = tp_order["orderId"]
 
                 self.logger.info(
                     f"Scaled into {'long' if position_is_long else 'short'} position: "

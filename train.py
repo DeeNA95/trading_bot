@@ -15,10 +15,18 @@ import torch
 from sklearn.model_selection import TimeSeriesSplit
 from tqdm import tqdm # Use tqdm directly
 
-from rl_agent.agent.ppo_agent import PPOAgent
+# Agent, Env, Data Imports (Keep)
+# from rl_agent.agent.ppo_agent import PPOAgent # PPOAgent is used within Trainer now
 from rl_agent.environment.trading_env import BinanceFuturesCryptoEnv
-# Assuming DataHandler is not used here based on original train.py
-# from data import DataHandler
+# from data import DataHandler # Assuming DataHandler is used in load_and_preprocess
+
+# --- New Imports ---
+from training.trainer import Trainer # Import the new Trainer class
+from training.model_factory import ModelConfig # Import ModelConfig
+from training.load_preprocess_data import load_and_preprocess # Import the new data loading function
+
+# --- Removed old model component/architecture imports and mappings ---
+# (These are now handled by the model_factory and PPOAgent internally)
 
 logger = logging.getLogger(__name__)
 
@@ -333,87 +341,84 @@ def train_evaluate_fold(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train RL agent for trading with Walk-Forward Validation")
-
+    parser = argparse.ArgumentParser(description="Train RL agent for trading")
     # --- Data and Env Args ---
-    parser.add_argument("--train_data", type=str, required=True, help="Path to the FULL historical data file (CSV or Parquet)")
-    # --test_data is removed, testing happens within folds
-    parser.add_argument("--symbol", type=str, default="BTCUSDT", help="Trading pair symbol")
-    # Add interval if needed by data loading/preprocessing, else remove
-    # parser.add_argument("--interval", type=str, default="1m", help="Data interval (e.g., '1m', '15m', '1h')")
-    parser.add_argument("--window", type=int, default=60, help="Observation window size") # Increased default
+    parser.add_argument("--train_data", type=str, required=True, help="Path to the full historical data file (CSV or Parquet)")
+    parser.add_argument("--symbol", type=str, default="ETHUSDT", help="Trading pair symbol")
+    parser.add_argument("--interval", type=str, default="1m", help="Data interval (e.g., '1m', '15m', '1h')")
+    parser.add_argument("--window", type=int, default=60, help="Observation window size")
     parser.add_argument("--leverage", type=int, default=20, help="Trading leverage")
-    parser.add_argument("--max_position", type=float, default=1.0, help="Maximum position size as fraction of balance")
-    parser.add_argument("--balance", type=float, default=1000, help="Initial balance") # Adjusted default
-    parser.add_argument("--risk_reward", type=float, default=1.5, help="Risk-reward ratio")
-    parser.add_argument("--stop_loss", type=float, default=0.01, help="Stop loss percentage") # Adjusted default
-    parser.add_argument("--trade_fee", type=float, default=0.0004, help="Trade fee percentage (e.g., 0.0004 for 0.04%)")
-    parser.add_argument("--static_leverage", action="store_false", dest="dynamic_leverage", help="Use static leverage")
-    parser.add_argument("--simple_rewards", action="store_false", dest="use_risk_adjusted_rewards", help="Use simple rewards")
-    parser.set_defaults(dynamic_leverage=True, use_risk_adjusted_rewards=True) # Set defaults
-
-    # --- Model Architecture ---
-    parser.add_argument("--model", type=str, default="lstm", choices=["cnn", "lstm", "transformer"], help="Model architecture type for PPOAgent")
-
-    # --- Walk-Forward Validation Args ---
-    parser.add_argument("--n_splits", type=int, default=5, help="Number of splits for TimeSeriesSplit walk-forward validation")
-    parser.add_argument("--val_ratio", type=float, default=0.15, help="Fraction of training data per fold to use for validation (e.g., 0.15 for 15%)")
-    parser.add_argument("--save_path", type=str, default="models_walk_forward", help="Base path to save trained models and results per fold")
-
-    # --- Training Loop Args ---
-    parser.add_argument("--episodes", type=int, default=100, help="Number of training episodes PER FOLD") # Reduced default for faster runs
-    parser.add_argument("--eval_freq", type=int, default=10, help="Episodes between validation evaluations within a fold") # Reduced default
-
-    # --- PPO Agent Hyperparameters (Add if PPOAgent constructor needs them) ---
-    parser.add_argument("--lr", type=float, default=3e-5, help="Learning rate")
-    parser.add_argument("--gamma", type=float, default=0.99, help="Discount factor")
-    parser.add_argument("--gae_lambda", type=float, default=0.95, help="GAE lambda parameter")
-    parser.add_argument("--policy_clip", type=float, default=0.2, help="PPO policy clipping parameter")
-    parser.add_argument("--batch_size", type=int, default=512, help="Batch size for PPO updates") # Increased default
-    parser.add_argument("--n_epochs", type=int, default=10, help="Number of epochs per PPO update")
-    parser.add_argument("--entropy_coef", type=float, default=0.01, help="Entropy coefficient")
-    parser.add_argument("--value_coef", type=float, default=0.5, help="Value function coefficient")
-    parser.add_argument("--max_grad_norm", type=float, default=0.5, help="Max gradient norm for clipping")
-    parser.add_argument("--update_freq", type=int, default=2048, help="Steps between policy updates (should ideally be multiple of batch_size)")
-    parser.add_argument("--device", type=str, default="auto", help="Device ('auto', 'cpu', 'cuda', 'mps')") # Removed 'xla' unless supported
-    # Add other PPO params like use_gae, normalize_advantage, weight_decay if needed by agent
-
+    parser.add_argument(
+        "--episodes", type=int, default=500, help="Number of training episodes"
+    )
+    parser.add_argument(
+        "--batch_size", type=int, default=512, help="Batch size for training"
+    )
+    parser.add_argument(
+        "--update_freq", type=int, default=256, help="Steps between policy updates"
+    )
+    parser.add_argument(
+        "--log_freq", type=int, default=20, help="Episodes between log updates"
+    )
+    parser.add_argument(
+        "--save_freq", type=int, default=20, help="Episodes between model saves"
+    )
+    parser.add_argument(
+        "--eval_freq", type=int, default=20, help="Episodes between evaluations"
+    )
+    parser.add_argument(
+        "--max_position",
+        type=float,
+        default=1.0,
+        help="Maximum position size as fraction of balance",
+    )
+    parser.add_argument("--balance", type=float, default=5, help="Initial balance")
+    parser.add_argument(
+        "--risk_reward", type=float, default=1.5, help="Risk-reward ratio"
+    )
+    parser.add_argument(
+        "--stop_loss", type=float, default=0.005, help="Stop loss percentage"
+    )
+    parser.add_argument(
+        "--static_leverage",
+        action="store_false",
+        dest="dynamic_leverage",
+        help="Use static leverage",
+    )
+    parser.add_argument(
+        "--simple_rewards",
+        action="store_false",
+        dest="use_risk_adjusted_rewards",
+        help="Use simple rewards",
+    )
+    parser.add_argument(
+        "--save_path", type=str, default="models", help="Path to save trained model"
+    )
     args = parser.parse_args()
 
-    # --- Setup ---
     set_seeds()
     logger.info("Random seeds set.")
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    os.makedirs(args.save_path, exist_ok=True) # Create base save directory
 
-    # --- Load Full Data ---
-    logger.info("Loading and preprocessing full dataset...")
-    full_df = load_and_preprocess_data(args.train_data)
+    logger.info("Starting Walk-Forward Validation...")
 
-    if full_df.empty or len(full_df) < args.window * (args.n_splits + 1): # Basic check
-        logger.error(f"Not enough data ({len(full_df)}) for {args.n_splits} splits with window {args.window}. Exiting.")
-        exit(1)
+    full_df = load_and_preprocess(args.train_data)
+    if full_df.empty or len(full_df) < args.window * (args.n_splits + 1):
+        logger.error(f"Not enough data for {args.n_splits} splits with window {args.window}. Exiting.")
+        # exit()
 
-    # --- Walk-Forward Validation Setup ---
-    logger.info(f"Starting Walk-Forward Validation with {args.n_splits} splits...")
     tscv = TimeSeriesSplit(n_splits=args.n_splits)
+
     all_fold_results = []
     fold_num = 0
 
-    # --- Walk-Forward Loop ---
     for train_val_indices, test_indices in tscv.split(full_df):
         fold_num += 1
         logger.info(f"\n===== Starting Walk-Forward Fold {fold_num}/{args.n_splits} =====")
 
-        # Validate indices
         if len(test_indices) < args.window:
             logger.warning(f"Fold {fold_num}: Skipping test set, not enough data ({len(test_indices)} < {args.window}).")
             continue
-        if len(train_val_indices) < 2 * args.window: # Need enough for train + val
-             logger.warning(f"Fold {fold_num}: Skipping fold, not enough data in train/val split ({len(train_val_indices)}).")
-             continue
 
-        # Split train_val into actual train and validation sets
         val_size = max(args.window, int(len(train_val_indices) * args.val_ratio))
         train_size = len(train_val_indices) - val_size
 
@@ -424,25 +429,90 @@ if __name__ == "__main__":
         train_indices = train_val_indices[:train_size]
         val_indices = train_val_indices[train_size:]
 
-        # Create dataframes for the fold
         train_df = full_df.iloc[train_indices]
         val_df = full_df.iloc[val_indices]
         test_df = full_df.iloc[test_indices]
 
         logger.info(f"Fold {fold_num}: Train size={len(train_df)}, Val size={len(val_df)}, Test size={len(test_df)}")
         if isinstance(train_df.index, pd.DatetimeIndex):
-            logger.info(f"  Train period: {train_df.index.min()} to {train_df.index.max()}")
-            logger.info(f"  Val period:   {val_df.index.min()} to {val_df.index.max()}")
-            logger.info(f"  Test period:  {test_df.index.min()} to {test_df.index.max()}")
+            logger.info(f"Train period: {train_df.index.min()} to {train_df.index.max()}")
+            logger.info(f"Val period:   {val_df.index.min()} to {val_df.index.max()}")
+            logger.info(f"Test period:  {test_df.index.min()} to {test_df.index.max()}")
 
-        # --- Train and Evaluate on this Fold ---
-        test_metrics, training_info = train_evaluate_fold(
+        # --- Create ModelConfig ---
+        # Note: action_dim is set by env, not needed in ModelConfig here
+        model_config = ModelConfig(
+            # Core model type
+            core_model_type=args.core_model_type,
+
+            # Core transformer architecture (if applicable)
+            architecture=args.architecture,
+            embedding_dim=args.embedding_dim, # Used by both
+            n_encoder_layers=args.n_encoder_layers,
+            n_decoder_layers=args.n_decoder_layers,
+            window_size=args.window, # Get window size from env args
+            dropout=args.dropout, # General dropout
+
+            # Attention configuration (Transformer specific)
+            attention_type=args.attention_type,
+            n_heads=args.n_heads,
+            n_latents=args.n_latents,
+            n_groups=args.n_groups,
+
+            # Feed-forward configuration (Transformer specific)
+            ffn_type=args.ffn_type,
+            ffn_dim=args.ffn_dim,
+            n_experts=args.n_experts,
+            top_k=args.top_k,
+
+            # Normalization (Transformer specific)
+            norm_type=args.norm_type,
+
+            # Residual connections (Transformer specific)
+            residual_scale=args.residual_scale,
+            use_gated_residual=args.use_gated_residual,
+            use_final_norm=args.use_final_norm,
+
+            # LSTM specific configuration
+            lstm_hidden_dim=args.lstm_hidden_dim,
+            lstm_num_layers=args.lstm_num_layers,
+            lstm_dropout=args.lstm_dropout,
+
+            # Feature extraction configuration
+            feature_extractor_type=args.feature_extractor_type,
+            feature_extractor_dim=args.feature_extractor_dim,
+            feature_extractor_layers=args.feature_extractor_layers,
+            use_skip_connections=args.use_skip_connections,
+            use_layer_norm=args.use_layer_norm,
+            use_instance_norm=args.use_instance_norm,
+            feature_dropout=args.feature_dropout,
+
+            # Actor-Critic head configuration
+            head_hidden_dim=args.head_hidden_dim,
+            head_n_layers=args.head_n_layers,
+            head_use_layer_norm=args.head_use_layer_norm,
+            head_use_residual=args.head_use_residual,
+            head_dropout=args.head_dropout,
+
+            # Temperature for action selection
+            temperature=args.temperature,
+
+            # Data-specific
+            n_features=train_df.shape[1], # Get actual feature count from data
+            # action_dim is determined by env, set within ActorCriticWrapper
+        )
+
+        # --- Instantiate and Run Trainer for this Fold ---
+        # Pass model_config and the remaining args (for trainer/env/ppo)
+        trainer = Trainer(
             fold_num=fold_num,
             train_df=train_df,
             val_df=val_df,
             test_df=test_df,
-            args=args
+            model_config=model_config,
+            trainer_args=args # Pass the full args namespace for now
         )
+        test_metrics, training_info = trainer.train_and_evaluate_fold()
 
         if test_metrics is None:
             logger.warning(f"Fold {fold_num}: Training/evaluation failed or was skipped. Continuing to next fold.")
@@ -451,71 +521,53 @@ if __name__ == "__main__":
         all_fold_results.append(test_metrics)
         logger.info(f"Fold {fold_num} Test Results: {test_metrics}")
 
-        # --- Save Fold Training Info ---
+        # Optional: Save training info per fold
         fold_results_path = os.path.join(args.save_path, f"fold_{fold_num}", "training_info.json")
         try:
-            # Ensure parent directory exists
-            os.makedirs(os.path.dirname(fold_results_path), exist_ok=True)
             with open(fold_results_path, 'w') as f:
-                # Convert numpy types for JSON serialization
+                # Convert numpy arrays to lists for JSON serialization
                 serializable_info = {}
                 for key, value in training_info.items():
-                    if isinstance(value, list) and value and isinstance(value[0], (np.generic, np.ndarray)):
-                         serializable_info[key] = [item.item() if hasattr(item, 'item') else item for item in value]
+                    if isinstance(value, list) and value and isinstance(value[0], np.generic):
+                         serializable_info[key] = [item.item() for item in value] # Convert numpy types
                     elif isinstance(value, np.ndarray):
                          serializable_info[key] = value.tolist()
-                    elif isinstance(value, (np.generic)):
-                         serializable_info[key] = value.item()
                     else:
                          serializable_info[key] = value
                 json.dump(serializable_info, f, indent=4)
             logger.info(f"Fold {fold_num}: Saved training info to {fold_results_path}")
         except Exception as e:
-            logger.error(f"Fold {fold_num}: Failed to save training info to {fold_results_path}: {e}")
+            logger.error(f"Fold {fold_num}: Failed to save training info: {e}")
 
 
-    # --- Final Aggregation and Reporting ---
     logger.info("\n===== Walk-Forward Validation Finished =====")
 
     if not all_fold_results:
         logger.error("No folds completed successfully. Exiting.")
-        exit(1)
+        # exit() # Consider exiting if no folds ran
 
-    # Aggregate results (handle potential NaNs)
-    avg_rewards = [r['avg_reward'] for r in all_fold_results if r and 'avg_reward' in r and not np.isnan(r['avg_reward'])]
-    avg_sharpes = [r['avg_sharpe'] for r in all_fold_results if r and 'avg_sharpe' in r and not np.isnan(r['avg_sharpe'])]
+    # --- Aggregate and Print Final Results ---
+    avg_rewards = [r['avg_reward'] for r in all_fold_results if not np.isnan(r['avg_reward'])]
+    avg_sharpes = [r['avg_sharpe'] for r in all_fold_results if not np.isnan(r['avg_sharpe'])] # Assuming Sharpe is calculated
 
     final_avg_reward = np.mean(avg_rewards) if avg_rewards else np.nan
-    final_std_reward = np.std(avg_rewards) if avg_rewards else np.nan
-    final_avg_sharpe = np.mean(avg_sharpes) if avg_sharpes else np.nan
-    final_std_sharpe = np.std(avg_sharpes) if avg_sharpes else np.nan
+    final_avg_sharpe = np.mean(avg_sharpes) if avg_sharpes else np.nan # Adjust if Sharpe isn't always present
 
-    logger.info(f"Overall Average Test Reward across {len(avg_rewards)} successful folds: {final_avg_reward:.4f} (Std: {final_std_reward:.4f})")
-    logger.info(f"Overall Average Test Sharpe across {len(avg_sharpes)} successful folds: {final_avg_sharpe:.4f} (Std: {final_std_sharpe:.4f})")
+    logger.info(f"Overall Average Test Reward across {len(avg_rewards)} successful folds: {final_avg_reward:.4f}")
+    logger.info(f"Overall Average Test Sharpe across {len(avg_sharpes)} successful folds: {final_avg_sharpe:.4f}") # Adjust log message
 
-    # --- Save Overall Results ---
+    # Save overall results
     overall_results = {
         "num_successful_folds": len(avg_rewards),
         "average_test_reward": final_avg_reward,
-        "std_test_reward": final_std_reward,
-        "average_test_sharpe": final_avg_sharpe,
-        "std_test_sharpe": final_std_sharpe,
+        "average_test_sharpe": final_avg_sharpe, # Add Sharpe here
         "fold_results": all_fold_results,
         "args": vars(args) # Save arguments used for the run
     }
     results_file = os.path.join(args.save_path, "overall_results.json")
     try:
         with open(results_file, 'w') as f:
-            # Handle numpy types during saving
-             def default_serializer(obj):
-                if isinstance(obj, (np.generic, np.ndarray)):
-                    # Check if it's a scalar numpy type or an array
-                    return obj.item() if hasattr(obj, 'item') and obj.ndim == 0 else obj.tolist()
-                # Add handling for other non-serializable types if necessary
-                # elif isinstance(obj, datetime): return obj.isoformat()
-                raise TypeError(f"Type {type(obj)} not serializable")
-
-             json.dump(overall_results, f, indent=4, default=default_serializer)
+            json.dump(overall_results, f, indent=4, default=lambda x: str(x) if isinstance(x, (np.generic, np.ndarray)) else x) # Handle numpy types
         logger.info(f"Saved overall results to {results_file}")
     except Exception as e:
-        logger.error(f"Failed to save overall results to {results_file}: {e}")
+        logger.error(f"Failed to save overall results: {e}")

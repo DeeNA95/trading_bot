@@ -1,0 +1,16 @@
+numpy
+binance-futures-connector
+torch
+# torch_xla
+pandas
+binance
+python-binance
+python-dotenv
+gymnasium
+google
+google-cloud-secret-manager
+tqdm
+fastparquet
+gcsfs
+google-cloud-storage
+scikit-learn

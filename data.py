@@ -2,9 +2,8 @@
 import argparse
 import logging
 import os
-import random
 from datetime import datetime, timedelta
-from time import sleep
+import io
 
 import numpy as np
 import pandas as pd
@@ -12,22 +11,19 @@ from binance.client import Client
 from binance.exceptions import BinanceAPIException
 from dotenv import load_dotenv
 from google.cloud import secretmanager, storage
+from joblib import load
+
+
 
 logger = logging.getLogger(__name__)
 
 
 class DataHandler:
-    """
-    Class for retrieving, processing, and preprocessing Binance Futures market data.
-    This includes fetching raw klines data, adding technical and risk metrics,
-    incorporating futures-specific metrics (funding rates, open interest, liquidations),
-    """
-
     def __init__(self):
 
         try:
             self.gcloud_client = secretmanager.SecretManagerServiceClient()
-            PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "future-linker-456622-f8")
+            PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "zeta-turbine-457610-h4")
 
             BINANCE_KEY_response = self.gcloud_client.access_secret_version(
                 name=f"projects/{PROJECT_ID}/secrets/BINANCE_API/versions/latest"
@@ -66,15 +62,45 @@ class DataHandler:
         )
         logger.info("Binance Futures client initialized successfully.")
 
+                # Load models from GCS
+        self.ridge_model = None
+        self.svr_model = None
+        self.rfr_model = None
+        model_names = {
+            'ridge': 'ridge_model.joblib',
+            'svr': 'svr_model.joblib',
+            'rfr': 'rfr_model.joblib'
+        }
+
+        try:
+            self.storage_client = storage.Client()
+            bucket = self.storage_client.bucket('btrading') # Replace 'ctrading' if needed
+
+            for model_key, model_filename in model_names.items():
+                model_blob_path = f'regressors/{model_filename}'
+                blob = bucket.blob(model_blob_path)
+                model_data = io.BytesIO()
+                try:
+                    logger.info(f"Attempting to load model from gs://{bucket.name}/{model_blob_path}")
+                    blob.download_to_file(model_data)
+                    model_data.seek(0)
+                    loaded_model = load(model_data)
+                    setattr(self, f"{model_key}_model", loaded_model) # e.g., self.ridge_model = loaded_model
+                    logger.info(f"Successfully loaded {model_key}_model: {getattr(self, f'{model_key}_model')}")
+                except Exception as load_error:
+                    logger.error(f"Failed to load model {model_blob_path}: {load_error}")
+                finally:
+                    model_data.close() # Close the buffer
+
+        except Exception as e:
+            logger.error(f"Error initializing GCS client or bucket: {e}")
+
+
     def get_futures_data(self, symbol, interval="1m", start_time=None, end_time=None):
-        """
-        Fetch historical futures data using Binance klines endpoint.
-        Data is retrieved in chunks to bypass the API row limit.
-        """
         if start_time is None:
             start_time = datetime.now() - timedelta(
-                days=30
-            )  # default to 30 days for 1h data
+                days=210
+            )
 
         if end_time is None:
             end_time = datetime.now()
@@ -90,7 +116,6 @@ class DataHandler:
         ctr = 1
         current_start = start_time
         while current_start < end_time:
-            sleep(0.1)
 
             print(f"Fetching chunk {ctr}")
             ctr += 1
@@ -133,6 +158,7 @@ class DataHandler:
             )
             # Convert timestamps and cast data types
             df_chunk["open_time"] = pd.to_datetime(df_chunk["open_time"], unit="ms")
+            df_chunk["close_time"] = pd.to_datetime(df_chunk["close_time"], unit="ms")
             df_chunk.set_index("open_time", inplace=True)
             df_chunk = df_chunk.astype(
                 {
@@ -148,6 +174,13 @@ class DataHandler:
                 }
             )
             df_chunk["symbol"] = symbol
+            df_chunk['rfr_feature'] = self.rfr_model.predict(df_chunk.drop(columns=['symbol', 'close_time', 'close']))
+            df_chunk['svr_feature'] = self.svr_model.predict(df_chunk.drop(columns=['symbol', 'close_time', 'close', 'rfr_feature']))
+            df_chunk['ridge_feature'] = self.ridge_model.predict(df_chunk.drop(columns=['symbol', 'close_time', 'close', 'rfr_feature', 'svr_feature']))
+
+
+            df_chunk.drop(columns=["ignore"], inplace=True)
+
             all_data.append(df_chunk)
             # Advance current_start using the last close_time plus 1ms to avoid duplicates
             last_close = int(klines[-1][6]) + 1
@@ -162,17 +195,20 @@ class DataHandler:
         logger.info(f"Retrieved {len(combined_data)} data points for {symbol}.")
         return combined_data
 
-    def calculate_technical_indicators(self, df):
+    @staticmethod
+    def calculate_technical_indicators(df):
         """
         Calculate a set of technical indicators: SMA, RSI, Bollinger Bands, MACD,
         Stochastic Oscillator, ATR, and ADX.
         """
+        logger.info("Calculating technical indicators...")
         result = df.copy()
         close = result["close"]
 
         # Simple Moving Averages
         result["sma_20"] = close.rolling(window=20).mean()
         result["sma_50"] = close.rolling(window=50).mean()
+        result['sma_7'] = close.rolling(window=7).mean()
 
         # RSI calculation
         delta = close.diff()
@@ -184,10 +220,10 @@ class DataHandler:
         result["rsi"] = 100 - (100 / (1 + rs))
 
         # Bollinger Bands
-        result["bb_middle"] = close.rolling(window=20).mean()
+        # result["bb_middle"] = close.rolling(window=20).mean() identical to sma_20
         bb_std = close.rolling(window=20).std()
-        result["bb_upper"] = result["bb_middle"] + 2 * bb_std
-        result["bb_lower"] = result["bb_middle"] - 2 * bb_std
+        result["bb_upper"] = result["sma_20"] + 2 * bb_std
+        result["bb_lower"] = result["sma_20"] - 2 * bb_std
 
         # MACD and Signal
         ema_12 = close.ewm(span=12, adjust=False).mean()  # expo MA accross 12 timespans
@@ -211,7 +247,7 @@ class DataHandler:
         low_close = np.abs(result["low"] - close.shift())
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         result["atr"] = true_range.rolling(14).mean()
-        result["atr"] = result["atr"].bfill()
+        result["atr"] = result["atr"].ffill()
         # print('how many nas in atr',result["atr"].isna().sum())
 
         # ADX and Directional Indicators
@@ -227,9 +263,9 @@ class DataHandler:
         plus_dm = pd.Series(plus_dm, index=result.index)
         minus_dm = pd.Series(minus_dm, index=result.index)
 
-        # Fill NaN values in +DM and -DM
-        plus_dm.fillna(0, inplace=True)
-        minus_dm.fillna(0, inplace=True)
+        # # Fill NaN values in +DM and -DM
+        # plus_dm.fillna(0, inplace=True)
+        # minus_dm.fillna(0, inplace=True)
         # Calculate the Positive Directional Indicator (+DI)
         plus_di = (
             100
@@ -248,16 +284,21 @@ class DataHandler:
         dx = 100 * np.abs(plus_di - minus_di) / (plus_di + minus_di)
         result["adx"] = pd.Series(dx).ewm(alpha=1 / 14, adjust=False).mean()
 
-        logging.info("Calculating technical indicators...")
+        result['high-low'] = result['high'] - result['low']
+        result['open-low'] = result['open'] - result['low']
+        result['open-high'] = result['open'] - result['high']
+        result['qav/vol'] = result['quote_asset_volume'] / result['volume']
+
         return result
 
-    def calculate_risk_metrics(self, df, interval="1h", window_size=60):
+    @staticmethod
+    def calculate_risk_metrics(df, interval="1m", window_size=60):
         """
         Calculate risk-related metrics: volatility, VaR, CVaR, max drawdown,
         Sharpe, Sortino, and Calmar ratios.
         """
         # Determine window size based on interval
-        periods_per_day = self.get_periods_per_day(interval)
+        periods_per_day = DataHandler.get_periods_per_day(interval)
 
         window = min(
             window_size, int(24 * periods_per_day)
@@ -321,7 +362,7 @@ class DataHandler:
 
         result["calmar_ratio"] = (
             result["timely_return"].rolling(window=window).mean()
-            * (365 * 24 / self.get_periods_per_day(interval))
+            * (365 * 24 / DataHandler.get_periods_per_day(interval)) # Use static call
         ) / result["max_drawdown"].abs()
 
         # Calculate efficiency ratio
@@ -333,6 +374,7 @@ class DataHandler:
         logger.info("Calculating risk metrics...")
         return result
 
+    # Note: This helper is used by calculate_risk_metrics, making it static too.
     @staticmethod
     def get_periods_per_day(interval):
         """Helper function to calculate periods per day for a given interval"""
@@ -348,7 +390,8 @@ class DataHandler:
         else:
             return 1
 
-    def identify_trade_setups(self, df):
+    @staticmethod
+    def identify_trade_setups(df):
         """
         Identify potential trade setups using trend, momentum, volatility, and strength signals.
         """
@@ -357,6 +400,7 @@ class DataHandler:
         for col in [
             "sma_20",
             "sma_50",
+            'sma_7',
             "rsi",
             "macd",
             "macd_signal",
@@ -367,7 +411,8 @@ class DataHandler:
             "minus_di",
         ]:
             if col not in result.columns:
-                result = self.calculate_technical_indicators(result)
+                # Call the static method directly using the class name
+                result = DataHandler.calculate_technical_indicators(result)
                 break
 
         # Initialize signals
@@ -425,129 +470,21 @@ class DataHandler:
             "trade_setup",
         ] = "bearish_reversal"
 
+        trade_setup_map = {
+            "none": 0,
+            "strong_bullish": 1,
+            "strong_bearish": 2,
+            "bullish_reversal": 3,
+            "bearish_reversal": 4,
+        }
+        result["trade_setup_id"] = result["trade_setup"].map(trade_setup_map).fillna(0).astype(int)
+
         logging.info("Identifying trade setups...")
         return result
 
-    def calculate_price_density(self, df, window=20, bins=10):
-        """
-        Calculate price density using a rolling window
 
-        Args:
-            df: DataFrame containing OHLC data
-            window: Size of the rolling window (default: 20)
-            bins: Number of price bins for density calculation (default: 10)
-
-        Returns:
-            Series with price density values
-        """
-        # Calculate price density for the entire DataFrame
-        result = pd.Series(index=df.index, dtype=float)
-        close_values = df["close"].values
-
-        # For each position in the DataFrame
-        for i in range(len(df)):
-            # Skip positions that don't have enough data for the window
-            if i < window:
-                result.iloc[i] = np.nan
-                continue
-
-            # Extract the window of data
-            window_data = close_values[i - window : i]
-
-            # Skip if there's not enough data
-            if len(window_data) < window / 2:
-                result.iloc[i] = np.nan
-                continue
-
-            # Create histogram of prices in the window
-            try:
-                hist, _ = np.histogram(window_data, bins=bins)
-                # Calculate density as the proportion of populated bins
-                populated_bins = np.sum(hist > 0)
-                result.iloc[i] = populated_bins / bins
-            except Exception:
-                # Handle any numerical issues
-                result.iloc[i] = np.nan
-
-        return result
-
-    def calculate_fractal_dimension(self, df, window=20):
-        """
-        Calculate fractal dimension of price movements using box-counting method
-
-        Args:
-            df: DataFrame containing OHLC data
-            window: Size of the rolling window (default: 20)
-
-        Returns:
-            Series with fractal dimension values
-        """
-        # Calculate fractal dimension for the entire DataFrame
-        result = pd.Series(index=df.index, dtype=float)
-        close_values = df["close"].values
-
-        # For each position in the DataFrame
-        for i in range(len(df)):
-            # Skip positions that don't have enough data for the window
-            if i < window:
-                result.iloc[i] = np.nan
-                continue
-
-            # Extract the window of data
-            window_data = close_values[i - window : i]
-
-            # Skip if there's not enough data
-            if len(window_data) < window / 2:
-                result.iloc[i] = np.nan
-                continue
-
-            # Normalize the window data to [0,1] range
-            min_val = np.min(window_data)
-            max_val = np.max(window_data)
-            if max_val == min_val:
-                result.iloc[i] = 1.0  # Flat line has dimension 1
-                continue
-
-            norm_data = (window_data - min_val) / (max_val - min_val)
-
-            # Use box-counting with multiple scales
-            scales = [2, 4, 8, 16]
-            log_counts = []
-            log_scales = []
-
-            for scale in scales:
-                if scale >= len(norm_data):
-                    continue
-
-                # Count boxes at this scale
-                box_count = 0
-                for j in range(0, scale):
-                    box_min = j / scale
-                    box_max = (j + 1) / scale
-                    # Check if any price falls within this box
-                    if np.any((norm_data >= box_min) & (norm_data < box_max)):
-                        box_count += 1
-
-                if box_count > 0:
-                    log_counts.append(np.log(box_count))
-                    log_scales.append(np.log(scale))
-
-            # Need at least 2 valid scales to calculate slope
-            if len(log_counts) < 2:
-                result.iloc[i] = np.nan
-                continue
-
-            # Linear regression to find the fractal dimension
-            try:
-                slope, _, _, _, _ = np.polyfit(log_scales, log_counts, 1, full=True)
-                result.iloc[i] = slope
-            except Exception:
-                # Handle any numerical issues
-                result.iloc[i] = np.nan
-
-        return result
-
-    def normalise_ohlc(self, df, window=20):
+    @staticmethod
+    def normalise_ohlc(df, window=20):
         """
         Normalise price-related columns of a dataframe using a rolling window and
         calculate additional complexity metrics
@@ -560,22 +497,14 @@ class DataHandler:
             DataFrame with normalized price-related values and complexity metrics
         """
 
-        df["price_density"] = self.calculate_price_density(df, window)
-        # df["fractal_dimension"] = self.calculate_fractal_dimension(df, window)
-        # Calculate rolling mean and standard deviation
-        rolling_mean = df["close"].rolling(window=window).mean()
-        rolling_std = df["close"].rolling(window=window).std()
-
         result = df.copy()
-
-        # Normalize OHLC values
-        result["open"] = (df["open"] - rolling_mean) / rolling_std
-        result["high"] = (df["high"] - rolling_mean) / rolling_std
-        result["low"] = (df["low"] - rolling_mean) / rolling_std
-        result["close"] = (df["close"] - rolling_mean) / rolling_std
 
         # Normalize moving averages and Bollinger Bands if they exist
         price_related_cols = [
+            'open',
+            'high',
+            'low',
+            'close',
             "sma_20",
             "sma_50",
             "bb_middle",
@@ -583,10 +512,15 @@ class DataHandler:
             "bb_lower",
             "lowest_low",
             "highest_high",
+            'rfr_feature',
+            'svr_feature',
+            'ridge_feature',
         ]
 
         for col in price_related_cols:
             if col in df.columns:
+                rolling_mean = df[col].rolling(window=window).mean()
+                rolling_std = df[col].rolling(window=window).std()
                 result[col] = (df[col] - rolling_mean) / rolling_std
         return result
 
@@ -675,7 +609,7 @@ class DataHandler:
         # Open interest: using futures_open_interest_hist endpoint
         oi_params = {
             "symbol": symbol,
-            "period": interval,  # Changed from 'period' to 'interval'
+            "period": '5m',  # Changed from 'period' to 'interval'
             "limit": 500,  # Changed from 1000 to 500
             "startTime": int(start_time.timestamp() * 1000),
             "endTime": int(end_time.timestamp() * 1000),
@@ -789,7 +723,7 @@ class DataHandler:
     def process_market_data(
         self,
         symbol,
-        interval="1h",
+        interval="1m",
         start_time=None,
         end_time=None,
         save_path=None,
@@ -798,122 +732,94 @@ class DataHandler:
         validation_ratio=0.0,
     ):
         """
-        Comprehensive function to retrieve futures data, add all metrics (technical,
-        risk, and futures-specific), and fill missing values.
-
-        Args:
-            symbol: Trading symbol (e.g., 'BTCUSDT')
-            interval: Data interval (e.g., '15m', '1h')
-            start_time: Start time for data collection (default: depends on interval)
-            end_time: End time for data collection (default: current time)
-            save_path: Path to save processed data (optional)
-            split_data: Whether to split data into training and test sets (default: False)
-            test_ratio: Ratio of data to use for testing (default: 0.2)
-            validation_ratio: Ratio of data to use for validation (default: 0.0)
-
-        Returns:
-            If split_data is False: DataFrame containing processed data
-            If split_data is True: Dictionary containing train, test, and optionally validation DataFrames
+        Fetch, process, and optionally split market data for a given symbol and interval.
+        This method now includes the full feature calculation pipeline needed for inference.
         """
-        if end_time is None:
-            end_time = datetime.now()
-        if start_time is None:
-            start_time = (
-                end_time - timedelta(days=7)
-                if interval == "1m"
-                else end_time - timedelta(days=60)
-            )
-        # Fetch raw data
-        df = self.get_futures_data(
-            symbol, interval, start_time, end_time
-        )  # Pass start_time and end_time correctly
+        logger.info(f"Processing market data for {symbol} from {start_time} to {end_time}")
+
+        # 1. Fetch raw klines data
+        df = self.get_futures_data(symbol, interval, start_time, end_time)
         if df.empty:
-            logging.warning(f"No data retrieved for {symbol}.")
-            raise ValueError(f"No data retrieved for {symbol}.")
+            logger.error("Failed to fetch raw klines data.")
+            return pd.DataFrame() # Return empty df if fetch fails
 
+        # 2. Add futures-specific metrics (Funding, OI, Liquidations)
+        # Note: Ensure start_time and end_time are appropriate for these metrics
+        df = self.add_futures_metrics(df, symbol, interval, start_time, end_time)
 
-        # Calculate technical indicators
-        df = self.calculate_technical_indicators(df)
+        # 3. Calculate Technical Indicators
+        df = DataHandler.calculate_technical_indicators(df) # Use static call
 
-        # Add futures-specific metrics
-        df = self.add_futures_metrics(
-            df, symbol, interval, start_time, end_time
-        )  # Pass end_time correctly
+        # 4. Calculate Risk Metrics
+        # Assuming window_size is needed - how to get it here? Use a default or pass it?
+        # Let's use a default window size consistent with typical usage, e.g., 60 for 1m
+        # TODO: Consider passing window_size as an argument if needed for consistency
+        default_window_size = 60 # Example default
+        df = DataHandler.calculate_risk_metrics(df, interval=interval, window_size=default_window_size) # Use static call
 
-        # Calculate risk metrics
-        df = self.calculate_risk_metrics(df, interval)
-        logging.debug(f"Data after calculating risk metrics:\n{df.head()}")
+        # 5. Identify Trade Setups
+        df = DataHandler.identify_trade_setups(df) # Use static call
 
-        # Identify trade setups
-        df = self.identify_trade_setups(df)
-        logging.debug(f"Data after identifying trade setups:\n{df.head()}")
+        # 7. Normalize OHLC and other price-related features
+        df = self.normalise_ohlc(df, window=default_window_size)
 
-        # Normalize OHLC data
-        df = self.normalise_ohlc(df)
-        logging.debug(f"Data after normalizing OHLC:\n{df.head()}")
+        # 8. Final clean-up: Forward fill and drop NaNs introduced by calculations
+        # logger.info(f'Successfully updated market data with {(df.columns.tolist())} features')
 
-        # Fill missing values
-        df = df.ffill().bfill()
-        logging.debug(f"Data after filling missing values:\n{df.head()}")
+        original_len = len(df)
+        df = df.ffill().dropna()
+        new_len = len(df)
+        if original_len > new_len:
+            logger.info(f"Dropped {original_len - new_len} rows containing NaNs after feature calculation.")
 
-        # Check for NaN values
-        if df.isnull().values.any():
-            logging.warning(f"NaN values found in data:\n{df.isnull().sum()}")
+        if df.empty:
+            logger.error("DataFrame became empty after feature calculation and dropna.")
+            return pd.DataFrame()
 
+        logger.info(f"Finished processing data. Shape: {df.shape}")
+
+        # 9. Save data if path provided
         if save_path:
-            # Base filename without extension
-            base_path = save_path.rsplit(".", 1)[0] if "." in save_path else save_path
+            self.save_data_to_csv(df, save_path)
 
-            if split_data:
-                # Split the data
-                split_sets = self.split_data_train_test(
-                    df, test_ratio, validation_ratio
-                )
-
-                # Save each split
-                for split_name, split_df in split_sets.items():
-                    split_path = f"{base_path}_{split_name}.csv"
-                    self.save_data_to_csv(split_df, split_path)
-                    logging.info(f"{split_name.title()} data saved to {split_path}")
-
-                # Return the split datasets
-                return split_sets
-            else:
-                # Save the whole dataset
-                self.save_data_to_csv(df, save_path)
-                logging.info(f"Data with metrics saved to {save_path}")
-
-                # Return the full dataset
-                return df
-
-        # If no save path is provided, just return the model data
+        # 10. Split data if requested (less common for pure inference, but kept for consistency)
         if split_data:
             return self.split_data_train_test(df, test_ratio, validation_ratio)
         else:
             return df
 
+
     def save_data_to_csv(self, df, file_path):
-        """Save DataFrame to CSV."""
+        """Save DataFrame to CSV or Parquet."""
 
         if file_path.startswith("gs://"):
-            # parse bucket and blob path
             path_parts = file_path[5:].split("/", 1)
             bucket_name = path_parts[0]
             blob_path = path_parts[1] if len(path_parts) > 1 else ""
 
-            csv_string = df.to_csv(index=False)
-
-            # upload to GCS
             storage_client = storage.Client()
             bucket = storage_client.bucket(bucket_name)
             blob = bucket.blob(blob_path)
-            blob.upload_from_string(csv_string, content_type="text/csv")
-            logger.info(f"Data saved to GCS: {file_path}")
 
+            if file_path.endswith('.parquet'):
+                import pyarrow as pa
+                import pyarrow.parquet as pq
+                table = pa.Table.from_pandas(df)
+                buffer = pa.BufferOutputStream()
+                pq.write_table(table, buffer)
+                blob.upload_from_string(buffer.getvalue().to_pybytes())
+                logger.info(f"Data saved to GCS: {file_path}")
+            else:
+                csv_string = df.to_csv(index=False)
+                blob.upload_from_string(csv_string, content_type="text/csv")
+                logger.info(f"Data saved to GCS: {file_path}")
         else:
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             df.reset_index(inplace=True)
-            df.to_csv(file_path, index=False)
+            if file_path.endswith('.parquet'):
+                df.to_parquet(file_path, index=False)
+            else:
+                df.to_csv(file_path, index=False)
             logging.info(f"Data saved to {file_path}")
 
 
@@ -932,7 +838,7 @@ def parse_args():
         help="Data interval",
     )
     parser.add_argument(
-        "--days", type=int, default=7, help="Number of days of historical data to fetch"
+        "--days", type=int, default=1, help="Number of days of historical data to fetch"
     )
     parser.add_argument(
         "--start_date", type=str, default=None, help="Start date in YYYY-MM-DD format"
@@ -990,7 +896,7 @@ if __name__ == "__main__":
     os.makedirs(args.output_dir, exist_ok=True)
 
     # Create output filename
-    base_filename = f"{args.symbol}_{args.interval}_with_metrics_3m"
+    base_filename = f"{args.symbol}_{args.interval}_with_metrics"
     output_path = os.path.join(args.output_dir, f"{base_filename}.csv")
 
     # Process data with or without splitting
@@ -1004,7 +910,7 @@ if __name__ == "__main__":
             start_time=start_date,
             end_time=end_date,
             save_path=output_path,
-            split_data=True,
+            split_data=False,
             test_ratio=args.test_ratio,
             validation_ratio=args.validation_ratio,
         )

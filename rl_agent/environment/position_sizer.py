@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 
+from .utils import calculate_adaptive_leverage # Added import
+
 
 class PositionSizer(ABC):
     """Abstract base class for position sizing strategies."""
@@ -155,7 +157,7 @@ class KellyPositionSizer(PositionSizer):
 class VolatilityAdjustedPositionSizer(PositionSizer):
     """Position sizer that adjusts position size based on ATR volatility."""
 
-    def __init__(self, base_risk_pct: float = 0.2, volatility_scale: float = 2.0):
+    def __init__(self, base_risk_pct: float = 0.3, volatility_scale: float = 1.75):
         """
         Initialize the volatility adjusted position sizer.
 
@@ -230,7 +232,7 @@ class BinanceFuturesPositionSizer:
             dynamic_leverage: Whether to adjust leverage based on volatility
         """
         self.max_position_pct = max_position_pct
-        self.position_sizer = position_sizer or FixedFractionPositionSizer()
+        self.position_sizer = position_sizer or VolatilityAdjustedPositionSizer()
         self.default_leverage = default_leverage
         self.max_leverage = max_leverage
         self.dynamic_leverage = dynamic_leverage
@@ -261,10 +263,22 @@ class BinanceFuturesPositionSizer:
             Dictionary containing position size in units, USD value, and leverage
         """
         # Get adaptive leverage if dynamic leverage is enabled
-        used_leverage = leverage or self.default_leverage
+        # Determine leverage to use
+        if leverage is not None:
+            # Use explicitly provided leverage
+            used_leverage = leverage
+        elif self.dynamic_leverage:
+            # Calculate dynamically using the utility function
+            used_leverage = calculate_adaptive_leverage(
+                volatility=volatility,
+                max_leverage=self.max_leverage,
+                default_leverage=self.default_leverage
+                # volatility_factor can use default from utility function
+            )
+        else:
+            # Use the default static leverage
+            used_leverage = self.default_leverage
 
-        if self.dynamic_leverage and leverage is None:
-            used_leverage = self._calculate_adaptive_leverage(volatility)
 
         # Calculate position size as percentage of account
         position_pct = self.position_sizer.calculate_position_size(
@@ -293,28 +307,4 @@ class BinanceFuturesPositionSizer:
             "position_pct": position_pct,
         }
 
-    def _calculate_adaptive_leverage(self, volatility: float) -> int:
-        """
-        Calculate adaptive leverage based on market volatility.
-
-        Args:
-            volatility: Market volatility measure (0-1 range)
-
-        Returns:
-            Integer leverage value
-        """
-        # Volatility factor - higher volatility means lower leverage
-        volatility_factor = 5.0
-
-        if volatility > 0:
-            adaptive_leverage = max(
-                1,
-                min(
-                    self.max_leverage,
-                    int(self.max_leverage * (1 / (1 + volatility * volatility_factor))),
-                ),
-            )
-        else:
-            adaptive_leverage = self.default_leverage
-
-        return adaptive_leverage
+    # Removed duplicated _calculate_adaptive_leverage method. Using utils.calculate_adaptive_leverage instead.
