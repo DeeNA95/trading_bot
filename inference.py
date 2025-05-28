@@ -134,7 +134,6 @@ def check_api_keys() -> Tuple[str, str]:
         logger.info("Falling back to .env file for Binance credentials")
 
     if not BINANCE_KEY or not BINANCE_secret:
-    if not BINANCE_KEY or not BINANCE_secret:
         raise ValueError(
             "Binance API credentials not found in environment variables. "
             "Ensure that BINANCE_KEY and BINANCE_secret are set in your .env file."
