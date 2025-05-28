@@ -83,11 +83,19 @@ def check_api_keys() -> Tuple[str, str]:
     """
     BINANCE_KEY = None
     BINANCE_secret = None
+    BINANCE_KEY = None
+    BINANCE_secret = None
 
     try:
         gcloud_client = secretmanager.SecretManagerServiceClient()
         PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "zeta-turbine-457610-h4")
+        gcloud_client = secretmanager.SecretManagerServiceClient()
+        PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "future-linker-456622-f8")
 
+        BINANCE_KEY_response = gcloud_client.access_secret_version(
+            name=f"projects/{PROJECT_ID}/secrets/BINANCE_API/versions/latest"
+        )
+        BINANCE_KEY = BINANCE_KEY_response.payload.data.decode("UTF-8").strip()
         BINANCE_KEY_response = gcloud_client.access_secret_version(
             name=f"projects/{PROJECT_ID}/secrets/BINANCE_API/versions/latest"
         )
@@ -99,7 +107,16 @@ def check_api_keys() -> Tuple[str, str]:
         BINANCE_secret = BINANCE_secret_response.payload.data.decode(
             "UTF-8"
         ).strip()
+        BINANCE_secret_response = gcloud_client.access_secret_version(
+            name=f"projects/{PROJECT_ID}/secrets/BINANCE_SECRET/versions/latest"
+        )
+        BINANCE_secret = BINANCE_secret_response.payload.data.decode(
+            "UTF-8"
+        ).strip()
 
+        logger.info(
+            "Successfully retrieved Binance credentials from Google Secret Manager"
+        )
         logger.info(
             "Successfully retrieved Binance credentials from Google Secret Manager"
         )
@@ -110,7 +127,13 @@ def check_api_keys() -> Tuple[str, str]:
         BINANCE_KEY = os.getenv("BINANCE_KEY")
         BINANCE_secret = os.getenv("BINANCE_SECRET")
         logger.info("Falling back to .env file for Binance credentials")
+        logger.error(f"Could not retrieve from Google Secret Manager: {e}")
+        load_dotenv()
+        BINANCE_KEY = os.getenv("BINANCE_KEY")
+        BINANCE_secret = os.getenv("BINANCE_secret")
+        logger.info("Falling back to .env file for Binance credentials")
 
+    if not BINANCE_KEY or not BINANCE_secret:
     if not BINANCE_KEY or not BINANCE_secret:
         raise ValueError(
             "Binance API credentials not found in environment variables. "
