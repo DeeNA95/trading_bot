@@ -1,6 +1,6 @@
 # Reinforcement Learning Trading Bot for Binance Futures
 
-An advanced reinforcement learning agent for algorithmic trading on Binance Futures, designed for crypto market trading with a focus on BTC/USDT.
+An advanced reinforcement learning agent for algorithmic trading on Binance Futures, designed for crypto market trading.
 
 ## Features
 
@@ -46,6 +46,45 @@ An advanced reinforcement learning agent for algorithmic trading on Binance Futu
    BINANCE_KEY=your_mainnet_api_key
    BINANCE_SECRET=your_mainnet_secret_key
    ```
+
+## Quick Start 🚀
+
+### Start the Full Application (Recommended)
+```bash
+# Start both backend API and React frontend
+./start.sh
+# OR
+python start_app.py
+```
+
+**Access your application:**
+- **Frontend UI**: http://localhost:3000
+- **Backend API**: http://localhost:8080
+
+### Alternative Startup Methods
+
+#### Start Backend Only
+```bash
+python start_backend.py
+```
+
+#### Start Frontend Only
+```bash
+cd react-frontend
+npm start
+```
+
+## Application Architecture
+
+- **Backend API Server** (Flask) - Port 8080
+  - REST API endpoints for training/inference
+  - WebSocket for real-time logs
+  - Manages training and inference processes
+
+- **React Frontend** - Port 3000
+  - Modern Material-UI interface
+  - Real-time training/inference monitoring
+  - Configuration panels for model parameters
 
 ## Usage
 

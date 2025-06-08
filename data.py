@@ -13,10 +13,7 @@ from dotenv import load_dotenv
 from google.cloud import secretmanager, storage
 from joblib import load
 
-
-
 logger = logging.getLogger(__name__)
-
 
 class DataHandler:
     def __init__(self):
