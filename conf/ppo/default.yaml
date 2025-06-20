@@ -1,0 +1,15 @@
+# Proximal Policy Optimization (PPO) Hyperparameters Configuration
+# Covers optimization settings, clipping, advantage estimation, and regularization
+
+lr: 3e-4  # Learning rate for the PPO optimizer
+gamma: 0.99  # Discount factor for future rewards
+gae_lambda: 0.95  # Lambda for Generalized Advantage Estimation (if use_gae=True)
+policy_clip: 0.2  # Clipping parameter for policy updates
+batch_size: 64  # Mini-batch size for PPO updates
+n_epochs: 10  # Number of epochs per PPO update cycle
+entropy_coef: 0.01  # Entropy coefficient to encourage exploration
+value_coef: 0.5  # Coefficient for value function loss term
+max_grad_norm: 0.5  # Maximum gradient norm for clipping
+use_gae: true  # Whether to use Generalized Advantage Estimation (GAE)
+normalize_advantage: true  # Whether to normalize advantages to mean=0, std=1
+weight_decay: 0.0  # Weight decay (L2 regularization) coefficient for optimizer

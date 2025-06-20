@@ -1,0 +1,44 @@
+# Transformer model architecture configuration
+# Reflects ModelConfig parameters used by the PPO agent
+
+architecture: 'encoder_only'  # Transformer type: 'encoder_only', 'decoder_only', or 'encoder_decoder'
+embedding_dim: 128  # Embedding dimension size
+n_encoder_layers: 6  # Number of encoder layers (ignored if decoder-only)
+n_decoder_layers: 0  # Number of decoder layers (ignored if encoder-only)
+dropout: 0.1  # Dropout rate applied throughout the model
+
+attention_type: 'mha'  # Attention mechanism type: 'mha' (multi-head), 'mla', etc.
+n_heads: 8  # Number of multi-head attention heads
+
+# Optional model configuration for advanced architectures
+
+n_latents: null  # Number of latent tokens (for MLA), null if unused
+n_groups: null  # Number of groups (for GQA), null if unused
+
+ffn_type: 'standard'  # Feed-forward network type: 'standard', 'moe' (mixture of experts)
+ffn_dim: 512  # Hidden dimension size for the FFN layers
+n_experts: null  # Number of experts (for MoE), null if not using
+top_k: null  # Top-k expert selection (MoE), null if unused
+
+norm_type: 'layer_norm'  # Normalization type, e.g., 'layer_norm'
+
+# Residual connection settings
+residual_scale: 1.0  # Scaling factor for residual connections
+use_gated_residual: false  # Use learnable gating for residual connections
+use_final_norm: true  # Apply final normalization after all residuals
+
+# Feature extractor configuration
+feature_extractor_type: 'basic'  # 'basic', 'resnet', 'inception', or custom
+feature_extractor_dim: 64  # Hidden dimension for feature extractor
+feature_extractor_layers: 3  # Number of layers in feature extractor
+use_skip_connections: true  # Use skip connections in feature extractor
+use_layer_norm: false  # Use layer normalization instead of batch norm
+use_instance_norm: false  # Use instance normalization instead of batch norm
+feature_dropout: 0.1  # Dropout in feature extractor layers
+
+# Actor-critic heads configuration
+head_hidden_dim: 128  # Hidden size for actor-critic heads
+head_n_layers: 2  # Number of layers in actor-critic heads
+head_use_layer_norm: true  # Use layer normalization in actor-critic heads
+head_use_residual: true  # Use residual connections in actor-critic heads
+head_dropout: 0.1  # Dropout rate in actor-critic heads (null to use model dropout)

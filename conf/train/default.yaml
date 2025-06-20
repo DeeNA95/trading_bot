@@ -1,0 +1,10 @@
+# Training and Walk-Forward Validation Configuration
+# Controls training episode counts, evaluation frequency, walk-forward splits, device, and checkpoint resume
+
+episodes: 1000            # Number of training episodes per fold
+n_splits: 5               # Number of time series splits for walk-forward validation
+val_ratio: 0.2            # Fraction of training data for validation in each fold
+eval_freq: 50             # Frequency (in episodes) of evaluation during training
+save_path: 'outputs/'     # Base directory path to save model checkpoints and logs
+device: 'auto'            # Compute device preference: 'cpu', 'cuda', 'mps', or 'auto' to auto-select
+checkpoint_path: ''       # Optional path to a checkpoint file to resume training; empty means start fresh

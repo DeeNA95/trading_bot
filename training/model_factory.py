@@ -268,8 +268,15 @@ def create_model(config: ModelConfig, device: str = "auto") -> ActorCriticWrappe
 
     # Set up normalization
     norm_mapping = {
-        "layer_norm": nn.LayerNorm
+        "layer_norm": nn.LayerNorm,
+        "batch_norm": nn.BatchNorm1d,
+        "instance_norm": nn.InstanceNorm1d,
+        "group_norm": nn.GroupNorm
     }
+    
+    if config.norm_type not in norm_mapping:
+        raise ValueError(f"Unsupported norm_type: {config.norm_type}. Supported types: {list(norm_mapping.keys())}")
+    
     norm_class = norm_mapping[config.norm_type]
 
     # --- Assemble DynamicTransformerCore ---

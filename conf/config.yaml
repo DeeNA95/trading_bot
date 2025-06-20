@@ -1,0 +1,19 @@
+# Main Experiment Configuration
+# Composes environment, model, PPO hyperparameters, and training configurations
+#
+# Modify or override sections here or via CLI with Hydra's override syntax
+# Example: python train.py model.embedding_dim=512 ppo.lr=1e-4
+
+defaults:
+  - env: binance_futures
+  - model: transformer
+  - ppo: default
+  - train: default
+
+# Optional global experiment name or tag
+experiment_name: 'default_rl_experiment'
+
+# Optional seed value for reproducibility
+seed: 42
+
+# Compose all configs here, no secrets or paths—those are handled outside or via .env

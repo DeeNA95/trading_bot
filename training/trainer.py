@@ -53,6 +53,7 @@ class Trainer:
         self.leverage = self.args.leverage
         self.episodes = self.args.episodes
         self.batch_size = self.args.batch_size
+        logger.info(f"Fold {self.fold_num}: episodes={self.episodes}, batch_size={self.batch_size}")
         self.update_freq = self.args.update_freq # Note: PPOAgent might handle update logic internally based on batch_size
         self.eval_freq = self.args.eval_freq
         self.dynamic_leverage = self.args.dynamic_leverage
@@ -64,6 +65,25 @@ class Trainer:
         self.trade_fee_percent = self.args.trade_fee
         self.base_save_path = self.args.save_path
         self.device_setting = self.args.device # Store requested device setting
+
+        # Anchor base_save_path to Hydra output dir if available to unify local/GCS paths
+        try:
+            from hydra.utils import get_original_cwd
+            import os
+            hydra_output_dir = os.getenv('HYDRA_OUTPUT_DIR')
+            if hydra_output_dir is None:
+                # fallback to Hydra internal if available
+                import hydra
+                hydra_output_dir = hydra.utils.get_run_dir()
+            if hydra_output_dir:
+                # Compose absolute output path
+                self.base_save_path = os.path.join(hydra_output_dir, self.base_save_path)
+        except Exception:
+            # If hydra not available or env missing, fallback to original path
+            pass
+
+        # Ensure base_save_path directory exists
+        os.makedirs(self.base_save_path, exist_ok=True)
 
         # Determine device
         if self.device_setting == "auto":
@@ -127,6 +147,14 @@ class Trainer:
              weight_decay=self.args.weight_decay,
              gradient_accumulation_steps=getattr(self.args, 'gradient_accumulation_steps', 4),  # Default to 4 if not provided
          )
+         # Load checkpoint if path is provided and file exists
+         checkpoint_path = getattr(self.args, 'checkpoint_path', None)
+         if checkpoint_path and checkpoint_path != '' and os.path.isfile(checkpoint_path):
+             try:
+                 agent.load(checkpoint_path)
+                 logger.info(f"Fold {self.fold_num}: Successfully loaded checkpoint from {checkpoint_path}")
+             except Exception as e:
+                 logger.error(f"Fold {self.fold_num}: Failed to load checkpoint from {checkpoint_path}: {e}", exc_info=True)
          return agent
 
     def train_and_evaluate_fold(self) -> Tuple[Optional[Dict[str, float]], Dict]:

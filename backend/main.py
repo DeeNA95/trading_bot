@@ -79,7 +79,7 @@ class TrainingConfig(BaseModel):
     symbol: str
     interval: Optional[str] = "1h"
     window_size: Optional[int] = 50
-    leverage: Optional[float] = 1.0
+    leverage: Optional[int] = 1
     max_position: Optional[float] = 0.1
     balance: Optional[float] = 1000.0
     risk_reward: Optional[float] = 2.0
@@ -98,7 +98,7 @@ class TrainingConfig(BaseModel):
     ffn_dim: Optional[int] = 512
     n_experts: Optional[int] = 8
     top_k: Optional[int] = 2
-    norm_type: Optional[str] = "layer"
+    norm_type: Optional[str] = "layer_norm"
     feature_extractor_type: Optional[str] = "cnn"
     feature_extractor_dim: Optional[int] = 64
     feature_extractor_layers: Optional[int] = 3
@@ -228,7 +228,7 @@ async def start_training(config: TrainingConfig, background_tasks: BackgroundTas
     
     try:
         # Build training command
-        cmd = [sys.executable, '-u', 'train.py']
+        cmd = ['python3', 'train.py']
         
         # Add required parameters
         cmd.extend(['--train_data', config.train_data])
@@ -368,6 +368,12 @@ async def start_training(config: TrainingConfig, background_tasks: BackgroundTas
         # Start background task to monitor training output
         background_tasks.add_task(monitor_training_output)
         
+        await manager.broadcast({
+            "type": "training_output",
+            "data": "Training started\n",
+            "output_type": "info",
+            "timestamp": datetime.now().isoformat()
+        })
         return {"message": "Training started successfully"}
         
     except Exception as e:
@@ -582,10 +588,19 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            data = await websocket.receive_text()
-            # Echo back any messages (can be extended for bidirectional communication)
-            await manager.send_personal_message(f"Echo: {data}", websocket)
+            # Wait for any message from client or keep connection alive
+            try:
+                data = await websocket.receive_text()
+                # Echo back any messages (can be extended for bidirectional communication)
+                await manager.send_personal_message(f"Echo: {data}", websocket)
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error(f"WebSocket error: {e}")
+                break
     except WebSocketDisconnect:
+        pass
+    finally:
         manager.disconnect(websocket)
 
 # Background tasks for monitoring processes

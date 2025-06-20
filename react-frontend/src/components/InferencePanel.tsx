@@ -76,7 +76,10 @@ const InferencePanel: React.FC = () => {
   const [logs, setLogs] = useState<string[]>([]);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' as 'success' | 'error' | 'info' });
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:3000/ws');
+    const wsUrl = window.location.protocol === 'https:' 
+      ? `wss://${window.location.host}/ws`
+      : `ws://${window.location.host}/ws`;
+    const ws = new WebSocket(wsUrl);
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -87,6 +90,10 @@ const InferencePanel: React.FC = () => {
 
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
+    };
+
+    ws.onclose = (event) => {
+      console.log('WebSocket closed:', event);
     };
 
     fetchFiles();
